@@ -5,7 +5,7 @@
  * Flow: Translate → Diagram Check → Cache → Vector search (RAG) → LLM → Stream
  *
  * NEW: Diagram intent detection — if user asks for a wiring/panel diagram,
- * returns a special JSON response that the UI renders as an SVG diagram card.
+ * returns a special JSON response that the UI renders as a markdown diagram card.
  */
 
 import dns from 'node:dns';
@@ -76,11 +76,34 @@ function isEnglish(text: string): boolean {
 }
 
 function extractKeywords(text: string): string[] {
-    const stop = new Set(['how', 'what', 'where', 'when', 'why', 'which', 'who', 'the', 'is', 'are',
-        'was', 'were', 'a', 'an', 'and', 'or', 'to', 'in', 'on', 'for', 'of', 'with', 'do', 'does', 'did',
-        'can', 'could', 'will', 'would', 'should', 'may', 'might', 'i', 'my', 'me', 'we', 'you', 'it',
-        'this', 'that', 'these', 'be', 'been', 'being', 'have', 'has', 'had', 'not', 'but', 'if',
-        'then', 'so', 'from', 'at', 'by', 'about', 'up']);
+    const stop = new Set([// Products & Brands
+        'whisper', 'zapper', 'healer', 'jarvis', 'isis', 'atum', 'pinnacle',
+        'hestia', 'chronos', 'dexter', 'biosmart', 'ravel', 'premier', 'dsc',
+        'swatch', 'seple', 'hhmd', 'iris', 'sim7600x',
+
+        // Security & Fire Alarm Concepts
+        'intrusion', 'fire', 'tamper', 'silent', 'duress', 'zone', 'arm', 'disarm',
+        'bypass', 'isolate', 'trigger', 'alarm', 'hooters', 'siren', 'detector',
+        'smoke', 'heat', 'pir', 'magnetic', 'vibration', 'glass', 'relay',
+
+        // Connectivity & Protocols
+        'gsm', 'pstn', 'gprs', 'lte', 'network', 'router', 'ethernet', 'wifi',
+        'lan', 'ip', 'tcp', 'port', 'dhcp', 'dns', 'apn', 'mqtt', 'sia',
+        'contact', 'i2c', 'uart', 'rs232', 'modbus', 'weigand', 'esim', 'mac',
+
+        // Hardware & Components
+        'microcontroller', 'smps', 'battery', 'lcd', 'keypad', 'buzzer', 'eeprom',
+        'rtc', 'crystal', 'diode', 'transistor', 'optocoupler', 'multiplexer',
+        'sensor', 'antenna', 'rfid', 'mifare', 'lens', 'pcb', 'smd',
+
+        // Features & Dashboard Metrics
+        'dashboard', 'telemetry', 'heartbeat', 'logs', 'audit', 'password',
+        'master', 'delay', 'schedule', 'holiday', 'ota', 'cctv', 'nvr', 'dvr',
+        'bacs', 'bas', 'fas', 'ias', 'tls', 'gnss', 'gps', 'uptime',
+
+        // Zapper/Health Specific
+        'pulser', 'colloidal', 'silver', 'parasite', 'clarkia', 'tincture',
+        'frequency', 'wave', 'copper', 'ions']);
     return text.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/)
         .filter(w => w.length > 2 && !stop.has(w));
 }
@@ -131,7 +154,12 @@ export async function POST(req: Request) {
             console.log(`⚡ CACHE HIT [original]`);
             const enc = new TextEncoder();
             return new Response(
-                new ReadableStream({ start(c) { c.enqueue(enc.encode(bengaliCached.answer)); c.close(); } }),
+                new ReadableStream({
+                    start(c) {
+                        c.enqueue(enc.encode(`0:${JSON.stringify(bengaliCached.answer)}\n`));
+                        c.close();
+                    }
+                }),
                 { headers: { 'Content-Type': 'text/plain; charset=utf-8' } }
             );
         }
@@ -200,7 +228,7 @@ English:`
 
                 const diagramData = await diagramRes.json();
 
-                if (diagramData.success && diagramData.svg) {
+                if (diagramData.success && diagramData.markdown) {
                     // Log analytics
                     void getSupabase().from('chat_sessions').insert({
                         user_question: latestMessage,
@@ -221,7 +249,7 @@ English:`
                     return new Response(
                         new ReadableStream({
                             start(c) {
-                                c.enqueue(enc.encode(`DIAGRAM_RESPONSE:${diagramPayload}`));
+                                c.enqueue(enc.encode(`0:${JSON.stringify(`DIAGRAM_RESPONSE:${diagramPayload}`)}\n`));
                                 c.close();
                             }
                         }),
@@ -241,7 +269,12 @@ English:`
             setCache(bengaliKey, englishCached.answer, englishCached.answerMode);
             const enc = new TextEncoder();
             return new Response(
-                new ReadableStream({ start(c) { c.enqueue(enc.encode(englishCached.answer)); c.close(); } }),
+                new ReadableStream({
+                    start(c) {
+                        c.enqueue(enc.encode(`0:${JSON.stringify(englishCached.answer)}\n`));
+                        c.close();
+                    }
+                }),
                 { headers: { 'Content-Type': 'text/plain; charset=utf-8' } }
             );
         }
