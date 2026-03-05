@@ -25,7 +25,7 @@ import { getSupabase } from '@/lib/supabase';
 import { embedText } from '@/lib/embeddings';
 import { ChatOpenAI } from '@langchain/openai';
 
-export const maxDuration = 55;
+
 
 // ─── Config ───────────────────────────────────────────────────
 const CHUNK_SIZE = 800;
@@ -159,6 +159,13 @@ function buildEmbeddingText(
 
 // ─── PDF Text Extractor ───────────────────────────────────────
 async function extractPdfText(buffer: ArrayBuffer): Promise<string> {
+    // Polyfill missing DOM classes for pdf.js (used by pdf-parse) in Node environment
+    if (typeof global !== 'undefined') {
+        if (!(global as any).DOMMatrix) (global as any).DOMMatrix = class DOMMatrix { };
+        if (!(global as any).ImageData) (global as any).ImageData = class ImageData { };
+        if (!(global as any).Path2D) (global as any).Path2D = class Path2D { };
+    }
+
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const pdfParse = require('pdf-parse');
     const data = await pdfParse(Buffer.from(buffer));

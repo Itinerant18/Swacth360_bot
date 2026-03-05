@@ -27,7 +27,7 @@ const TOP_K = 5;
 const SUPABASE_TIMEOUT_MS = 6000;
 const MAX_HISTORY_TURNS = 4;
 
-export const maxDuration = 60;
+
 
 // ─── Response Cache ───────────────────────────────────────────
 interface CacheEntry { answer: string; answerMode: string; timestamp: number; }

@@ -3,7 +3,7 @@
 import { useChat } from 'ai/react';
 import { useRef, useEffect, useState, useCallback, useMemo } from 'react';
 import dynamic from 'next/dynamic';
-import qaData from '../../data/hms-dexter-qa.json';
+
 import remarkGfm from 'remark-gfm';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
@@ -78,17 +78,16 @@ const SUGGESTION_CATEGORIES = [
 ];
 
 function getCuratedSuggestions(): string[] {
-    const suggestions: string[] = [];
-    const shuffledCats = [...SUGGESTION_CATEGORIES].sort(() => 0.5 - Math.random());
-    for (let i = 0; i < Math.min(3, shuffledCats.length); i++) {
-        const cat = shuffledCats[i];
-        const items = (qaData as any[]).filter((q) => q.category === cat);
-        if (items.length > 0) {
-            const pick = items[Math.floor(Math.random() * items.length)];
-            suggestions.push(pick.question);
-        }
-    }
-    return suggestions.sort(() => 0.5 - Math.random());
+    const STATIC_SUGGESTIONS = [
+        "What does HMS stand for in the context of industrial control panels?",
+        "What is the primary function of an HMS panel in a process control system?",
+        "What communication protocols are most commonly supported by HMS panels?",
+        "What safety checks must be performed before installing an HMS panel?",
+        "What is Modbus RTU and how is it typically used with HMS panels?",
+        "What is the maximum number of nodes on a PROFIBUS DP network?",
+        "Show wiring diagram for ACS panel"
+    ];
+    return [...STATIC_SUGGESTIONS].sort(() => 0.5 - Math.random()).slice(0, 3);
 }
 
 function timeAgo(date: Date): string {

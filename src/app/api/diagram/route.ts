@@ -31,7 +31,7 @@ import { ChatOpenAI } from '@langchain/openai';
 import { PromptTemplate } from '@langchain/core/prompts';
 import { StringOutputParser } from '@langchain/core/output_parsers';
 
-export const maxDuration = 55;
+
 
 // ─── Diagram intent detection ─────────────────────────────────
 const DIAGRAM_KEYWORDS = [
