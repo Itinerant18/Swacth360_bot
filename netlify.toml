@@ -1,0 +1,35 @@
+# ============================================================
+# netlify.toml — Dexter Tech Support AI
+# Next.js 16 on Netlify using @netlify/plugin-nextjs
+# ============================================================
+
+[build]
+  command   = "npm run build"
+  publish   = ".next"
+
+[build.environment]
+  NODE_VERSION = "20"
+  NEXT_TELEMETRY_DISABLED = "1"
+
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
+
+# ── Cache node_modules between builds ────────────────────────
+[build.processing]
+  skip_processing = false
+
+# ── Security headers ─────────────────────────────────────────
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options        = "DENY"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy        = "strict-origin-when-cross-origin"
+
+# ── Redirect bare HTTP → HTTPS (Netlify does this by default, ─
+# ── but explicit is fine) ────────────────────────────────────
+[[redirects]]
+  from   = "http://dexter-hms-bot.netlify.app/*"
+  to     = "https://dexter-hms-bot.netlify.app/:splat"
+  status = 301
+  force  = true

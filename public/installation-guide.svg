@@ -1,0 +1,112 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600" width="100%" height="100%">
+  <!-- Background -->
+  <rect width="800" height="600" fill="#171717" rx="16"/>
+  <rect width="796" height="596" x="2" y="2" fill="none" stroke="#262626" stroke-width="4" rx="14"/>
+
+  <!-- Header -->
+  <path d="M0 16 C0 7.163 7.163 0 16 0 L784 0 C792.837 0 800 7.163 800 16 L800 80 L0 80 Z" fill="#262626"/>
+  <text x="400" y="50" font-family="system-ui, sans-serif" font-size="28" font-weight="bold" fill="#f97316" text-anchor="middle" letter-spacing="1">DEXTER HMS INSTALLATION GUIDE</text>
+  
+  <!-- Step 1: Mounting -->
+  <g transform="translate(40, 110)">
+    <rect width="340" height="200" fill="#262626" rx="12" stroke="#ea580c" stroke-width="2"/>
+    <circle cx="40" cy="40" r="20" fill="#ea580c"/>
+    <text x="40" y="47" font-family="system-ui" font-size="20" font-weight="bold" fill="#fff" text-anchor="middle">1</text>
+    <text x="75" y="47" font-family="system-ui" font-size="22" font-weight="bold" fill="#fff">Mounting the Panel</text>
+    
+    <!-- Isometric Panel Graphic -->
+    <path d="M 170 80 L 250 110 L 250 170 L 170 140 Z" fill="#404040" stroke="#737373" stroke-width="2"/>
+    <path d="M 170 80 L 250 110 L 220 120 L 140 90 Z" fill="#525252" stroke="#737373" stroke-width="2"/>
+    <path d="M 140 90 L 220 120 L 220 180 L 140 150 Z" fill="#262626" stroke="#737373" stroke-width="2"/>
+    
+    <!-- Screws/Mounting points -->
+    <circle cx="150" cy="100" r="4" fill="#fb923c"/>
+    <circle cx="210" cy="122" r="4" fill="#fb923c"/>
+    <circle cx="150" cy="140" r="4" fill="#fb923c"/>
+    <circle cx="210" cy="162" r="4" fill="#fb923c"/>
+    
+    <!-- Wall Indicators -->
+    <path d="M 280 70 L 280 180" stroke="#404040" stroke-width="4" stroke-dasharray="8 8"/>
+    <text x="290" y="130" font-family="system-ui" font-size="14" fill="#a3a3a3">Wall Surface</text>
+  </g>
+
+  <!-- Step 2: Power Wiring -->
+  <g transform="translate(420, 110)">
+    <rect width="340" height="200" fill="#262626" rx="12" stroke="#ea580c" stroke-width="2"/>
+    <circle cx="40" cy="40" r="20" fill="#ea580c"/>
+    <text x="40" y="47" font-family="system-ui" font-size="20" font-weight="bold" fill="#fff" text-anchor="middle">2</text>
+    <text x="75" y="47" font-family="system-ui" font-size="22" font-weight="bold" fill="#fff">Power Connection</text>
+    
+    <!-- Terminal Block -->
+    <rect x="140" y="120" width="120" height="40" fill="#404040" rx="4" stroke="#737373"/>
+    <rect x="150" y="125" width="20" height="30" fill="#171717" rx="2"/>
+    <rect x="190" y="125" width="20" height="30" fill="#171717" rx="2"/>
+    <rect x="230" y="125" width="20" height="30" fill="#171717" rx="2"/>
+    <text x="160" y="110" font-family="system-ui" font-size="14" font-weight="bold" fill="#fff" text-anchor="middle">L</text>
+    <text x="200" y="110" font-family="system-ui" font-size="14" font-weight="bold" fill="#fff" text-anchor="middle">N</text>
+    <text x="240" y="110" font-family="system-ui" font-size="14" font-weight="bold" fill="#fff" text-anchor="middle">PE</text>
+    
+    <!-- Wires -->
+    <path d="M 160 180 L 160 155" stroke="#ef4444" stroke-width="6" fill="none"/>
+    <path d="M 200 180 L 200 155" stroke="#3b82f6" stroke-width="6" fill="none"/>
+    <path d="M 240 180 L 240 155" stroke="#22c55e" stroke-width="6" fill="none"/>
+    
+    <!-- Subtext -->
+    <text x="80" y="80" font-family="system-ui" font-size="14" fill="#d4d4d4">Connect 220V AC Power Input</text>
+  </g>
+
+  <!-- Step 3: RS-485 Wiring -->
+  <g transform="translate(40, 340)">
+    <rect width="340" height="200" fill="#262626" rx="12" stroke="#ea580c" stroke-width="2"/>
+    <circle cx="40" cy="40" r="20" fill="#ea580c"/>
+    <text x="40" y="47" font-family="system-ui" font-size="20" font-weight="bold" fill="#fff" text-anchor="middle">3</text>
+    <text x="75" y="47" font-family="system-ui" font-size="22" font-weight="bold" fill="#fff">RS-485 Comms</text>
+    
+    <!-- Terminal Block -->
+    <rect x="140" y="120" width="120" height="40" fill="#404040" rx="4" stroke="#737373"/>
+    <rect x="150" y="125" width="20" height="30" fill="#171717" rx="2"/>
+    <rect x="190" y="125" width="20" height="30" fill="#171717" rx="2"/>
+    <rect x="230" y="125" width="20" height="30" fill="#171717" rx="2"/>
+    <text x="160" y="110" font-family="system-ui" font-size="14" font-weight="bold" fill="#fff" text-anchor="middle">A (+)</text>
+    <text x="200" y="110" font-family="system-ui" font-size="14" font-weight="bold" fill="#fff" text-anchor="middle">B (-)</text>
+    <text x="240" y="110" font-family="system-ui" font-size="14" font-weight="bold" fill="#fff" text-anchor="middle">GND</text>
+    
+    <!-- Twisted pair Wires -->
+    <path d="M 160 180 Q 180 167 160 155" stroke="#facc15" stroke-width="4" fill="none"/>
+    <path d="M 200 180 Q 180 167 200 155" stroke="#3b82f6" stroke-width="4" fill="none"/>
+    <path d="M 240 180 L 240 155" stroke="#171717" stroke-width="4" fill="none"/>
+    
+    <!-- Warning -->
+    <rect x="20" y="145" width="90" height="30" fill="#991b1b" rx="4"/>
+    <text x="65" y="165" font-family="system-ui" font-size="12" font-weight="bold" fill="#fff" text-anchor="middle">Daisy Chain</text>
+  </g>
+
+  <!-- Step 4: Power On -->
+  <g transform="translate(420, 340)">
+    <rect width="340" height="200" fill="#262626" rx="12" stroke="#ea580c" stroke-width="2"/>
+    <circle cx="40" cy="40" r="20" fill="#ea580c"/>
+    <text x="40" y="47" font-family="system-ui" font-size="20" font-weight="bold" fill="#fff" text-anchor="middle">4</text>
+    <text x="75" y="47" font-family="system-ui" font-size="22" font-weight="bold" fill="#fff">Power On &amp; Boot</text>
+    
+    <!-- Switch -->
+    <rect x="180" y="90" width="40" height="70" fill="#404040" rx="8" stroke="#737373"/>
+    <rect x="185" y="95" width="30" height="30" fill="#ef4444" rx="4"/>
+    <text x="200" y="180" font-family="system-ui" font-size="14" font-weight="bold" fill="#fff" text-anchor="middle">MCB / Switch</text>
+    
+    <!-- Screen -->
+    <rect x="70" y="90" width="80" height="60" fill="#000" rx="4" stroke="#737373" stroke-width="2"/>
+    <text x="110" y="125" font-family="system-ui" font-size="10" font-weight="bold" fill="#22c55e" text-anchor="middle">HMS READY</text>
+    
+    <!-- Arrow -->
+    <path d="M 170 120 L 155 120" stroke="#f97316" stroke-width="4" marker-end="url(#arrow)"/>
+  </g>
+  
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#f97316"/>
+    </marker>
+  </defs>
+
+  <!-- Footer -->
+  <text x="400" y="580" font-family="system-ui" font-size="14" fill="#737373" text-anchor="middle">Always ensure power is disconnected before wiring. Follow local electrical codes.</text>
+</svg>

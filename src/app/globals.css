@@ -1,0 +1,305 @@
+@import "tailwindcss";
+
+/* ─── Skeuomorphic Design Tokens ────────────────────────── */
+:root {
+  /* Surface materials */
+  --bg-desk: #E8E0D4;
+  --bg-paper: #FAF7F2;
+  --bg-paper-inset: #F0EBE3;
+  --bg-leather: #4b2e22;
+  --bg-leather-light: #5f473a;
+  --bg-metal: linear-gradient(180deg, #D4D0CA 0%, #B8B3AB 50%, #A09A92 100%);
+
+  /* Accents */
+  --accent-brass: #CA8A04;
+  --accent-brass-glow: #EAB308;
+  --accent-teal: #0D9488;
+  --accent-teal-light: #14B8A6;
+  --success: #16A34A;
+  --danger: #DC2626;
+  --warning: #D97706;
+
+  /* Text — ink & pencil hierarchy */
+  --text-ink: #1C1917;
+  --text-graphite: #44403C;
+  --text-pencil: #78716C;
+  --text-faint: #A8A29E;
+
+  /* Borders — stitching */
+  --border-stitch: #D6CFC4;
+  --border-stitch-hover: #C4BCB0;
+
+  /* Shadows */
+  --shadow-raised: 0 1px 0 rgba(255, 255, 255, 0.6) inset,
+    0 2px 4px rgba(0, 0, 0, 0.08),
+    0 6px 12px rgba(0, 0, 0, 0.06);
+  --shadow-card: 0 1px 0 rgba(255, 255, 255, 0.7) inset,
+    0 2px 6px rgba(0, 0, 0, 0.1),
+    0 8px 24px rgba(0, 0, 0, 0.06);
+  --shadow-inset: inset 0 2px 4px rgba(0, 0, 0, 0.12),
+    inset 0 0 0 1px rgba(0, 0, 0, 0.05);
+  --shadow-button: 0 1px 0 rgba(255, 255, 255, 0.3) inset,
+    0 2px 4px rgba(0, 0, 0, 0.15),
+    0 4px 8px rgba(0, 0, 0, 0.08);
+  --shadow-button-pressed: inset 0 2px 4px rgba(0, 0, 0, 0.2),
+    inset 0 0 0 1px rgba(0, 0, 0, 0.05);
+}
+
+@theme inline {
+  --color-background: var(--bg-desk);
+  --color-foreground: var(--text-ink);
+  --font-sans: 'Lexend', system-ui, -apple-system, sans-serif;
+}
+
+/* ─── Base ──────────────────────────────────────────────── */
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: 'Lexend', system-ui, -apple-system, sans-serif;
+  background: var(--bg-desk);
+  color: var(--text-ink);
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+}
+
+/* ─── Noise Texture Overlay ─────────────────────────────── */
+.desk-texture::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+  opacity: 0.035;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 256px 256px;
+}
+
+/* ─── Skeuomorphic Card (Paper) ─────────────────────────── */
+.skeuo-card {
+  background: var(--bg-paper);
+  border: 1px solid var(--border-stitch);
+  border-radius: 14px;
+  box-shadow: var(--shadow-card);
+  transition: all 0.2s ease;
+}
+
+.skeuo-card:hover {
+  border-color: var(--border-stitch-hover);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.7) inset,
+    0 4px 8px rgba(0, 0, 0, 0.12),
+    0 12px 28px rgba(0, 0, 0, 0.08);
+  transform: translateY(-1px);
+}
+
+/* ─── Raised Button ─────────────────────────────────────── */
+.skeuo-raised {
+  background: linear-gradient(180deg, #FAF7F2 0%, #F0EBE3 100%);
+  border: 1px solid var(--border-stitch);
+  border-radius: 12px;
+  box-shadow: var(--shadow-raised);
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.skeuo-raised:hover {
+  border-color: var(--border-stitch-hover);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.6) inset,
+    0 3px 6px rgba(0, 0, 0, 0.1),
+    0 8px 16px rgba(0, 0, 0, 0.07);
+}
+
+.skeuo-raised:active {
+  transform: scale(0.98);
+  box-shadow: var(--shadow-button-pressed);
+  background: linear-gradient(180deg, #F0EBE3 0%, #E8E0D4 100%);
+}
+
+/* ─── Inset Input Well ──────────────────────────────────── */
+.skeuo-input {
+  background: var(--bg-paper-inset);
+  border: 1px solid var(--border-stitch);
+  border-radius: 10px;
+  box-shadow: var(--shadow-inset);
+  transition: all 0.25s ease;
+  color: var(--text-ink);
+}
+
+.skeuo-input::placeholder {
+  color: var(--text-faint);
+}
+
+.skeuo-input:focus {
+  border-color: var(--accent-brass);
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.08),
+    0 0 0 3px rgba(202, 138, 4, 0.2);
+  background: var(--bg-paper);
+  outline: none;
+}
+
+/* ─── Leather Surface ───────────────────────────────────── */
+.skeuo-leather {
+  background: linear-gradient(180deg, #5f473a 0%, #4b2e22 40%, #3a2118 100%);
+  color: #FAF7F2;
+  border-radius: 14px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+/* ─── Brushed Metal Header ──────────────────────────────── */
+.skeuo-metal {
+  background: linear-gradient(180deg, #E8E3DC 0%, #D4CFC7 50%, #C4BEB5 100%);
+  border-bottom: 1px solid #B8B3AB;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.5) inset,
+    0 2px 6px rgba(0, 0, 0, 0.08);
+}
+
+/* ─── Brass Button ──────────────────────────────────────── */
+.skeuo-brass {
+  background: linear-gradient(180deg, #EAB308 0%, #CA8A04 60%, #A16207 100%);
+  color: #1C1917;
+  border: 1px solid #A16207;
+  border-radius: 12px;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.25) inset,
+    0 2px 4px rgba(0, 0, 0, 0.2),
+    0 4px 8px rgba(0, 0, 0, 0.1);
+  transition: all 0.2s ease;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.skeuo-brass:hover {
+  background: linear-gradient(180deg, #FACC15 0%, #EAB308 60%, #CA8A04 100%);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.3) inset,
+    0 3px 6px rgba(0, 0, 0, 0.2),
+    0 0 12px rgba(202, 138, 4, 0.3);
+}
+
+.skeuo-brass:active {
+  transform: scale(0.98);
+  box-shadow: var(--shadow-button-pressed);
+  background: linear-gradient(180deg, #CA8A04 0%, #A16207 100%);
+}
+
+.skeuo-brass:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ─── Legacy Aliases ────────────────────────────────────── */
+.card {
+  background: var(--bg-paper);
+  border: 1px solid var(--border-stitch);
+  border-radius: 14px;
+  box-shadow: var(--shadow-card);
+  transition: all 0.2s ease;
+}
+
+.card:hover {
+  border-color: var(--border-stitch-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.7) inset,
+    0 4px 8px rgba(0, 0, 0, 0.12),
+    0 12px 28px rgba(0, 0, 0, 0.08);
+}
+
+.card-strong {
+  background: var(--bg-paper);
+  border: 1px solid var(--border-stitch);
+  border-radius: 14px;
+  box-shadow: var(--shadow-card);
+}
+
+.input-field {
+  background: var(--bg-paper-inset);
+  border: 1px solid var(--border-stitch);
+  border-radius: 10px;
+  box-shadow: var(--shadow-inset);
+  transition: all 0.25s ease;
+  color: var(--text-ink);
+}
+
+.input-field::placeholder {
+  color: var(--text-faint);
+}
+
+.input-field:focus {
+  border-color: var(--accent-brass);
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.08),
+    0 0 0 3px rgba(202, 138, 4, 0.2);
+  background: var(--bg-paper);
+  outline: none;
+}
+
+/* ─── Animations ────────────────────────────────────────── */
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-up {
+  animation: fade-up 0.35s ease-out forwards;
+}
+
+.animate-shimmer {
+  background: linear-gradient(90deg, transparent 0%, rgba(0, 0, 0, 0.03) 50%, transparent 100%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+}
+
+/* ─── Scrollbar ─────────────────────────────────────────── */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #C4BCB0;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #A8A29E;
+}
+
+/* ─── Selection ─────────────────────────────────────────── */
+::selection {
+  background: rgba(202, 138, 4, 0.2);
+  color: var(--text-ink);
+}
+
+/* ─── Reduced Motion ────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+
+  .animate-shimmer,
+  .animate-fade-up {
+    animation: none !important;
+  }
+
+  * {
+    transition-duration: 0.01ms !important;
+  }
+}
