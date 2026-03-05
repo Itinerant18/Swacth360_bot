@@ -3,7 +3,6 @@
 import { useChat } from 'ai/react';
 import { useRef, useEffect, useState, useCallback, useMemo } from 'react';
 import dynamic from 'next/dynamic';
-import qaData from '../../data/hms-dexter-qa.json';
 import remarkGfm from 'remark-gfm';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
