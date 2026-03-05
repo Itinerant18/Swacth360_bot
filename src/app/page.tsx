@@ -78,15 +78,48 @@ const SUGGESTION_CATEGORIES = [
     'Safety & Compliance',
 ];
 
+
+// Curated questions by category — avoids importing gitignored data file
+const CURATED_QUESTIONS: Record<string, string[]> = {
+    'Troubleshooting & Diagnostics': [
+        'ACS Door panel shows CRC error on RS-485 — how to fix?',
+        'Anybus X-gateway not communicating with PLC, what to check?',
+        'Panel display shows E04 error code, what does it mean?',
+        'How to reset HMS panel to factory defaults?',
+        'Why is the RS-485 bus showing intermittent disconnects?',
+    ],
+    'Communication Protocols & Networking': [
+        'How to configure Modbus RTU on HMS Anybus gateway?',
+        'What is the correct baud rate setting for RS-485 on ACS panels?',
+        'How to set up PROFIBUS DP slave on Anybus X-gateway?',
+        'Explain EtherNet/IP adapter configuration for HMS gateway',
+        'How to wire RS-485 A/B terminals on Dexter panel?',
+    ],
+    'Installation & Commissioning': [
+        'What is the correct wiring for ACS Door panel terminals?',
+        'How to commission Anybus X-gateway for the first time?',
+        'Step-by-step guide to install HMS panel in control cabinet',
+        'What power supply voltage does the ACS panel need?',
+        'How to connect multiple RS-485 devices on one bus?',
+    ],
+    'Safety & Compliance': [
+        'What are the earthing requirements for HMS panels?',
+        'Is the Anybus X-gateway certified for use in hazardous areas?',
+        'What cable shielding is required for RS-485 on HMS systems?',
+        'CE marking requirements for ACS Door panel installations',
+        'What is the maximum cable length for RS-485 on HMS panels?',
+    ],
+};
+
 function getCuratedSuggestions(): string[] {
     const suggestions: string[] = [];
     const shuffledCats = [...SUGGESTION_CATEGORIES].sort(() => 0.5 - Math.random());
     for (let i = 0; i < Math.min(3, shuffledCats.length); i++) {
         const cat = shuffledCats[i];
-        const items = (qaData as any[]).filter((q) => q.category === cat);
+        const items = CURATED_QUESTIONS[cat] ?? [];
         if (items.length > 0) {
             const pick = items[Math.floor(Math.random() * items.length)];
-            suggestions.push(pick.question);
+            suggestions.push(pick);
         }
     }
     return suggestions.sort(() => 0.5 - Math.random());
