@@ -167,7 +167,10 @@ async function extractPdfText(buffer: ArrayBuffer): Promise<string> {
     }
 
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const pdfParse = require('pdf-parse');
+    const pdfParseModule = require('pdf-parse');
+    const pdfParse = typeof pdfParseModule === 'function'
+        ? pdfParseModule
+        : (pdfParseModule.PDFParse || pdfParseModule.default);
     const data = await pdfParse(Buffer.from(buffer));
     return data.text;
 }
