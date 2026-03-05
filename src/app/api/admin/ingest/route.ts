@@ -168,10 +168,20 @@ async function extractPdfText(buffer: ArrayBuffer): Promise<string> {
 
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const pdfParseModule = require('pdf-parse');
-    const pdfParse = typeof pdfParseModule === 'function'
-        ? pdfParseModule
-        : (pdfParseModule.PDFParse || pdfParseModule.default);
-    const data = await pdfParse(Buffer.from(buffer));
+
+    // v2.x Class API
+    if (typeof pdfParseModule.PDFParse === 'function') {
+        const parser = new pdfParseModule.PDFParse({ data: Buffer.from(buffer) });
+        const result = await parser.getText();
+        return result.text;
+    }
+
+    // v1.x Function API (fallback)
+    const pdfParseFn = typeof pdfParseModule === 'function' ? pdfParseModule : pdfParseModule.default;
+    if (typeof pdfParseFn !== 'function') {
+        throw new Error("Unable to locate pdf-parse execution function or class.");
+    }
+    const data = await pdfParseFn(Buffer.from(buffer));
     return data.text;
 }
 
