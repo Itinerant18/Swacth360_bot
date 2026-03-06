@@ -1,21 +1,23 @@
-
+/**
+ * src/app/api/admin/ingest/route.ts
+ *
+ * PDF/Text Ingestion Pipeline — Fixed PDF parsing for Next.js
+ *
+ * CHANGE: Replaced broken pdf-parse (dynamic worker error) with
+ * pdf2json via src/lib/pdf-extract.ts (pure Node, no worker needed).
+ */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabase } from '@/lib/supabase';
 import { embedText } from '@/lib/embeddings';
+import { extractPdfText } from '@/lib/pdf-extract';
 import { ChatOpenAI } from '@langchain/openai';
-
-
 
 // ─── Config ───────────────────────────────────────────────────
 const CHUNK_SIZE = 800;
 const CHUNK_OVERLAP = 150;
 const MIN_CHUNK_LEN = 80;
-
-// Max images to extract per PDF (Gemini finds them, we process top N)
 const MAX_IMAGES_PER_PDF = 20;
-
-// Max PDF size for Gemini inline vision (bytes) — Gemini supports up to ~20MB inline
 const MAX_GEMINI_PDF_BYTES = 18 * 1024 * 1024;
 
 // ─── Text Chunker ─────────────────────────────────────────────
@@ -72,9 +74,7 @@ async function generateQAPair(
     isImageContent = false
 ): Promise<QAPair | null> {
     const contextHint = isImageContent
-        ? `This is a description of a TECHNICAL IMAGE/DIAGRAM from "${sourceName}".
-           The image shows visual technical content such as wiring diagrams, installation
-           schematics, panel layouts, connector pinouts, LED indicators, or similar.`
+        ? `This is a description of a TECHNICAL IMAGE/DIAGRAM from "${sourceName}".`
         : `This is a text chunk from the document "${sourceName}".`;
 
     const prompt = `You are a technical documentation analyst for HMS industrial control panels.
@@ -89,11 +89,11 @@ ${chunk.substring(0, 1500)}
 """
 
 Rules:
-- Question: natural language a real user would ask (e.g. "What does the wiring diagram show for X?", "How do I interpret the LED panel?")
+- Question: natural language a real user would ask
 - Answer: complete, self-contained, specific technical details
 - Category: pick best from: ${VALID_CATEGORIES.join(' | ')}
 - Tags: 3-5 specific technical keywords
-- If this content has no useful technical info: {"skip":true}
+- If no useful technical info: {"skip":true}
 
 Respond with ONLY valid JSON, no markdown:
 {"question":"...","answer":"...","category":"...","tags":["tag1","tag2","tag3"]}`;
@@ -118,7 +118,7 @@ Respond with ONLY valid JSON, no markdown:
     }
 }
 
-// ─── Rich Embedding Text Builder ──────────────────────────────
+// ─── Rich Embedding Text ──────────────────────────────────────
 function buildEmbeddingText(
     qa: QAPair,
     sourceName: string,
@@ -137,53 +137,15 @@ function buildEmbeddingText(
     ].filter(Boolean).join('\n');
 }
 
-// ─── PDF Text Extractor ───────────────────────────────────────
-async function extractPdfText(buffer: ArrayBuffer): Promise<string> {
-    // Polyfill missing DOM classes for pdf.js (used by pdf-parse) in Node environment
-    if (typeof global !== 'undefined') {
-        if (!(global as any).DOMMatrix) (global as any).DOMMatrix = class DOMMatrix { };
-        if (!(global as any).ImageData) (global as any).ImageData = class ImageData { };
-        if (!(global as any).Path2D) (global as any).Path2D = class Path2D { };
-    }
-
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const pdfParseModule = require('pdf-parse');
-
-    // v2.x Class API
-    if (typeof pdfParseModule.PDFParse === 'function') {
-        const parser = new pdfParseModule.PDFParse({ data: Buffer.from(buffer) });
-        const result = await parser.getText();
-        return result.text;
-    }
-
-    // v1.x Function API (fallback)
-    const pdfParseFn = typeof pdfParseModule === 'function' ? pdfParseModule : pdfParseModule.default;
-    if (typeof pdfParseFn !== 'function') {
-        throw new Error("Unable to locate pdf-parse execution function or class.");
-    }
-    const data = await pdfParseFn(Buffer.from(buffer));
-    return data.text;
-}
-
 // ─── Gemini Vision: Extract Technical Images from PDF ─────────
-/**
- * Sends the entire PDF to Gemini 2.0 Flash vision.
- * Gemini natively understands PDFs — it reads both text AND images.
- * Returns a structured list of all technical visual content found.
- *
- * Why Gemini and not Sarvam?
- * Sarvam AI is text-only. Gemini 2.0 Flash is multimodal — it can see
- * diagrams, schematics, panel layouts, wiring drawings inside PDFs.
- */
-
 interface ExtractedImage {
-    imageIndex: number;       // sequential ID
-    pageNumber: number;       // page where image appears (if determinable)
-    imageType: string;        // e.g. "Wiring Diagram", "Installation Schematic", "LED Panel", "Connector Pinout"
-    title: string;            // short title/caption
-    description: string;      // full technical description (what the image shows)
-    technicalDetails: string; // specific values, labels, connections visible in image
-    relevantFor: string;      // use case: "installation", "troubleshooting", etc.
+    imageIndex: number;
+    pageNumber: number;
+    imageType: string;
+    title: string;
+    description: string;
+    technicalDetails: string;
+    relevantFor: string;
 }
 
 async function extractImagesFromPdf(
@@ -193,53 +155,29 @@ async function extractImagesFromPdf(
 ): Promise<ExtractedImage[]> {
     const pdfBytes = Buffer.from(pdfBuffer);
 
-    // Skip if too large for Gemini inline (use text-only for very large PDFs)
     if (pdfBytes.length > MAX_GEMINI_PDF_BYTES) {
-        console.warn(`⚠️  PDF too large for Gemini vision (${(pdfBytes.length / 1024 / 1024).toFixed(1)}MB > 18MB) — skipping image extraction`);
+        console.warn(`⚠️  PDF too large for Gemini vision (${(pdfBytes.length / 1024 / 1024).toFixed(1)}MB)`);
         return [];
     }
 
     const pdfBase64 = pdfBytes.toString('base64');
 
-    const prompt = `You are analyzing a technical PDF document named "${sourceName}" for an industrial HMS (Hazard Monitoring System) panel support bot.
+    const prompt = `You are analyzing a technical PDF document named "${sourceName}" for an industrial HMS panel support bot.
 
-Your task: Find and describe ALL technical visual content in this PDF.
+Find and describe ALL technical visual content: wiring diagrams, schematics, installation drawings, panel layouts, LED indicators, connector pinouts, block diagrams, DIP switch settings, troubleshooting flowcharts.
 
-Look for:
-- Wiring diagrams and electrical schematics
-- Installation drawings and mounting diagrams
-- Panel layouts and component placement diagrams
-- LED indicator panels and status light legends
-- Connector pinouts and terminal block diagrams
-- Block diagrams and system architecture diagrams
-- Troubleshooting flowcharts
-- Cable routing and connection diagrams
-- DIP switch settings tables/diagrams
-- PCB layouts
-- Safety warning symbols with technical meaning
-- Any labeled technical illustration
+For EACH technical image found provide:
+- imageType: type of visual (e.g. "Wiring Diagram", "LED Panel Layout")
+- pageNumber: approximate page (1-based)
+- title: brief title/caption
+- description: what the image shows (2-4 sentences)
+- technicalDetails: specific values, labels, connections, pin numbers visible
+- relevantFor: when a field engineer would need this
 
-For EACH technical image/diagram found, provide:
-1. imageType: the type of visual (e.g. "Wiring Diagram", "LED Panel Layout", "Connector Pinout", "Installation Schematic")
-2. pageNumber: approximate page number (1-based, estimate if unsure)
-3. title: brief title or caption of the image
-4. description: detailed description of what the image shows (2-4 sentences)
-5. technicalDetails: all specific technical information visible: pin numbers, wire colors, voltage levels, component labels, LED names/states, step numbers, measurements, etc.
-6. relevantFor: when would a field engineer need this? (e.g. "initial installation", "RS-485 wiring", "fault diagnosis")
+If NO technical images found, return empty array [].
 
-If NO technical images are found, return an empty array.
-
-Respond with ONLY valid JSON array, no markdown or explanation:
-[
-  {
-    "imageType": "...",
-    "pageNumber": 1,
-    "title": "...",
-    "description": "...",
-    "technicalDetails": "...",
-    "relevantFor": "..."
-  }
-]`;
+Respond ONLY with valid JSON array, no markdown:
+[{"imageType":"...","pageNumber":1,"title":"...","description":"...","technicalDetails":"...","relevantFor":"..."}]`;
 
     try {
         const response = await fetch(
@@ -250,52 +188,35 @@ Respond with ONLY valid JSON array, no markdown or explanation:
                 body: JSON.stringify({
                     contents: [{
                         parts: [
-                            {
-                                inline_data: {
-                                    mime_type: 'application/pdf',
-                                    data: pdfBase64,
-                                },
-                            },
+                            { inline_data: { mime_type: 'application/pdf', data: pdfBase64 } },
                             { text: prompt },
                         ],
                     }],
-                    generationConfig: {
-                        temperature: 0.1,
-                        maxOutputTokens: 8192,
-                    },
+                    generationConfig: { temperature: 0.1, maxOutputTokens: 8192 },
                 }),
             }
         );
 
         if (!response.ok) {
-            const err = await response.text();
-            console.warn(`⚠️  Gemini vision API error (${response.status}): ${err.substring(0, 200)}`);
+            console.warn(`⚠️  Gemini API error (${response.status})`);
             return [];
         }
 
         const data = await response.json();
         const text = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
-
         if (!text.trim()) return [];
 
-        // Parse JSON from Gemini response
-        const cleaned = text
-            .replace(/```json\n?/g, '')
-            .replace(/```\n?/g, '')
-            .trim();
-
+        const cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
         let parsed: any[];
         try {
             parsed = JSON.parse(cleaned);
         } catch {
-            // Try to extract JSON array from mixed text response
             const match = cleaned.match(/\[[\s\S]*\]/);
             if (!match) return [];
             parsed = JSON.parse(match[0]);
         }
 
         if (!Array.isArray(parsed)) return [];
-
         return parsed.slice(0, MAX_IMAGES_PER_PDF).map((item: any, idx: number) => ({
             imageIndex: idx + 1,
             pageNumber: item.pageNumber ?? 0,
@@ -305,14 +226,12 @@ Respond with ONLY valid JSON array, no markdown or explanation:
             technicalDetails: item.technicalDetails ?? '',
             relevantFor: item.relevantFor ?? '',
         }));
-
     } catch (err: any) {
         console.warn(`⚠️  Gemini image extraction failed: ${err.message}`);
         return [];
     }
 }
 
-/** Format an extracted image into rich text for Sarvam Q&A generation */
 function formatImageForQA(img: ExtractedImage): string {
     return [
         `[TECHNICAL IMAGE: ${img.imageType}]`,
@@ -322,7 +241,7 @@ function formatImageForQA(img: ExtractedImage): string {
         `Description:`,
         img.description,
         ``,
-        `Technical Details (labels, values, connections visible in image):`,
+        `Technical Details:`,
         img.technicalDetails,
         ``,
         `Relevant for: ${img.relevantFor}`,
@@ -343,7 +262,6 @@ export async function POST(req: NextRequest) {
     if (!geminiKey)
         console.warn('⚠️  GEMINI_API_KEY not set — image extraction will be skipped');
 
-    // Sarvam for Q&A generation (text + image descriptions)
     const sarvamLlm = new ChatOpenAI({
         modelName: 'sarvam-m',
         apiKey: sarvamKey,
@@ -359,10 +277,13 @@ export async function POST(req: NextRequest) {
 
     const contentType = req.headers.get('content-type') ?? '';
 
+    // ── Parse request ──────────────────────────────────────────
     if (contentType.includes('multipart/form-data')) {
         const form = await req.formData();
         const file = form.get('file') as File | null;
-        sourceName = (form.get('sourceName') as string | null)?.trim() || file?.name.replace('.pdf', '') || 'Uploaded PDF';
+        sourceName = (form.get('sourceName') as string | null)?.trim()
+            || file?.name.replace('.pdf', '')
+            || 'Uploaded PDF';
         inputType = 'pdf';
 
         if (!file)
@@ -374,10 +295,14 @@ export async function POST(req: NextRequest) {
 
         pdfBuffer = await file.arrayBuffer();
 
+        // ── Use new pdf-extract utility (no worker, no dynamic require) ──
         try {
             rawText = await extractPdfText(pdfBuffer);
+            console.log(`📄 Extracted ${rawText.length} chars from PDF`);
         } catch (err: any) {
-            return NextResponse.json({ error: `PDF text parsing failed: ${err.message}` }, { status: 400 });
+            // Don't fail — image pipeline can still run on Gemini
+            console.warn(`⚠️  Text extraction failed: ${err.message}`);
+            rawText = '';
         }
 
     } else {
@@ -387,26 +312,45 @@ export async function POST(req: NextRequest) {
         inputType = 'text';
 
         if (rawText.length < 50)
-            return NextResponse.json({ error: 'Text too short — paste at least 50 characters' }, { status: 400 });
+            return NextResponse.json(
+                { error: 'Text too short — paste at least 50 characters' },
+                { status: 400 }
+            );
     }
 
-    if (!rawText || rawText.trim().length < 50)
-        return NextResponse.json({ error: 'No usable text extracted from file' }, { status: 400 });
+    // For PDFs with no extractable text, still run image pipeline
+    const hasText = rawText.trim().length >= 50;
+    const chunks = hasText ? chunkText(rawText) : [];
+    const isImageOnly = inputType === 'pdf' && !hasText;
 
-    // ── Pipeline 1: Text Chunks ────────────────────────────────
-    const chunks = chunkText(rawText);
-    if (chunks.length === 0)
-        return NextResponse.json({ error: 'Could not extract any usable text chunks' }, { status: 400 });
+    if (!hasText && inputType === 'text') {
+        return NextResponse.json(
+            { error: 'No usable text found in input' },
+            { status: 400 }
+        );
+    }
 
-    // ── Pipeline 2: Image Extraction (PDF only, Gemini vision) ─
+    if (isImageOnly) {
+        console.log('ℹ️  No text extracted — running image-only pipeline via Gemini');
+    }
+
+    // ── Image extraction ───────────────────────────────────────
     let extractedImages: ExtractedImage[] = [];
     if (inputType === 'pdf' && pdfBuffer && geminiKey) {
-        console.log(`🖼️  Extracting technical images from PDF via Gemini vision...`);
+        console.log(`🖼️  Extracting images via Gemini...`);
         extractedImages = await extractImagesFromPdf(pdfBuffer, sourceName, geminiKey);
-        console.log(`🖼️  Found ${extractedImages.length} technical image(s)`);
+        console.log(`🖼️  Found ${extractedImages.length} image(s)`);
     }
 
-    // ── Process all chunks + images ────────────────────────────
+    // Guard: need at least text or images
+    if (chunks.length === 0 && extractedImages.length === 0) {
+        return NextResponse.json(
+            { error: 'No content could be extracted from this PDF. It may be a scanned image-only PDF with no detectable diagrams.' },
+            { status: 400 }
+        );
+    }
+
+    // ── Process text chunks ────────────────────────────────────
     type ResultItem = {
         id: string;
         question: string;
@@ -419,11 +363,10 @@ export async function POST(req: NextRequest) {
     let successCount = 0;
     let skippedCount = 0;
     let errorCount = 0;
-
     const timestamp = Date.now();
 
-    // ── Process text chunks ────────────────────────────────────
     console.log(`📄 Processing ${chunks.length} text chunk(s)...`);
+
     for (let i = 0; i < chunks.length; i++) {
         const chunk = chunks[i];
         const id = `admin_${inputType}_${timestamp}_text_${String(i).padStart(4, '0')}`;
@@ -471,7 +414,7 @@ export async function POST(req: NextRequest) {
 
     // ── Process extracted images ───────────────────────────────
     if (extractedImages.length > 0) {
-        console.log(`🖼️  Processing ${extractedImages.length} image description(s)...`);
+        console.log(`🖼️  Processing ${extractedImages.length} image(s)...`);
 
         for (let i = 0; i < extractedImages.length; i++) {
             const img = extractedImages[i];
@@ -479,7 +422,6 @@ export async function POST(req: NextRequest) {
             const imageContent = formatImageForQA(img);
 
             try {
-                // Generate Q&A specifically for image content
                 const qa = await generateQAPair(imageContent, sourceName, sarvamLlm, true);
                 if (!qa) {
                     results.push({ id, question: `[Image] ${img.title} (skipped)`, status: 'skipped', type: 'image' });
@@ -487,7 +429,6 @@ export async function POST(req: NextRequest) {
                     continue;
                 }
 
-                // Enhance tags with image-specific terms
                 const imageTags = [
                     ...qa.tags,
                     img.imageType.toLowerCase(),
@@ -535,7 +476,6 @@ export async function POST(req: NextRequest) {
         }
     }
 
-    // Calculate separate counts for response
     const textResults = results.filter(r => r.type === 'text');
     const imageResults = results.filter(r => r.type === 'image');
 
