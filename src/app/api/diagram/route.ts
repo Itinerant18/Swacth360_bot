@@ -520,37 +520,62 @@ ${kbContext}
 }
 
 // ─── Main Handler ─────────────────────────────────────────────
+
+export interface DiagramResult {
+    success: boolean;
+    markdown: string;
+    title: string;
+    diagramType: string;
+    panelType: string;
+    hasKBContext: boolean;
+    generatedBy: string;
+    error?: string;
+}
+
+/**
+ * Shared internal logic for generating diagrams.
+ * Called directly by the chat API (to avoid HTTP fetch in Netlify)
+ * and by the /api/diagram POST handler.
+ */
+export async function generateDiagramInternal(
+    query: string,
+    englishQuery: string,
+    diagramType: string,
+    language: string
+): Promise<DiagramResult> {
+    const sarvamKey = process.env.SARVAM_API_KEY;
+    if (!sarvamKey) {
+        throw new Error('SARVAM_API_KEY not configured');
+    }
+
+    const panelType = englishQuery || query;
+    console.log(`📐 Internal diagram gen: "${panelType}" | type: ${diagramType} | lang: ${language}`);
+
+    // Search KB for real specs from uploaded manuals
+    const kbContext = await searchKBForDiagram(panelType, diagramType);
+    console.log(`📚 KB: ${kbContext.length > 0 ? `${kbContext.length} chars` : 'none'}`);
+
+    // Generate markdown diagram via Sarvam
+    const result = await generateTextDiagram(panelType, diagramType, kbContext, sarvamKey, language);
+
+    console.log(`✅ Diagram generated: ${result.markdown.length} chars`);
+
+    return {
+        success: true,
+        markdown: result.markdown,
+        title: result.title,
+        diagramType: result.diagramType,
+        panelType,
+        hasKBContext: kbContext.length > 0,
+        generatedBy: 'sarvam',
+    };
+}
+
 export async function POST(req: NextRequest) {
     try {
         const { query, englishQuery, diagramType, language } = await req.json();
-
-        const sarvamKey = process.env.SARVAM_API_KEY;
-        if (!sarvamKey) {
-            return NextResponse.json({ error: 'SARVAM_API_KEY not configured' }, { status: 500 });
-        }
-
-        const panelType = englishQuery || query;
-        console.log(`📐 Text diagram: "${panelType}" | type: ${diagramType} | lang: ${language}`);
-
-        // Search KB for real specs from uploaded manuals
-        const kbContext = await searchKBForDiagram(panelType, diagramType);
-        console.log(`📚 KB: ${kbContext.length > 0 ? `${kbContext.length} chars` : 'none'}`);
-
-        // Generate markdown diagram via Sarvam
-        const result = await generateTextDiagram(panelType, diagramType, kbContext, sarvamKey, language);
-
-        console.log(`✅ Diagram generated: ${result.markdown.length} chars`);
-
-        return NextResponse.json({
-            success: true,
-            markdown: result.markdown,
-            title: result.title,
-            diagramType: result.diagramType,
-            panelType,
-            hasKBContext: kbContext.length > 0,
-            generatedBy: 'sarvam',
-        });
-
+        const result = await generateDiagramInternal(query, englishQuery, diagramType, language);
+        return NextResponse.json(result);
     } catch (err: any) {
         console.error('❌ Diagram error:', err);
         return NextResponse.json({ error: err.message }, { status: 500 });

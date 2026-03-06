@@ -16,7 +16,7 @@ import dns from 'node:dns';
 import { getSupabase } from '@/lib/supabase';
 import { retrieve, type RAGResult, type QueryType } from '@/lib/rag-engine';
 import { ChatOpenAI } from '@langchain/openai';
-import { isDiagramRequest } from '@/app/api/diagram/route';
+import { isDiagramRequest, generateDiagramInternal } from '@/app/api/diagram/route';
 
 dns.setDefaultResultOrder('ipv4first');
 
@@ -193,13 +193,13 @@ export async function POST(req: Request) {
         if (isDiagram) {
             console.log(`🖼️  DIAGRAM REQUEST — type: ${diagramType}`);
             try {
-                const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
-                const diagramRes = await fetch(`${baseUrl}/api/diagram`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ query: latestMessage, englishQuery: englishQuestion, diagramType, language }),
-                });
-                const diagramData = await diagramRes.json();
+                // Directly call the generation logic (bypass HTTP fetch for Netlify reliability)
+                const diagramData = await generateDiagramInternal(
+                    latestMessage,
+                    englishQuestion,
+                    diagramType,
+                    language
+                );
 
                 if (diagramData.success && diagramData.markdown) {
                     const supabase = getSupabase();
