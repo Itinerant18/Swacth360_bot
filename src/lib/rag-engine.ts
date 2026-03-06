@@ -44,6 +44,10 @@ import { embedText, embedTexts } from './embeddings';
 import { getSupabase } from './supabase';
 import { ChatOpenAI } from '@langchain/openai';
 
+// New imports for enhanced RAG
+import { hybridSearch, selectSearchStrategy } from './hybrid-search';
+import { extractEntities, getGraphBoostedIds } from './knowledge-graph';
+
 // ─── Types ────────────────────────────────────────────────────
 export type QueryType = 'factual' | 'procedural' | 'diagnostic' | 'visual' | 'comparative' | 'unknown';
 
@@ -636,6 +640,127 @@ function calibrateConfidence(rawSimilarity: number, queryType: QueryType): numbe
 }
 
 // ─── Main RAG Engine ──────────────────────────────────────────
+
+// Enhanced RAG retrieval using hybrid search + knowledge graph
+async function enhancedRetrieve(
+    query: string,
+    llm: ChatOpenAI,
+    queryAnalysis: QueryAnalysis,
+    options: {
+        useHYDE: boolean;
+        topK: number;
+        useMMR: boolean;
+        mmrLambda: number;
+        timeBoostDays: number;
+        useQueryExpansion: boolean;
+        useGraphBoost: boolean;
+    }
+): Promise<RAGResult> {
+    const startMs = performance.now();
+    const { topK, useQueryExpansion, useGraphBoost } = options;
+
+    console.log(`\n🚀 Enhanced RAG — Hybrid Search Mode`);
+
+    // Extract entities for graph boost
+    const entities = useGraphBoost ? extractEntities(query) : [];
+    const entityNames = entities.map(e => e.name);
+
+    if (entityNames.length > 0) {
+        console.log(`  Entities: [${entityNames.join(', ')}]`);
+    }
+
+    // Get dynamic search strategy based on query type
+    const strategy = selectSearchStrategy(queryAnalysis.type);
+
+    // Perform hybrid search
+    const hybridResults = await hybridSearch(query, {
+        ...strategy,
+        topK: topK * 2, // Get more for reranking
+        useGraphBoost,
+        queryEntities: entityNames,
+    });
+
+    console.log(`  Hybrid search: ${hybridResults.length} candidates`);
+
+    // Convert to RankedMatch format
+    const scoredCandidates = hybridResults.map(result => {
+        const crossScore = crossEncoderScore(query, result as any);
+        const finalScore =
+            result.vectorScore * RETRIEVAL_CONFIG.VECTOR_WEIGHT +
+            crossScore * RETRIEVAL_CONFIG.CROSS_WEIGHT +
+            result.bm25Score * RETRIEVAL_CONFIG.BM25_WEIGHT +
+            result.graphBoost;
+
+        return {
+            ...result,
+            id: result.id,
+            question: result.question,
+            answer: result.answer,
+            category: result.category,
+            subcategory: result.subcategory,
+            content: result.content,
+            source: result.source,
+            source_name: result.source_name,
+            chunkType: result.chunk_type,
+            vectorSimilarity: result.vectorScore,
+            crossScore,
+            bm25Score: result.bm25Score,
+            finalScore,
+            relevantPassage: extractRelevantPassage(query, result.answer),
+            retrievalVector: 'query' as const,
+        };
+    });
+
+    // Sort and take top K
+    const reranked = scoredCandidates
+        .sort((a, b) => b.finalScore - a.finalScore)
+        .slice(0, topK);
+
+    // Determine answer mode
+    const topScore = reranked[0]?.finalScore ?? 0;
+    const calibratedConfidence = calibrateConfidence(topScore, queryAnalysis.type);
+
+    let answerMode: RAGResult['answerMode'];
+    if (calibratedConfidence >= 0.72) answerMode = 'rag_high';
+    else if (calibratedConfidence >= 0.55) answerMode = 'rag_medium';
+    else if (calibratedConfidence >= 0.35) answerMode = 'rag_partial';
+    else answerMode = 'general';
+
+    // Build context string
+    const contextString = reranked
+        .filter(m => m.finalScore > RETRIEVAL_CONFIG.SUPABASE_FETCH_THRESHOLD)
+        .map((m, i) => {
+            const conf = `${(m.finalScore * 100).toFixed(0)}%`;
+            const sourceLabel = m.source_name || m.source || 'Knowledge Base';
+
+            return [
+                `**Source ${i + 1}** [${conf} match | 🔀 Hybrid]`,
+                `*From: ${sourceLabel}*`,
+                `---`,
+                `**Q:** ${m.question}`,
+                `**A:** ${m.relevantPassage || m.answer}`,
+            ].filter(Boolean).join('\n');
+        })
+        .join('\n\n---\n\n');
+
+    const latencyMs = performance.now() - startMs;
+
+    return {
+        matches: reranked,
+        queryAnalysis,
+        answerMode,
+        confidence: calibratedConfidence,
+        contextString,
+        retrievalStats: {
+            queryVectorHits: hybridResults.length,
+            hydeVectorHits: 0,
+            expandedVectorHits: 0,
+            totalCandidates: hybridResults.length,
+            afterRerank: reranked.length,
+            latencyMs,
+        },
+    };
+}
 export async function retrieve(
     query: string,
     llm: ChatOpenAI,
@@ -646,17 +771,35 @@ export async function retrieve(
         useWeighted?: boolean;
         mmrLambda?: number;
         timeBoostDays?: number;
+        // Enhanced RAG options
+        useHybridSearch?: boolean;
+        useQueryExpansion?: boolean;
+        useGraphBoost?: boolean;
     } = {}
 ): Promise<RAGResult> {
     const startMs = performance.now();
-    const { 
-        useHYDE = RETRIEVAL_CONFIG.HYDE_ENABLED, 
+    const {
+        useHYDE = RETRIEVAL_CONFIG.HYDE_ENABLED,
         topK = RETRIEVAL_CONFIG.TOP_K_AFTER_RERANK,
         useMMR = RETRIEVAL_CONFIG.USE_MMR,
         useWeighted = false,
         mmrLambda = RETRIEVAL_CONFIG.MMR_LAMBDA,
         timeBoostDays = RETRIEVAL_CONFIG.TIME_BOOST_DAYS,
+        // Enhanced RAG defaults
+        useHybridSearch = false,
+        useQueryExpansion = false,
+        useGraphBoost = false,
     } = options;
+
+    // ─── ENHANCED RAG: Hybrid Search Path ───
+    if (useHybridSearch) {
+        // Classify query first
+        const queryAnalysis = classifyQuery(query);
+        return enhancedRetrieve(
+            query, llm, queryAnalysis,
+            { useHYDE, topK, useMMR, mmrLambda, timeBoostDays, useQueryExpansion, useGraphBoost }
+        );
+    }
 
     // Step 1: Classify the query
     const queryAnalysis = classifyQuery(query);
@@ -750,7 +893,7 @@ export async function retrieve(
             const vectorSource = m.retrievalVector === 'hyde' ? '🔮 HYDE' : m.retrievalVector === 'query' ? '📌 Query' : '🔍 Expanded';
             const conf = `${(m.finalScore * 100).toFixed(0)}%`;
             const sourceLabel = m.source_name || m.source || 'Knowledge Base';
-            
+
             // Format like a structured technical document
             return [
                 `**Source ${i + 1}** [${conf} match | ${vectorSource}]`,

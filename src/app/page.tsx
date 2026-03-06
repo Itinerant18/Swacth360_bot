@@ -10,6 +10,7 @@ import {
     faSignal, faRobot, faGear, faPaperPlane, faArrowRight,
     faWandMagicSparkles, faBolt, faUser, faPhone, faEnvelope,
     faCopy, faCheck, faChevronDown, faSpinner, faDiagramProject,
+    faThumbsUp, faThumbsDown,
 } from '@fortawesome/free-solid-svg-icons';
 import LanguageSelector from '../components/LanguageSelector';
 import DiagramCard from '../components/DiagramCard';
@@ -48,28 +49,6 @@ function parseMessageContent(content: string): {
     return { isDiagram: false, text: content };
 }
 
-// ─── Diagram suggestions ──────────────────────────────────────
-const DIAGRAM_SUGGESTIONS: Record<string, string[]> = {
-    en: [
-        'Show wiring diagram for ACS Door panel',
-        'Draw RS-485 network topology diagram',
-        'Show power supply wiring diagram',
-        'Display connector pinout for Anybus X-gateway',
-    ],
-    bn: [
-        'ACS ডোর প্যানেলের ওয়্যারিং ডায়াগ্রাম দেখাও',
-        'RS-485 নেটওয়ার্ক ডায়াগ্রাম আঁকো',
-        'পাওয়ার সাপ্লাই ওয়্যারিং দেখাও',
-        'Anybus X-gateway কানেক্টর পিনআউট দেখাও',
-    ],
-    hi: [
-        'ACS डोर पैनल का वायरिंग डायग्राम दिखाएं',
-        'RS-485 नेटवर्क टोपोलॉजी डायग्राम बनाएं',
-        'पावर सप्लाई वायरिंग डायग्राम दिखाएं',
-        'Anybus X-gateway कनेक्टर पिनआउट दिखाएं',
-    ],
-};
-
 const SUGGESTION_CATEGORIES = [
     'Troubleshooting & Diagnostics',
     'Communication Protocols & Networking',
@@ -85,9 +64,8 @@ function getCuratedSuggestions(): string[] {
         "What safety checks must be performed before installing an HMS panel?",
         "What is Modbus RTU and how is it typically used with HMS panels?",
         "What is the maximum number of nodes on a PROFIBUS DP network?",
-        "Show wiring diagram for ACS panel"
     ];
-    return [...STATIC_SUGGESTIONS].sort(() => 0.5 - Math.random()).slice(0, 3);
+    return [...STATIC_SUGGESTIONS].sort(() => 0.5 - Math.random()).slice(0, 4);
 }
 
 function timeAgo(date: Date): string {
@@ -101,27 +79,24 @@ function timeAgo(date: Date): string {
 const TEXT_MAP = {
     en: {
         welcome: 'Ask about HMS Panel Troubleshooting',
-        intro: 'I am your Dexter HMS support assistant. Ask me anything — troubleshooting, configuration, installation, or say "Show wiring diagram for [panel name]" to get visual diagrams.',
-        placeholder: 'Ask anything or say "Show wiring diagram for..."',
+        intro: 'I am your Dexter HMS support assistant. Ask me anything — troubleshooting, configuration, or installation.',
+        placeholder: 'Ask anything...',
         footer: 'HMS Panel Expert · AI Powered · Diagrams supported',
         thinking: 'Analyzing and generating response...',
-        diagramHint: 'Try: "Show wiring diagram for..."',
     },
     bn: {
         welcome: 'HMS প্যানেল ট্রাবলশুটিং সম্পর্কে জিজ্ঞাসা করুন',
-        intro: 'আমি আপনার Dexter HMS সাপোর্ট অ্যাসিস্ট্যান্ট। প্রশ্ন করুন বা "ACS প্যানেলের ওয়্যারিং ডায়াগ্রাম দেখাও" বলুন।',
-        placeholder: 'প্রশ্ন করুন বা "...ডায়াগ্রাম দেখাও" বলুন',
+        intro: 'আমি আপনার Dexter HMS সাপোর্ট অ্যাসিস্ট্যান্ট। ট্রাবলশুটিং, কনফিগারেশন, বা ইন্সটলেশন সম্পর্কে জিজ্ঞাসা করুন।',
+        placeholder: 'যে কোনো প্রশ্ন করুন...',
         footer: 'HMS প্যানেল বিশেষজ্ঞ · AI দ্বারা চালিত · ডায়াগ্রাম সমর্থিত',
         thinking: 'বিশ্লেষণ ও উত্তর তৈরি হচ্ছে…',
-        diagramHint: 'চেষ্টা করুন: "...ওয়্যারিং ডায়াগ্রাম দেখাও"',
     },
     hi: {
         welcome: 'HMS पैनल ट्रबलशूटिंग के बारे में पूछें',
-        intro: 'मैं आपका Dexter HMS सपोर्ट असिस्टेंट हूँ। कुछ भी पूछें या "... का वायरिंग डायग्राम दिखाएं" कहें।',
-        placeholder: 'कुछ भी पूछें या "...वायरिंग डायग्राम दिखाएं" कहें',
+        intro: 'मैं आपका Dexter HMS सपोर्ट असिस्टेंट हूँ। ट्रबलशूटिंग, कॉन्फ़िगरेशन या इंस्टॉलेशन के बारे में पूछें।',
+        placeholder: 'कुछ भी पूछें...',
         footer: 'HMS पैनल विशेषज्ञ · AI संचालित · डायग्राम समर्थित',
         thinking: 'विश्लेषण और उत्तर तैयार किया जा रहा है...',
-        diagramHint: 'आज़माएं: "...वायरिंग डायग्राम दिखाएं"',
     },
 };
 
@@ -161,7 +136,42 @@ export default function Chat() {
     const [messageTimestamps, setMessageTimestamps] = useState<Map<string, Date>>(new Map());
     const [copiedId, setCopiedId] = useState<string | null>(null);
     const [showScrollBtn, setShowScrollBtn] = useState(false);
-    const [showDiagramSuggestions, setShowDiagramSuggestions] = useState(false);
+    const [feedbackSubmitted, setFeedbackSubmitted] = useState<Set<string>>(new Set());
+    const [expandedMessages, setExpandedMessages] = useState<Set<string>>(new Set());
+
+    const toggleExpand = (id: string) => {
+        setExpandedMessages(prev => {
+            const next = new Set(prev);
+            if (next.has(id)) next.delete(id);
+            else next.add(id);
+            return next;
+        });
+    };
+
+    const handleFeedback = async (messageId: string, rating: number, isRelevant: boolean) => {
+        if (feedbackSubmitted.has(messageId)) return;
+
+        // Find the user's query that prompted this response
+        const msgIndex = messages.findIndex(m => m.id === messageId);
+        const queryText = msgIndex > 0 ? messages[msgIndex - 1].content : '';
+
+        try {
+            await fetch('/api/admin/feedback', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    queryText,
+                    resultId: messageId,
+                    rating,
+                    isRelevant,
+                    feedbackText: ''
+                })
+            });
+            setFeedbackSubmitted(prev => new Set(prev).add(messageId));
+        } catch (error) {
+            console.error('Failed to submit feedback', error);
+        }
+    };
 
     // Suggestions + rotation every 30s
     useEffect(() => {
@@ -263,16 +273,13 @@ export default function Chat() {
     };
 
     const handleSuggestionClick = (question: string) => {
-        setShowDiagramSuggestions(false);
         append({ role: 'user', content: question });
     };
 
     // ─── Welcome screen suggestion grid ─────────────────────
     const welcomeSuggestions = useMemo(() => {
-        const diagrams = (DIAGRAM_SUGGESTIONS[language] || DIAGRAM_SUGGESTIONS.en).slice(0, 2);
-        const qa = suggestedQuestions.slice(0, 2);
-        return [...diagrams, ...qa];
-    }, [language, suggestedQuestions]);
+        return suggestedQuestions.length >= 4 ? suggestedQuestions.slice(0, 4) : getCuratedSuggestions();
+    }, [suggestedQuestions]);
 
     // ─── Registration Modal ───────────────────────────────────
     if (showRegistration) {
@@ -365,36 +372,30 @@ export default function Chat() {
                     {/* ── Welcome Screen ── */}
                     {messages.length === 0 ? (
                         <div className="text-center mt-8 sm:mt-12 lg:mt-16 animate-fade-up">
-                            <div className="skeuo-card p-6 sm:p-8 lg:p-10">
+                            <div className="p-6 sm:p-8 lg:p-10">
                                 <div className="flex justify-center mb-4 sm:mb-5">
-                                    <FontAwesomeIcon icon={faWandMagicSparkles} className="w-10 h-10 sm:w-12 sm:h-12 text-[#CA8A04]/50" />
+                                    <div className="w-12 h-12 rounded-2xl bg-[#0D9488]/10 flex items-center justify-center text-[#0D9488]">
+                                        <FontAwesomeIcon icon={faRobot} className="w-6 h-6" />
+                                    </div>
                                 </div>
                                 <h2 className="text-xl sm:text-2xl lg:text-3xl font-semibold mb-2 sm:mb-3 text-[#1C1917]">
                                     {TEXT_MAP[language].welcome}
                                 </h2>
-                                <p className="text-[#78716C] max-w-md mx-auto leading-relaxed text-xs sm:text-sm">
+                                <p className="text-[#78716C] max-w-md mx-auto leading-relaxed text-sm">
                                     {TEXT_MAP[language].intro}
                                 </p>
-
-                                {/* Diagram feature badge */}
-                                <div className="mt-4 inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium"
-                                    style={{ background: 'rgba(68,136,255,0.1)', color: '#4488FF', border: '1px solid rgba(68,136,255,0.25)' }}>
-                                    <FontAwesomeIcon icon={faDiagramProject} className="w-3 h-3" />
-                                    NEW: Visual Wiring Diagrams Supported
-                                </div>
 
                                 {/* Suggestion grid */}
                                 <div className="mt-6 sm:mt-8 grid gap-2.5 sm:gap-3 sm:grid-cols-2 text-sm text-left">
                                     {welcomeSuggestions.map((question, i) => {
-                                        const isDiagramSuggestion = i < 2;
                                         return (
                                             <button key={`${i}-${question.slice(0, 20)}`}
                                                 onClick={() => handleSuggestionClick(question)}
-                                                className={`skeuo-raised group p-3 sm:p-4 text-left flex items-start gap-2.5 text-xs sm:text-sm transition-all ${isDiagramSuggestion ? 'border border-blue-200/60' : ''}`}>
-                                                <span className="mt-0.5 flex-shrink-0 text-sm">
-                                                    {isDiagramSuggestion ? '🔌' : '→'}
+                                                className={`bg-[#FAF7F2] hover:bg-[#F0EBE3] border border-[#D6CFC4] rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.05)] group p-3 sm:p-4 text-left flex items-start gap-2.5 text-xs sm:text-sm transition-all text-[#44403C]`}>
+                                                <span className="mt-0.5 flex-shrink-0 text-sm opacity-60">
+                                                    →
                                                 </span>
-                                                <span className={`flex-1 leading-snug ${isDiagramSuggestion ? 'text-[#1a3a6a]' : 'text-[#44403C]'}`}>
+                                                <span className={`flex-1 leading-snug`}>
                                                     {question}
                                                 </span>
                                             </button>
@@ -423,10 +424,10 @@ export default function Chat() {
                                     style={{ contentVisibility: 'auto' }}
                                 >
                                     <div className={`max-w-[92%] sm:max-w-[85%] ${m.role === 'user'
-                                        ? 'rounded-2xl p-3.5 sm:p-4 lg:p-5 skeuo-leather rounded-tr-sm'
+                                        ? 'rounded-2xl p-3.5 sm:p-4 lg:p-5 bg-[#4b2e22] text-[#FAF7F2] shadow-[0_2px_4px_rgba(0,0,0,0.2)] rounded-tr-sm'
                                         : parsed?.isDiagram
                                             ? 'w-full' // diagram takes full width
-                                            : 'rounded-2xl p-3.5 sm:p-4 lg:p-5 skeuo-card text-[#1C1917] rounded-tl-sm'
+                                            : 'rounded-2xl p-4 sm:p-5 bg-[#FAF7F2] border border-[#D6CFC4] text-[#1C1917] shadow-sm rounded-tl-sm'
                                         }`}>
 
                                         {/* ── Assistant: Diagram Response ── */}
@@ -455,6 +456,26 @@ export default function Chat() {
                                                     hasKBContext={parsed.diagram.hasKBContext}
                                                     language={language}
                                                 />
+                                                <div className="mt-2 flex items-center justify-end">
+                                                    <div className="flex items-center gap-1">
+                                                        <button
+                                                            onClick={() => handleFeedback(m.id, 5, true)}
+                                                            disabled={feedbackSubmitted.has(m.id)}
+                                                            className={`p-1.5 rounded transition-colors ${feedbackSubmitted.has(m.id) ? 'opacity-40 cursor-not-allowed text-[#A8A29E]' : 'hover:bg-[#E8E0D4] hover:text-[#0D9488] text-[#A8A29E]'}`}
+                                                            title="Helpful"
+                                                        >
+                                                            <FontAwesomeIcon icon={faThumbsUp} className="w-3 h-3" />
+                                                        </button>
+                                                        <button
+                                                            onClick={() => handleFeedback(m.id, 1, false)}
+                                                            disabled={feedbackSubmitted.has(m.id)}
+                                                            className={`p-1.5 rounded transition-colors ${feedbackSubmitted.has(m.id) ? 'opacity-40 cursor-not-allowed text-[#A8A29E]' : 'hover:bg-[#E8E0D4] hover:text-red-600 text-[#A8A29E]'}`}
+                                                            title="Not helpful"
+                                                        >
+                                                            <FontAwesomeIcon icon={faThumbsDown} className="w-3 h-3" />
+                                                        </button>
+                                                    </div>
+                                                </div>
                                             </div>
                                         )}
 
@@ -475,7 +496,7 @@ export default function Chat() {
                                                             className={`w-3 h-3 ${copiedId === m.id ? 'text-emerald-600' : ''}`} />
                                                     </button>
                                                 </div>
-                                                <div className="text-sm sm:text-[15px] leading-relaxed">
+                                                <div className={`text-sm sm:text-[15px] leading-relaxed relative ${!expandedMessages.has(m.id) && m.content.length > 400 ? 'max-h-40 overflow-hidden' : ''}`}>
                                                     <ReactMarkdown remarkPlugins={[remarkGfm]} components={{
                                                         p: ({ node, ...props }: any) => <p className="mb-2.5 last:mb-0 whitespace-pre-wrap" {...props} />,
                                                         ul: ({ node, ...props }: any) => <ul className="list-disc pl-5 mb-2.5 space-y-1" {...props} />,
@@ -496,7 +517,18 @@ export default function Chat() {
                                                     }}>
                                                         {m.content}
                                                     </ReactMarkdown>
+                                                    {!expandedMessages.has(m.id) && m.content.length > 400 && (
+                                                        <div className="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-[#FAF7F2] to-transparent pointer-events-none" />
+                                                    )}
                                                 </div>
+                                                {m.content.length > 400 && (
+                                                    <button
+                                                        onClick={() => toggleExpand(m.id)}
+                                                        className="text-xs text-[#0D9488] font-medium mt-1 mb-1 hover:underline flex items-center gap-1"
+                                                    >
+                                                        {expandedMessages.has(m.id) ? 'Show less' : 'Read more'}
+                                                    </button>
+                                                )}
                                                 <div className="mt-2 flex items-center gap-3 text-[10px] text-[#A8A29E]">
                                                     {responseTimes.has(m.id) && (
                                                         <span className="flex items-center gap-1">
@@ -507,6 +539,24 @@ export default function Chat() {
                                                     {messageTimestamps.has(m.id) && (
                                                         <span>{timeAgo(messageTimestamps.get(m.id)!)}</span>
                                                     )}
+                                                    <div className="flex items-center gap-1 ml-auto">
+                                                        <button
+                                                            onClick={() => handleFeedback(m.id, 5, true)}
+                                                            disabled={feedbackSubmitted.has(m.id)}
+                                                            className={`p-1.5 rounded transition-colors ${feedbackSubmitted.has(m.id) ? 'opacity-40 cursor-not-allowed' : 'hover:bg-[#E8E0D4] hover:text-[#0D9488]'}`}
+                                                            title="Helpful"
+                                                        >
+                                                            <FontAwesomeIcon icon={faThumbsUp} className="w-3 h-3" />
+                                                        </button>
+                                                        <button
+                                                            onClick={() => handleFeedback(m.id, 1, false)}
+                                                            disabled={feedbackSubmitted.has(m.id)}
+                                                            className={`p-1.5 rounded transition-colors ${feedbackSubmitted.has(m.id) ? 'opacity-40 cursor-not-allowed' : 'hover:bg-[#E8E0D4] hover:text-red-600'}`}
+                                                            title="Not helpful"
+                                                        >
+                                                            <FontAwesomeIcon icon={faThumbsDown} className="w-3 h-3" />
+                                                        </button>
+                                                    </div>
                                                 </div>
                                             </>
                                         )}
@@ -581,41 +631,7 @@ export default function Chat() {
             <div className="flex-shrink-0 bg-gradient-to-t from-[#E8E0D4] via-[#E8E0D4]/95 to-transparent pt-3 sm:pt-4 pb-[env(safe-area-inset-bottom,12px)] sm:pb-5 px-3 sm:px-4 z-20">
                 <div className="max-w-3xl mx-auto">
 
-                    {/* Diagram quick-trigger button */}
-                    {messages.length > 0 && (
-                        <div className="mb-2 flex items-center gap-2">
-                            <button
-                                onClick={() => setShowDiagramSuggestions(v => !v)}
-                                className="flex items-center gap-1.5 text-[10px] px-2.5 py-1 rounded-full transition-all"
-                                style={{
-                                    background: showDiagramSuggestions ? 'rgba(68,136,255,0.15)' : 'rgba(68,136,255,0.08)',
-                                    color: '#4488FF',
-                                    border: '1px solid rgba(68,136,255,0.25)',
-                                }}
-                            >
-                                <FontAwesomeIcon icon={faDiagramProject} className="w-2.5 h-2.5" />
-                                {TEXT_MAP[language].diagramHint}
-                            </button>
 
-                            {/* Diagram suggestion chips */}
-                            {showDiagramSuggestions && (
-                                <div className="flex gap-1.5 overflow-x-auto">
-                                    {(DIAGRAM_SUGGESTIONS[language] || DIAGRAM_SUGGESTIONS.en).map((s, i) => (
-                                        <button key={i}
-                                            onClick={() => handleSuggestionClick(s)}
-                                            className="flex-shrink-0 text-[10px] px-2 py-0.5 rounded-full whitespace-nowrap transition-colors"
-                                            style={{
-                                                background: 'rgba(68,136,255,0.08)',
-                                                color: '#4488FF',
-                                                border: '1px solid rgba(68,136,255,0.2)',
-                                            }}>
-                                            {s}
-                                        </button>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
-                    )}
 
                     <form onSubmit={handleSubmit} className="relative flex items-center">
                         <input ref={inputRef}

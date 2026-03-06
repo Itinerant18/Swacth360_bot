@@ -8,8 +8,11 @@ import {
     faCircleExclamation, faCubes, faFire, faClock, faUsers,
     faPhone, faEnvelope, faUpload, faFileAlt, faCloudUploadAlt,
     faCheckCircle, faTimesCircle, faMinusCircle, faSpinner,
-    faTrash, faDatabase, faDiagramProject,
+    faTrash, faDatabase, faDiagramProject, faSliders, faStar, faBrain,
 } from '@fortawesome/free-solid-svg-icons';
+import GraphTab from '@/components/GraphTab';
+import RAGSettingsTab from '@/components/RAGSettingsTab';
+import FeedbackTab from '@/components/FeedbackTab';
 
 type UnknownQuestion = {
     id: string;
@@ -64,7 +67,7 @@ type IngestResponse = {
 };
 
 // ─── Tab type ─────────────────────────────────────────────────
-type Tab = 'review' | 'analytics' | 'users' | 'ingest';
+type Tab = 'review' | 'analytics' | 'users' | 'ingest' | 'graph' | 'settings' | 'feedback';
 
 export default function AdminDashboard() {
     const [tab, setTab] = useState<Tab>('review');
@@ -341,6 +344,9 @@ export default function AdminDashboard() {
                         { key: 'analytics' as const, label: 'Analytics', icon: faChartLine },
                         { key: 'users' as const, label: 'Users', icon: faUsers, badge: users.length },
                         { key: 'ingest' as const, label: 'Train Bot', icon: faCloudUploadAlt },
+                        { key: 'graph' as const, label: 'Graph', icon: faDiagramProject },
+                        { key: 'settings' as const, label: 'RAG Settings', icon: faSliders },
+                        { key: 'feedback' as const, label: 'Feedback', icon: faStar },
                     ]).map(({ key, label, icon, badge }) => (
                         <button
                             key={key}
@@ -932,7 +938,12 @@ export default function AdminDashboard() {
                             </div>
                         )}
                     </div>
-
+                ) : tab === 'graph' ? (
+                    <GraphTab />
+                ) : tab === 'settings' ? (
+                    <RAGSettingsTab />
+                ) : tab === 'feedback' ? (
+                    <FeedbackTab />
                 ) : null}
             </main>
         </div>
