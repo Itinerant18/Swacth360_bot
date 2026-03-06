@@ -1,24 +1,4 @@
-/**
- * src/app/api/admin/ingest/route.ts
- *
- * PDF/Text Ingestion Pipeline — Enhanced with Image Extraction
- *
- * TWO-PIPELINE APPROACH:
- *
- * Pipeline 1 — Text  (existing, unchanged)
- *   PDF text → 800-char chunks → Sarvam AI Q&A → OpenAI embed → Supabase
- *
- * Pipeline 2 — Images (NEW)
- *   PDF → Gemini 2.0 Flash vision → identifies every technical diagram/schematic/chart
- *   → structured image descriptions → Sarvam AI Q&A → OpenAI embed → Supabase
- *   (stored with source='pdf_image', subcategory='Visual Content — [type]')
- *
- * The Karpathy insight: every piece of knowledge must be represented as a vector.
- * Text embeddings only capture text. Images carry wiring diagrams, installation
- * schematics, panel layouts — information that text alone never contains.
- *
- * No new npm dependencies needed — uses Gemini REST API directly via fetch.
- */
+
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabase } from '@/lib/supabase';

@@ -94,7 +94,7 @@ async function searchKBForDiagram(query: string, diagramType: string): Promise<s
         const supabase = getSupabase();
         const vector = await embedText(`${diagramType} diagram wiring connection terminal ${query}`);
         const { data: matches } = await supabase.rpc('search_hms_knowledge', {
-            query_embedding: `[${vector.join(',')}]`,
+            query_embedding: vector,
             similarity_threshold: 0.35,
             match_count: 8,
         });
