@@ -381,7 +381,8 @@ async function generateTextDiagram(
     diagramType: string,
     kbContext: string,
     sarvamKey: string,
-    language: string
+    language: string,
+    detailLevel: 'basic' | 'context-rich' = 'context-rich'
 ): Promise<{ markdown: string; title: string; diagramType: string }> {
 
     const sarvam = new ChatOpenAI({
@@ -529,6 +530,7 @@ export interface DiagramResult {
     panelType: string;
     hasKBContext: boolean;
     generatedBy: string;
+    detailLevel?: 'basic' | 'context-rich';
     error?: string;
 }
 
@@ -536,12 +538,20 @@ export interface DiagramResult {
  * Shared internal logic for generating diagrams.
  * Called directly by the chat API (to avoid HTTP fetch in Netlify)
  * and by the /api/diagram POST handler.
+ * 
+ * ENHANCEMENT: Now accepts optional ragContext for context-aware diagrams.
+ * If ragContext is provided, uses it directly instead of doing separate KB search.
  */
 export async function generateDiagramInternal(
     query: string,
     englishQuery: string,
     diagramType: string,
-    language: string
+    language: string,
+    options: {
+        ragContext?: string;
+        ragMatches?: Array<{question: string; answer: string; category: string; finalScore: number}>;
+        detailLevel?: 'basic' | 'context-rich';
+    } = {}
 ): Promise<DiagramResult> {
     const sarvamKey = process.env.SARVAM_API_KEY;
     if (!sarvamKey) {
@@ -549,14 +559,28 @@ export async function generateDiagramInternal(
     }
 
     const panelType = englishQuery || query;
-    console.log(`📐 Internal diagram gen: "${panelType}" | type: ${diagramType} | lang: ${language}`);
+    const { ragContext, ragMatches, detailLevel = 'context-rich' } = options;
+    
+    console.log(`📐 Internal diagram gen: "${panelType}" | type: ${diagramType} | lang: ${language} | level: ${detailLevel}`);
 
-    // Search KB for real specs from uploaded manuals
-    const kbContext = await searchKBForDiagram(panelType, diagramType);
-    console.log(`📚 KB: ${kbContext.length > 0 ? `${kbContext.length} chars` : 'none'}`);
+    // Use provided RAG context or search KB if not provided
+    let kbContext: string;
+    let hasKBContext: boolean;
+    
+    if (ragContext && ragContext.length > 50) {
+        // Use pre-fetched RAG context - this makes diagrams context-specific!
+        kbContext = formatRAGContextForDiagram(ragMatches, ragContext);
+        hasKBContext = true;
+        console.log(`📚 Using provided RAG context: ${kbContext.length} chars`);
+    } else {
+        // Fallback to KB search
+        kbContext = await searchKBForDiagram(panelType, diagramType);
+        hasKBContext = kbContext.length > 50;
+        console.log(`📚 KB: ${hasKBContext ? `${kbContext.length} chars` : 'none'}`);
+    }
 
     // Generate markdown diagram via Sarvam
-    const result = await generateTextDiagram(panelType, diagramType, kbContext, sarvamKey, language);
+    const result = await generateTextDiagram(panelType, diagramType, kbContext, sarvamKey, language, detailLevel);
 
     console.log(`✅ Diagram generated: ${result.markdown.length} chars`);
 
@@ -566,9 +590,53 @@ export async function generateDiagramInternal(
         title: result.title,
         diagramType: result.diagramType,
         panelType,
-        hasKBContext: kbContext.length > 0,
+        hasKBContext,
         generatedBy: 'sarvam',
+        detailLevel,
     };
+}
+
+/**
+ * Formats RAG context specifically for diagram generation.
+ * Extracts relevant specs (terminals, wire colors, voltages) from retrieved content.
+ */
+function formatRAGContextForDiagram(
+    matches: Array<{question: string; answer: string; category: string; finalScore: number}> | undefined,
+    contextString: string
+): string {
+    if (!matches || matches.length === 0) {
+        return contextString;
+    }
+
+    // Extract specific technical specs from RAG matches for diagram use
+    const specs: string[] = [];
+    
+    for (const match of matches) {
+        const content = `${match.question} ${match.answer}`;
+        
+        // Extract terminal references
+        const terminals = content.match(/TB\d*[+-]?/gi);
+        if (terminals) specs.push(`Terminals: ${[...new Set(terminals)].join(', ')}`);
+        
+        // Extract wire colors
+        const colors = content.match(/\b(red|blue|white|black|yellow|green|orange|brown|gray|violet)\b/gi);
+        if (colors) specs.push(`Wire Colors: ${[...new Set(colors)].join(', ')}`);
+        
+        // Extract voltages
+        const voltages = content.match(/\b\d+[Vv]\s*(?:DC|AC)?\b/g);
+        if (voltages) specs.push(`Voltages: ${[...new Set(voltages)].join(', ')}`);
+        
+        // Extract protocols
+        const protocols = content.match(/\b(RS-?485|Modbus|PROFIBUS|Ethernet|CAN)\b/gi);
+        if (protocols) specs.push(`Protocols: ${[...new Set(protocols)].join(', ')}`);
+    }
+
+    // Build enhanced context
+    const specSection = specs.length > 0 
+        ? `\n**SPECIFIC VALUES FROM KNOWLEDGE BASE:**\n${specs.map(s => `- ${s}`).join('\n')}\n\n---\n`
+        : '';
+
+    return `${specSection}${contextString}`;
 }
 
 export async function POST(req: NextRequest) {

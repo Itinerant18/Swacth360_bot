@@ -64,51 +64,55 @@ function buildSystemPrompt(
     query: string,
     history: string
 ): string {
+    // Confidence indicator based on calibration
+    const confidenceLevel = confidence >= 0.7 ? 'HIGH' : confidence >= 0.5 ? 'MEDIUM' : 'LOW';
+    
     const confidenceNote = {
-        rag_high: `The knowledge base sources are HIGHLY relevant (${(confidence * 100).toFixed(0)}% confidence). Answer confidently and completely.`,
-        rag_medium: `The knowledge base sources are RELEVANT (${(confidence * 100).toFixed(0)}% confidence). Synthesize them into a clear answer.`,
-        rag_partial: `The knowledge base sources are PARTIALLY relevant (${(confidence * 100).toFixed(0)}% confidence). Use what applies and note if incomplete.`,
-        general: `No specific knowledge base match found. Use your general HMS/industrial automation expertise.`,
+        rag_high: `✅ HIGH CONFIDENCE (${(confidence * 100).toFixed(0)}%) — Sources directly answer this question. Provide complete, confident response.`,
+        rag_medium: `⚡ MEDIUM CONFIDENCE (${(confidence * 100).toFixed(0)}%) — Sources are relevant. Synthesize and fill gaps with expertise.`,
+        rag_partial: `⚠️ LOW CONFIDENCE (${(confidence * 100).toFixed(0)}%) — Sources partially match. Be honest about limitations.`,
+        general: `🔄 GENERAL MODE — No specific knowledge base match found. Use your general HMS/industrial automation expertise.`,
     }[answerMode] || '';
 
     const formatInstructions = {
-        diagnostic: `For diagnostic questions:
-- Lead with the likely cause
-- List troubleshooting steps in numbered order
-- Include any error codes and their meanings`,
-        procedural: `For procedural questions:
-- Use numbered steps (1., 2., 3.)
-- Include terminal labels, wire colors, voltage values
-- Add safety warnings where relevant`,
-        factual: `For factual questions:
-- Be concise but complete
-- Include exact specifications, values, standards
-- Use tables if comparing 3+ items`,
-        visual: `For visual/diagram questions:
-- Describe the diagram structure clearly
-- List all connections, terminals, wire colors
-- Suggest asking for a specific diagram if helpful`,
-        comparative: `For comparative questions:
-- Use comparison tables
-- Highlight key differences
-- Make a clear recommendation if asked`,
-        unknown: `Provide helpful HMS/industrial automation information.`,
+        diagnostic: `DIAGNOSTIC FORMAT:
+- First: State the likely cause clearly
+- Then: Numbered troubleshooting steps (1, 2, 3...)
+- Include: Error codes with meanings, LED indicators, test points`,
+        procedural: `PROCEDURAL FORMAT:
+- Numbered steps: 1. 2. 3. with clear action words
+- Include: Terminal labels (TB1+, B-), wire colors, torque values
+- Safety: Add ⚠️ warnings for dangerous steps`,
+        factual: `FACTUAL FORMAT:
+- Lead with the direct answer
+- Support with specific values, standards, specifications
+- Use tables for 3+ related values`,
+        visual: `VISUAL FORMAT:
+- Describe connections in logical order (left→right, top→bottom)
+- List all terminals, wire colors, cable specs
+- End with: "Ask for '[wiring] diagram' to see visual"`,
+        comparative: `COMPARATIVE FORMAT:
+- Use comparison tables with columns for each option
+- Highlight differences clearly
+- State recommendation if asked`,
+        unknown: `EXPERT FORMAT:
+- Provide helpful technical information
+- Connect to HMS panel concepts where possible`,
     }[queryType] || '';
 
     if (answerMode === 'general') {
         return `You are an expert in HMS industrial panels, PLCs, SCADA, Modbus, PROFIBUS, EtherNet/IP, and industrial automation.
 ${history}
 ${confidenceNote}
-INSTRUCTIONS:
-1. Answer using your industrial automation expertise.
-2. Be specific — give concrete steps, values, and procedures.
-3. If the question is completely unrelated to HMS panels or industrial automation, politely say so in ${langName}.
-4. WRITE THE ENTIRE RESPONSE IN FLUENT ${langName}.
-5. Max 250 words. No padding.
-6. If this might be a diagram/wiring question, suggest: "Try: Show wiring diagram for [panel name]"
+STRICT RULES:
+1. Always answer in ${langName} — every word, no exceptions
+2. Be specific: include actual values, terminal names, wire colors, voltage specs
+3. Never say "I don't know" — use your expertise to help
+4. Keep answers under 200 words — concise and actionable
+5. If unrelated to HMS/industrial: politely redirect
 ${formatInstructions}
 Question: ${query}
-${langName} Expert Answer:`;
+${langName} Answer:`;
     }
 
     return `You are an expert HMS industrial panel technical support agent for SEPLe/Dexter systems.
@@ -116,14 +120,14 @@ ${history}
 ${confidenceNote}
 KNOWLEDGE BASE SOURCES:
 ${context}
-INSTRUCTIONS:
-1. Answer ONLY from the knowledge base sources above — do not hallucinate.
-2. Synthesize information across all relevant sources into one clear, complete answer.
-3. Include exact values, codes, steps, wire colors, terminal labels where available.
-4. ${formatInstructions}
-5. If the sources don't fully answer the question, say: "${notFoundMsg}"
-6. WRITE THE ENTIRE RESPONSE IN FLUENT ${langName} — not a word of English if the user asked in ${langName !== 'English' ? langName : 'English'}.
-7. Keep the response concise: max 250 words. No unnecessary padding.
+STRICT RULES:
+1. Answer ONLY from the provided sources — do NOT hallucinate
+2. Always answer in ${langName} — every single word
+3. Include specific values: terminal labels (TB1+), wire colors, voltages (24V DC), error codes (E001)
+4. Use the format specified below:
+${formatInstructions}
+5. If sources don't fully answer: use expertise to help, mention limitations
+6. Keep under 200 words — concise
 Question: ${query}
 ${langName} Answer:`;
 }
@@ -151,7 +155,7 @@ export async function POST(req: Request) {
     const requestStart = performance.now();
 
     try {
-        const { messages, userId, language = 'en' } = await req.json();
+        const { messages, userId, language = 'en', searchMode = 'standard' } = await req.json();
 
         const LANGUAGE_NAMES = { en: 'English', bn: 'Bengali', hi: 'Hindi' };
         const langName = LANGUAGE_NAMES[language as keyof typeof LANGUAGE_NAMES] || 'English';
@@ -190,15 +194,41 @@ export async function POST(req: Request) {
 
         // ── Diagram intent check ────────────────────────────────
         const { isDiagram, diagramType } = isDiagramRequest(englishQuestion);
+        
+        // ── Call Frontier RAG Engine FIRST (always) ─────────────
+        const ragStart = performance.now();
+        const retrieveOptions = {
+            useHYDE: true,
+            useMMR: searchMode === 'mmr',
+            useWeighted: searchMode === 'weighted',
+            mmrLambda: searchMode === 'mmr' ? 0.5 : undefined,
+            timeBoostDays: searchMode === 'mmr' ? 30 : undefined,
+        };
+        const ragResult: RAGResult = await retrieve(englishQuestion, sarvamLlm, retrieveOptions);
+        console.log(`🚀 RAG Engine completed [${elapsed(ragStart)}]`);
+
+        const { answerMode, confidence, contextString, matches, queryAnalysis, retrievalStats, retrievalMetadata } = ragResult;
+
+        // ── If diagram requested, pass RAG context to diagram generation ─
         if (isDiagram) {
-            console.log(`🖼️  DIAGRAM REQUEST — type: ${diagramType}`);
+            console.log(`🖼️  DIAGRAM REQUEST — type: ${diagramType} | using RAG context: ${contextString.length > 50}`);
             try {
-                // Directly call the generation logic (bypass HTTP fetch for Netlify reliability)
+                // Pass RAG context to diagram for context-aware generation
                 const diagramData = await generateDiagramInternal(
                     latestMessage,
                     englishQuestion,
                     diagramType,
-                    language
+                    language,
+                    {
+                        ragContext: contextString,
+                        ragMatches: matches.map(m => ({
+                            question: m.question,
+                            answer: m.answer,
+                            category: m.category,
+                            finalScore: m.finalScore,
+                        })),
+                        detailLevel: confidence > 0.5 ? 'context-rich' : 'basic',
+                    }
                 );
 
                 if (diagramData.success && diagramData.markdown) {
@@ -207,7 +237,7 @@ export async function POST(req: Request) {
                         user_question: latestMessage,
                         english_translation: englishQuestion,
                         answer_mode: 'diagram',
-                        top_similarity: diagramData.hasKBContext ? 0.8 : 0.3,
+                        top_similarity: diagramData.hasKBContext ? confidence : 0.3,
                         user_id: userId || null,
                     });
 
@@ -215,16 +245,9 @@ export async function POST(req: Request) {
                     return textStreamResponse(`DIAGRAM_RESPONSE:${payload}`);
                 }
             } catch (err: any) {
-                console.warn(`⚠️  Diagram failed: ${err.message} — falling through to RAG`);
+                console.warn(`⚠️  Diagram failed: ${err.message} — falling through to RAG answer`);
             }
         }
-
-        // ── Call Frontier RAG Engine ───────────────────────────
-        const ragStart = performance.now();
-        const ragResult: RAGResult = await retrieve(englishQuestion, sarvamLlm, { useHYDE: true });
-        console.log(`🚀 RAG Engine completed [${elapsed(ragStart)}]`);
-
-        const { answerMode, confidence, contextString, matches, queryAnalysis, retrievalStats } = ragResult;
 
         // ── Log unknown questions ───────────────────────────────
         const supabase = getSupabase();
@@ -277,11 +300,13 @@ export async function POST(req: Request) {
             english_translation: englishQuestion,
             answer_mode: dbAnswerMode,
             top_similarity: matches[0]?.finalScore || confidence,
+            bot_answer: answer,
             user_id: userId || null,
         });
 
         console.log(`✅ Response complete [${elapsed(requestStart)}] mode=${answerMode} conf=${(confidence * 100).toFixed(0)}%`);
         console.log(`   Stats: ${retrievalStats.totalCandidates} candidates → ${retrievalStats.afterRerank} after rerank | ${retrievalStats.latencyMs.toFixed(0)}ms`);
+        console.log(`   Sources: ${retrievalMetadata?.sourcesUsed?.join(', ') || 'none'}`);
         console.log(`${'═'.repeat(60)}\n`);
 
         return textStreamResponse(answer);

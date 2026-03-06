@@ -66,20 +66,23 @@ export interface RankedMatch {
     content: string;
     source: string;
     source_name: string;
-    vectorSimilarity: number;   // raw cosine similarity
-    crossScore: number;         // cross-encoder reranking score
-    bm25Score: number;          // keyword overlap score
-    finalScore: number;         // weighted combination
-    relevantPassage?: string;   // compressed: only the relevant part
-    retrievalVector: 'query' | 'hyde' | 'expanded'; // which vector found this
+    chunkType?: string;
+    vectorSimilarity: number;
+    crossScore: number;
+    bm25Score: number;
+    finalScore: number;
+    relevantPassage?: string;
+    retrievalVector: 'query' | 'hyde' | 'expanded';
+    mmrScore?: number;
+    weightedScore?: number;
 }
 
 export interface RAGResult {
     matches: RankedMatch[];
     queryAnalysis: QueryAnalysis;
     answerMode: 'rag_high' | 'rag_medium' | 'rag_partial' | 'general';
-    confidence: number;         // 0-1, calibrated
-    contextString: string;      // ready-to-use prompt context
+    confidence: number;
+    contextString: string;
     retrievalStats: {
         queryVectorHits: number;
         hydeVectorHits: number;
@@ -87,6 +90,13 @@ export interface RAGResult {
         totalCandidates: number;
         afterRerank: number;
         latencyMs: number;
+    };
+    retrievalMetadata?: {
+        sourcesUsed: string[];
+        totalMatches: number;
+        vectorSources: { query: number; hyde: number; expanded: number };
+        topConfidence: number;
+        retrievalMethod: string;
     };
 }
 
@@ -98,9 +108,14 @@ const RETRIEVAL_CONFIG = {
     PARTIAL_CONFIDENCE: 0.38,
 
     // Retrieval
-    CANDIDATES_PER_VECTOR: 8,   // fetch 8 per vector (3 vectors = up to 24 candidates)
+    CANDIDATES_PER_VECTOR: 8,
     TOP_K_AFTER_RERANK: 4,
-    SUPABASE_FETCH_THRESHOLD: 0.18, // wide net
+    SUPABASE_FETCH_THRESHOLD: 0.18,
+
+    // MMR & Time-based boosting (enabled by default)
+    USE_MMR: true,
+    MMR_LAMBDA: 0.5,
+    TIME_BOOST_DAYS: 30,
 
     // Semantic cache
     CACHE_SIMILARITY_THRESHOLD: 0.92,
@@ -424,7 +439,13 @@ async function multiVectorSearch(
     queryVector: number[],
     hydeVector: number[] | null,
     expandedVector: number[],
-    supabase: ReturnType<typeof getSupabase>
+    supabase: ReturnType<typeof getSupabase>,
+    options: {
+        useMMR?: boolean;
+        useWeighted?: boolean;
+        mmrLambda?: number;
+        timeBoostDays?: number;
+    } = {}
 ): Promise<{
     queryHits: RankedMatch[];
     hydeHits: RankedMatch[];
@@ -434,27 +455,85 @@ async function multiVectorSearch(
         vector: number[],
         label: 'query' | 'hyde' | 'expanded'
     ): Promise<RankedMatch[]> => {
-        const { data, error } = await supabase.rpc('search_hms_knowledge', {
-            query_embedding: vector,
-            similarity_threshold: RETRIEVAL_CONFIG.SUPABASE_FETCH_THRESHOLD,
-            match_count: RETRIEVAL_CONFIG.CANDIDATES_PER_VECTOR,
-        });
-        if (error || !data) return [];
-        return (data as any[]).map(row => ({
-            id: row.id,
-            question: row.question,
-            answer: row.answer,
-            category: row.category,
-            subcategory: row.subcategory || '',
-            content: row.content,
-            source: row.source,
-            source_name: row.source_name,
-            vectorSimilarity: row.similarity,
-            crossScore: 0,
-            bm25Score: 0,
-            finalScore: 0,
-            retrievalVector: label,
-        }));
+        const { useMMR = RETRIEVAL_CONFIG.USE_MMR, useWeighted = false, mmrLambda = RETRIEVAL_CONFIG.MMR_LAMBDA, timeBoostDays = RETRIEVAL_CONFIG.TIME_BOOST_DAYS } = options;
+
+        let data;
+        if (useMMR) {
+            // Use MMR diversity search
+            const { data: mmrData, error } = await supabase.rpc('search_hms_knowledge_mmr', {
+                query_embedding: vector,
+                similarity_threshold: RETRIEVAL_CONFIG.SUPABASE_FETCH_THRESHOLD,
+                match_count: RETRIEVAL_CONFIG.CANDIDATES_PER_VECTOR,
+                mmr_lambda: mmrLambda,
+                time_boost_days: timeBoostDays,
+            });
+            if (error || !mmrData) return [];
+            return (mmrData as any[]).map(row => ({
+                id: row.id,
+                question: row.question,
+                answer: row.answer,
+                category: row.category,
+                subcategory: row.subcategory || '',
+                content: row.content,
+                source: row.source,
+                source_name: row.source_name,
+                chunkType: row.chunk_type,
+                vectorSimilarity: row.similarity,
+                mmrScore: row.mmr_score,
+                crossScore: 0,
+                bm25Score: 0,
+                finalScore: row.mmr_score,
+                retrievalVector: label,
+            }));
+        } else if (useWeighted) {
+            // Use weighted search by chunk type
+            const { data: weightedData, error } = await supabase.rpc('search_hms_knowledge_weighted', {
+                query_embedding: vector,
+                similarity_threshold: RETRIEVAL_CONFIG.SUPABASE_FETCH_THRESHOLD,
+                match_count: RETRIEVAL_CONFIG.CANDIDATES_PER_VECTOR,
+            });
+            if (error || !weightedData) return [];
+            return (weightedData as any[]).map(row => ({
+                id: row.id,
+                question: row.question,
+                answer: row.answer,
+                category: row.category,
+                subcategory: row.subcategory || '',
+                content: row.content,
+                source: row.source,
+                source_name: row.source_name,
+                chunkType: row.chunk_type,
+                vectorSimilarity: row.similarity,
+                weightedScore: row.weighted_score,
+                crossScore: 0,
+                bm25Score: 0,
+                finalScore: row.weighted_score,
+                retrievalVector: label,
+            }));
+        } else {
+            // Fall back to standard search
+            const { data, error } = await supabase.rpc('search_hms_knowledge', {
+                query_embedding: vector,
+                similarity_threshold: RETRIEVAL_CONFIG.SUPABASE_FETCH_THRESHOLD,
+                match_count: RETRIEVAL_CONFIG.CANDIDATES_PER_VECTOR,
+            });
+            if (error || !data) return [];
+            return (data as any[]).map(row => ({
+                id: row.id,
+                question: row.question,
+                answer: row.answer,
+                category: row.category,
+                subcategory: row.subcategory || '',
+                content: row.content,
+                source: row.source,
+                source_name: row.source_name,
+                vectorSimilarity: row.similarity,
+                crossScore: 0,
+                bm25Score: 0,
+                finalScore: 0,
+                retrievalVector: label,
+            }));
+        }
     };
 
     const [queryHits, hydeHits, expandedHits] = await Promise.all([
@@ -563,10 +642,21 @@ export async function retrieve(
     options: {
         useHYDE?: boolean;
         topK?: number;
+        useMMR?: boolean;
+        useWeighted?: boolean;
+        mmrLambda?: number;
+        timeBoostDays?: number;
     } = {}
 ): Promise<RAGResult> {
     const startMs = performance.now();
-    const { useHYDE = RETRIEVAL_CONFIG.HYDE_ENABLED, topK = RETRIEVAL_CONFIG.TOP_K_AFTER_RERANK } = options;
+    const { 
+        useHYDE = RETRIEVAL_CONFIG.HYDE_ENABLED, 
+        topK = RETRIEVAL_CONFIG.TOP_K_AFTER_RERANK,
+        useMMR = RETRIEVAL_CONFIG.USE_MMR,
+        useWeighted = false,
+        mmrLambda = RETRIEVAL_CONFIG.MMR_LAMBDA,
+        timeBoostDays = RETRIEVAL_CONFIG.TIME_BOOST_DAYS,
+    } = options;
 
     // Step 1: Classify the query
     const queryAnalysis = classifyQuery(query);
@@ -607,10 +697,11 @@ export async function retrieve(
 
     // Step 4: Multi-vector retrieval
     const { queryHits, hydeHits, expandedHits } = await multiVectorSearch(
-        queryVector, hydeVector, expandedVector, supabase
+        queryVector, hydeVector, expandedVector, supabase,
+        { useMMR, useWeighted, mmrLambda, timeBoostDays }
     );
 
-    console.log(`  Retrieval: query=${queryHits.length} hyde=${hydeHits.length} expanded=${expandedHits.length}`);
+    console.log(`  Retrieval: query=${queryHits.length} hyde=${hydeHits.length} expanded=${expandedHits.length} [${useMMR ? 'MMR' : useWeighted ? 'Weighted' : 'Standard'}]`);
 
     // Step 5: Merge + deduplicate
     const allCandidates = mergeAndDeduplicate(queryHits, hydeHits, expandedHits);
@@ -652,20 +743,38 @@ export async function retrieve(
     else if (calibratedConfidence >= 0.35) answerMode = 'rag_partial';
     else answerMode = 'general';
 
-    // Step 9: Build context string with compressed passages
+    // Step 9: Build context string with compressed passages (enhanced format)
     const contextString = reranked
         .filter(m => m.finalScore > RETRIEVAL_CONFIG.SUPABASE_FETCH_THRESHOLD)
         .map((m, i) => {
-            const badge = m.retrievalVector === 'hyde' ? '🔮 HYDE' : m.retrievalVector === 'query' ? '📌 Direct' : '🔍 Expanded';
+            const vectorSource = m.retrievalVector === 'hyde' ? '🔮 HYDE' : m.retrievalVector === 'query' ? '📌 Query' : '🔍 Expanded';
             const conf = `${(m.finalScore * 100).toFixed(0)}%`;
+            const sourceLabel = m.source_name || m.source || 'Knowledge Base';
+            
+            // Format like a structured technical document
             return [
-                `[Source ${i + 1} — ${conf} confidence | ${badge} | ${m.category}]`,
-                `Q: ${m.question}`,
-                `A: ${m.relevantPassage || m.answer}`,
-                m.source === 'pdf_image' ? `📊 Visual/Diagram content from: ${m.source_name}` : '',
+                `**Source ${i + 1}** [${conf} match | ${vectorSource}]`,
+                `*From: ${sourceLabel}*`,
+                `---`,
+                `**Q:** ${m.question}`,
+                `**A:** ${m.relevantPassage || m.answer}`,
+                m.subcategory ? `*Category: ${m.subcategory}*` : '',
             ].filter(Boolean).join('\n');
         })
         .join('\n\n---\n\n');
+
+    // Build structured metadata for the response
+    const retrievalMetadata = {
+        sourcesUsed: [...new Set(reranked.map(m => m.source_name || 'Unknown'))],
+        totalMatches: reranked.length,
+        vectorSources: {
+            query: queryHits.length,
+            hyde: hydeHits.length,
+            expanded: expandedHits.length,
+        },
+        topConfidence: calibratedConfidence,
+        retrievalMethod: answerMode.startsWith('rag') ? 'hybrid-vector-hybrid' : 'general-llm',
+    };
 
     const latencyMs = performance.now() - startMs;
     const result: RAGResult = {
@@ -682,10 +791,33 @@ export async function retrieve(
             afterRerank: reranked.length,
             latencyMs,
         },
+        retrievalMetadata,
     };
 
     // Cache the result
     setSemanticCache(query, queryVector, result);
+
+    // Log query for analytics
+    try {
+        const supabase = getSupabase();
+        await supabase.rpc('log_kb_query', {
+            p_query_text: query,
+            p_query_embedding: queryVector,
+            p_results_count: reranked.length,
+            p_top_similarity: topScore,
+            p_answer_mode: answerMode,
+            p_latency_ms: Math.round(latencyMs),
+        });
+
+        // Record access for each returned match
+        for (const match of reranked.slice(0, 3)) {
+            try {
+                await supabase.rpc('record_knowledge_access', { p_id: match.id });
+            } catch { /* ignore individual access logging failures */ }
+        }
+    } catch (err) {
+        console.log('  ⚠️  Query logging failed (non-critical)');
+    }
 
     console.log(`  ✅ RAG result: mode=${answerMode} | confidence=${(calibratedConfidence * 100).toFixed(0)}% | top score=${topScore.toFixed(3)} | ${latencyMs.toFixed(0)}ms`);
     console.log(`     Stats: ${allCandidates.length} candidates → ${reranked.length} after rerank`);
