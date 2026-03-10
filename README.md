@@ -106,7 +106,7 @@ npm install
 1. Execute migrations `001` through `006` in Supabase.
 2. Create `.env.local` with your API keys (see `MIGRATION_GUIDE.md` for the full list).
 3. Seed the database: `npx tsx scripts/seed-supabase.ts`.
-
+4. Seed the PDFs: `npx tsx scripts/seed-pdfs.ts`.
 ---
 
 ## 📊 Performance

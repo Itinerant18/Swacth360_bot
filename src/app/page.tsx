@@ -8,12 +8,12 @@ import remarkGfm from 'remark-gfm';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
     faSignal, faRobot, faGear, faPaperPlane, faArrowRight,
-    faWandMagicSparkles, faBolt, faUser, faPhone, faEnvelope,
     faCopy, faCheck, faChevronDown, faSpinner, faDiagramProject,
-    faThumbsUp, faThumbsDown,
+    faThumbsUp, faThumbsDown, faSignOutAlt, faBolt,
 } from '@fortawesome/free-solid-svg-icons';
 import LanguageSelector from '../components/LanguageSelector';
 import DiagramCard from '../components/DiagramCard';
+import { getSession, signOut } from '@/lib/auth';
 
 // Lazy-load heavy markdown renderer
 const ReactMarkdown = dynamic(() => import('react-markdown'), {
@@ -104,23 +104,29 @@ export default function Chat() {
     // ─── User Registration State ──────────────────────────────
     const [userId, setUserId] = useState<string | null>(null);
     const [userName, setUserName] = useState('');
-    const [userPhone, setUserPhone] = useState('');
-    const [userEmail, setUserEmail] = useState('');
     const [showRegistration, setShowRegistration] = useState(true);
-    const [regLoading, setRegLoading] = useState(false);
-    const [regError, setRegError] = useState('');
 
     useEffect(() => {
-        if (typeof window !== 'undefined') {
-            const storedId = sessionStorage.getItem('dexterUserId');
-            const storedName = sessionStorage.getItem('dexterUserName');
-            if (storedId && storedName) {
-                setUserId(storedId);
-                setUserName(storedName);
+        getSession().then(session => {
+            if (session) {
+                setUserId(session.user.id);
+                // Extract local part of email before @ for display name
+                setUserName(session.user.email?.split('@')[0] || 'User');
                 setShowRegistration(false);
+            } else {
+                window.location.href = '/login';
             }
-        }
+        });
     }, []);
+
+    const handleSignOut = async () => {
+        await signOut();
+        const projectRef = process.env.NEXT_PUBLIC_SUPABASE_URL!
+            .replace('https://', '')
+            .split('.')[0];
+        document.cookie = `sb-${projectRef}-auth-token=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT;`;
+        window.location.href = '/login';
+    };
 
     // ─── Chat State ───────────────────────────────────────────
     const [language, setLanguage] = useState<'en' | 'bn' | 'hi'>('en');
@@ -239,39 +245,6 @@ export default function Chat() {
         }
     };
 
-    // Registration
-    const handleRegister = async (e: React.FormEvent) => {
-        e.preventDefault(); setRegError('');
-        if (!userName.trim() || !userPhone.trim() || !userEmail.trim()) {
-            setRegError('All fields are required.'); return;
-        }
-        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(userEmail.trim())) {
-            setRegError('Please enter a valid email.'); return;
-        }
-        if (!/\d{10,}/.test(userPhone.replace(/[\s\-\+\(\)]/g, ''))) {
-            setRegError('Please enter a valid phone number.'); return;
-        }
-        setRegLoading(true);
-        try {
-            const res = await fetch('/api/users', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name: userName.trim(), phone: userPhone.trim(), email: userEmail.trim() }),
-            });
-            const data = await res.json();
-            if (data.error) setRegError(data.error);
-            else {
-                setUserId(data.user.id);
-                sessionStorage.setItem('dexterUserId', data.user.id);
-                sessionStorage.setItem('dexterUserName', data.user.name);
-                setShowRegistration(false);
-            }
-        } catch {
-            setRegError('Network error. Please try again.');
-        }
-        setRegLoading(false);
-    };
-
     const handleSuggestionClick = (question: string) => {
         append({ role: 'user', content: question });
     };
@@ -285,54 +258,9 @@ export default function Chat() {
     if (showRegistration) {
         return (
             <div className="min-h-screen flex flex-col items-center justify-center p-4">
-                <div className="skeuo-card p-7 sm:p-10 max-w-md w-full animate-fade-up">
-                    <div className="text-center mb-6">
-                        <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl mx-auto flex items-center justify-center mb-4 skeuo-leather shadow-lg">
-                            <FontAwesomeIcon icon={faSignal} className="w-6 h-6 text-[#CA8A04]" />
-                        </div>
-                        <h2 className="text-xl sm:text-2xl font-bold text-[#1C1917] tracking-tight">Dexter AI Support</h2>
-                        <p className="text-sm text-[#78716C] mt-1.5">Register to get started with HMS support.</p>
-                    </div>
-                    <div className="border-t border-[#D6CFC4] mb-6" />
-                    <form onSubmit={handleRegister} className="space-y-4">
-                        <div>
-                            <label className="block text-xs font-semibold text-[#44403C] uppercase tracking-wider mb-1.5">Full Name</label>
-                            <div className="relative">
-                                <FontAwesomeIcon icon={faUser} className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#A8A29E]" />
-                                <input type="text" value={userName} onChange={(e) => setUserName(e.target.value)}
-                                    placeholder="e.g. Rahul Sharma" className="skeuo-input w-full p-3 sm:p-3.5 !pl-11 text-sm" autoFocus />
-                            </div>
-                        </div>
-                        <div>
-                            <label className="block text-xs font-semibold text-[#44403C] uppercase tracking-wider mb-1.5">Phone Number</label>
-                            <div className="relative">
-                                <FontAwesomeIcon icon={faPhone} className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#A8A29E]" />
-                                <input type="tel" value={userPhone} onChange={(e) => setUserPhone(e.target.value)}
-                                    placeholder="e.g. +91 98765 43210" className="skeuo-input w-full p-3 sm:p-3.5 !pl-11 text-sm" />
-                            </div>
-                        </div>
-                        <div>
-                            <label className="block text-xs font-semibold text-[#44403C] uppercase tracking-wider mb-1.5">Email Address</label>
-                            <div className="relative">
-                                <FontAwesomeIcon icon={faEnvelope} className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#A8A29E]" />
-                                <input type="email" value={userEmail} onChange={(e) => setUserEmail(e.target.value)}
-                                    placeholder="e.g. rahul@company.com" className="skeuo-input w-full p-3 sm:p-3.5 !pl-11 text-sm" />
-                            </div>
-                        </div>
-                        {regError && (
-                            <div className="flex items-center gap-2 text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-xs shadow-[inset_0_1px_2px_rgba(0,0,0,0.06)]">
-                                <FontAwesomeIcon icon={faEnvelope} className="w-3 h-3 flex-shrink-0" />
-                                <span>{regError}</span>
-                            </div>
-                        )}
-                        <button type="submit" disabled={regLoading}
-                            className="skeuo-brass w-full py-3 text-sm mt-2 flex items-center justify-center gap-2">
-                            {regLoading
-                                ? <><FontAwesomeIcon icon={faSpinner} className="w-3.5 h-3.5 animate-spin" /> Registering...</>
-                                : 'Start Chat →'}
-                        </button>
-                    </form>
-                    <p className="text-center text-[10px] text-[#A8A29E] mt-5">Your information is used only for support tracking.</p>
+                <div className="skeuo-card p-7 sm:p-10 max-w-md w-full animate-fade-up text-center">
+                    <FontAwesomeIcon icon={faSpinner} className="w-8 h-8 text-[#CA8A04] animate-spin mb-4" />
+                    <p className="text-[#78716C]">Loading session...</p>
                 </div>
             </div>
         );
@@ -361,6 +289,10 @@ export default function Chat() {
                             <FontAwesomeIcon icon={faGear} className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
                             <span className="hidden sm:inline">Admin</span>
                         </a>
+                        <button onClick={handleSignOut} className="skeuo-raised flex items-center gap-1.5 text-xs text-[#44403C] px-2.5 py-1.5 sm:px-3 sm:py-2 transition-all hover:bg-red-50 hover:text-red-700">
+                            <FontAwesomeIcon icon={faSignOutAlt} className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+                            <span className="hidden sm:inline">Sign Out</span>
+                        </button>
                     </div>
                 </div>
             </header>
