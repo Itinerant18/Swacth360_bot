@@ -47,6 +47,7 @@ import { ChatOpenAI } from '@langchain/openai';
 // New imports for enhanced RAG
 import { hybridSearch, selectSearchStrategy } from './hybrid-search';
 import { extractEntities, getGraphBoostedIds } from './knowledge-graph';
+import { mergeWithRaptorHits, raptorSearch } from './raptor-retrieval';
 
 // ─── Types ────────────────────────────────────────────────────
 export type QueryType = 'factual' | 'procedural' | 'diagnostic' | 'visual' | 'comparative' | 'unknown';
@@ -79,6 +80,8 @@ export interface RankedMatch {
     retrievalVector: 'query' | 'hyde' | 'expanded';
     mmrScore?: number;
     weightedScore?: number;
+    raptorLevel?: number;
+    childCount?: number;
 }
 
 export interface RAGResult {
@@ -550,11 +553,11 @@ async function multiVectorSearch(
 }
 
 // ─── Deduplicate and Merge ────────────────────────────────────
-function mergeAndDeduplicate(
+function mergeAndDeduplicateToMap(
     queryHits: RankedMatch[],
     hydeHits: RankedMatch[],
     expandedHits: RankedMatch[]
-): RankedMatch[] {
+): Map<string, RankedMatch> {
     const seen = new Map<string, RankedMatch>();
 
     const addHit = (hit: RankedMatch) => {
@@ -576,7 +579,15 @@ function mergeAndDeduplicate(
     hydeHits.forEach(addHit);
     expandedHits.forEach(addHit);
 
-    return [...seen.values()];
+    return seen;
+}
+
+function mergeAndDeduplicate(
+    queryHits: RankedMatch[],
+    hydeHits: RankedMatch[],
+    expandedHits: RankedMatch[]
+): RankedMatch[] {
+    return [...mergeAndDeduplicateToMap(queryHits, hydeHits, expandedHits).values()];
 }
 
 // ─── Contextual Compression ───────────────────────────────────
@@ -839,15 +850,20 @@ export async function retrieve(
     const supabase = getSupabase();
 
     // Step 4: Multi-vector retrieval
-    const { queryHits, hydeHits, expandedHits } = await multiVectorSearch(
-        queryVector, hydeVector, expandedVector, supabase,
-        { useMMR, useWeighted, mmrLambda, timeBoostDays }
-    );
+    const [{ queryHits, hydeHits, expandedHits }, raptorHits] = await Promise.all([
+        multiVectorSearch(
+            queryVector, hydeVector, expandedVector, supabase,
+            { useMMR, useWeighted, mmrLambda, timeBoostDays }
+        ),
+        raptorSearch(queryVector, queryAnalysis),
+    ]);
 
     console.log(`  Retrieval: query=${queryHits.length} hyde=${hydeHits.length} expanded=${expandedHits.length} [${useMMR ? 'MMR' : useWeighted ? 'Weighted' : 'Standard'}]`);
 
     // Step 5: Merge + deduplicate
-    const allCandidates = mergeAndDeduplicate(queryHits, hydeHits, expandedHits);
+    const candidateMap = mergeAndDeduplicateToMap(queryHits, hydeHits, expandedHits);
+    mergeWithRaptorHits(candidateMap, raptorHits);
+    const allCandidates = [...candidateMap.values()];
 
     // Step 6: Score each candidate with cross-encoder + BM25
     const scoredCandidates = allCandidates.map(candidate => {
