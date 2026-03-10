@@ -1,4 +1,4 @@
-# 🤖 Dexter Tech Support AI - Comprehensive Documentation
+# Dexter Tech Support AI - Comprehensive Documentation
 
 **Dexter Tech Support AI** is a professional-grade, **cloud-native AI assistant** specifically engineered for **SEPLe HMS/Dexter Industrial Control Panels**. It combines cutting-edge artificial intelligence with real-time IoT monitoring to provide instant, accurate, multilingual technical support to operators and technicians worldwide.
 
