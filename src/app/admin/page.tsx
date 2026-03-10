@@ -3,16 +3,18 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
-    faLock, faGear, faArrowLeft, faPenToSquare, faChartLine,
+    faGear, faPenToSquare, faChartLine,
     faCircleCheck, faRocket, faComment, faBook, faRobot,
     faCircleExclamation, faCubes, faFire, faClock, faUsers,
     faPhone, faEnvelope, faUpload, faFileAlt, faCloudUploadAlt,
     faCheckCircle, faTimesCircle, faMinusCircle, faSpinner,
     faTrash, faDatabase, faDiagramProject, faSliders, faStar, faBrain,
+    faSignOutAlt,
 } from '@fortawesome/free-solid-svg-icons';
 import GraphTab from '@/components/GraphTab';
 import RAGSettingsTab from '@/components/RAGSettingsTab';
 import FeedbackTab from '@/components/FeedbackTab';
+import { signOut } from '@/lib/auth';
 
 type UnknownQuestion = {
     id: string;
@@ -80,9 +82,6 @@ export default function AdminDashboard() {
     const [category, setCategory] = useState('');
     const [saving, setSaving] = useState(false);
     const [toast, setToast] = useState('');
-    const [isAuthenticated, setIsAuthenticated] = useState(false);
-    const [passwordInput, setPasswordInput] = useState('');
-    const [authError, setAuthError] = useState('');
 
     // ─── Ingest State ──────────────────────────────────────
     const [ingestMode, setIngestMode] = useState<'pdf' | 'text'>('pdf');
@@ -95,21 +94,9 @@ export default function AdminDashboard() {
     const [ingestError, setIngestError] = useState('');
     const fileInputRef = useRef<HTMLInputElement>(null);
 
-    useEffect(() => {
-        if (typeof window !== 'undefined' && sessionStorage.getItem('adminAuth') === 'true') {
-            setIsAuthenticated(true);
-        }
-    }, []);
-
-    const handleLogin = (e: React.FormEvent) => {
-        e.preventDefault();
-        const validPassword = process.env.NEXT_PUBLIC_ADMIN_PASSWORD || 'Swatch360@2026';
-        if (passwordInput === validPassword) {
-            setIsAuthenticated(true);
-            sessionStorage.setItem('adminAuth', 'true');
-        } else {
-            setAuthError('Incorrect password');
-        }
+    const handleSignOut = async () => {
+        await signOut();
+        window.location.href = '/login';
     };
 
     const fetchQuestions = useCallback(async () => {
@@ -269,42 +256,6 @@ export default function AdminDashboard() {
         if (fileInputRef.current) fileInputRef.current.value = '';
     };
 
-    // ─── Login Screen ──────────────────────────────────────
-    if (!isAuthenticated) {
-        return (
-            <div className="min-h-screen flex flex-col items-center justify-center p-4">
-                <div className="skeuo-card p-0 max-w-sm w-full animate-fade-up overflow-hidden">
-                    {/* Accent bar */}
-                    <div className="h-1 bg-gradient-to-r from-[#EAB308] via-[#CA8A04] to-[#0D9488]" />
-                    <div className="p-6 sm:p-8 space-y-5">
-                        <div className="text-center">
-                            <div className="w-14 h-14 rounded-2xl skeuo-leather mx-auto flex items-center justify-center mb-4">
-                                <FontAwesomeIcon icon={faLock} className="w-5 h-5 text-white" />
-                            </div>
-                            <h2 className="text-xl font-semibold text-[#1C1917] tracking-tight">Admin Access</h2>
-                            <p className="text-sm text-[#78716C] mt-1">Enter password to continue</p>
-                        </div>
-                        <form onSubmit={handleLogin} className="space-y-4">
-                            <div>
-                                <input
-                                    type="password" value={passwordInput}
-                                    onChange={(e) => { setPasswordInput(e.target.value); setAuthError(''); }}
-                                    placeholder="Enter password"
-                                    className="skeuo-input w-full p-3 text-sm"
-                                />
-                                {authError && <p className="text-red-600 text-xs mt-2 flex items-center gap-1.5"><FontAwesomeIcon icon={faCircleExclamation} className="w-3 h-3" />{authError}</p>}
-                            </div>
-                            <button type="submit" className="skeuo-brass w-full py-3 text-sm cursor-pointer">Login</button>
-                        </form>
-                        <a href="/" className="flex items-center justify-center gap-1.5 text-xs text-[#78716C] hover:text-[#CA8A04] transition-colors cursor-pointer">
-                            <FontAwesomeIcon icon={faArrowLeft} className="w-3 h-3" /> Back to Chat
-                        </a>
-                    </div>
-                </div>
-            </div>
-        );
-    }
-
     // ─── Dashboard ─────────────────────────────────────────
     return (
         <div className="min-h-screen">
@@ -329,10 +280,12 @@ export default function AdminDashboard() {
                             <p className="text-[10px] sm:text-[11px] text-[#78716C]">Dexter HMS Bot — Train & Monitor</p>
                         </div>
                     </div>
-                    <a href="/" className="skeuo-raised flex items-center gap-1.5 text-xs text-[#44403C] px-2.5 py-1.5 sm:px-3 sm:py-2">
-                        <FontAwesomeIcon icon={faArrowLeft} className="w-3 h-3" />
-                        <span className="hidden sm:inline">Back</span>
-                    </a>
+                    <div className="flex items-center gap-2">
+                        <button onClick={handleSignOut} className="skeuo-raised flex items-center gap-1.5 text-xs text-[#78716C] px-2.5 py-1.5 sm:px-3 sm:py-2 hover:text-red-600 transition-colors">
+                            <FontAwesomeIcon icon={faSignOutAlt} className="w-3 h-3" />
+                            <span className="hidden sm:inline">Sign Out</span>
+                        </button>
+                    </div>
                 </div>
             </header>
 

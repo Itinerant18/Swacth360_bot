@@ -3,457 +3,512 @@
 /**
  * src/app/login/page.tsx
  *
- * Login page — Magic link auth restricted to @seple.in emails.
- * Clean industrial aesthetic matching the Dexter HMS brand.
+ * Two-tab auth page: Sign In (email+password) and Register (name, phone, email, password).
+ * Domain-restricted to @seple.in. Admin email routed to /admin after sign-in.
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { sendMagicLink, isAllowedEmail, getSession } from '@/lib/auth';
+import { login, register, resendConfirmation, isAllowedEmail, getSession } from '@/lib/auth';
 
 const ERROR_MESSAGES: Record<string, string> = {
-    missing_code: 'Invalid login link. Please request a new one.',
-    auth_failed: 'Authentication failed. Please try again.',
-    unauthorized_domain: 'Access restricted to @seple.in email addresses only.',
+    missing_code:         'Invalid or expired confirmation link. Please request a new one.',
+    auth_failed:          'Authentication failed. Please try again.',
+    unauthorized_domain:  'Access restricted to @seple.in email addresses only.',
 };
 
-export default function LoginPage() {
+// ── Styles ───────────────────────────────────────────────────────────────────
+const CSS = `
+@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@600;700;800&display=swap');
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:        #0a0c0f;
+  --surface:   #111318;
+  --border:    #1e2128;
+  --border-hi: #2e3340;
+  --text:      #e8eaf0;
+  --muted:     #5a6070;
+  --accent:    #f97316;
+  --accent-lo: rgba(249,115,22,0.12);
+  --success:   #22d3a8;
+  --error:     #f43f5e;
+}
+
+html, body { height: 100%; background: var(--bg); }
+
+.page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'DM Mono', monospace;
+  background:
+    radial-gradient(ellipse 80% 50% at 20% -10%, rgba(249,115,22,0.06) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 40% at 80% 110%, rgba(34,211,168,0.04) 0%, transparent 60%),
+    var(--bg);
+  padding: 24px;
+}
+
+.page::before {
+  content: '';
+  position: fixed; inset: 0;
+  background-image:
+    linear-gradient(var(--border) 1px, transparent 1px),
+    linear-gradient(90deg, var(--border) 1px, transparent 1px);
+  background-size: 40px 40px;
+  opacity: 0.35;
+  pointer-events: none;
+}
+
+.card {
+  position: relative; z-index: 1;
+  width: 100%; max-width: 440px;
+  background: var(--surface);
+  border: 1px solid var(--border-hi);
+  border-radius: 2px;
+  padding: 36px 40px;
+  box-shadow: 0 0 0 1px rgba(255,255,255,0.03) inset, 0 32px 64px rgba(0,0,0,0.5);
+  animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.card::before {
+  content: '';
+  position: absolute; top: -1px; left: -1px;
+  width: 40px; height: 40px;
+  border-top: 2px solid var(--accent); border-left: 2px solid var(--accent);
+  border-radius: 2px 0 0 0;
+}
+.card::after {
+  content: '';
+  position: absolute; bottom: -1px; right: -1px;
+  width: 40px; height: 40px;
+  border-bottom: 2px solid var(--accent); border-right: 2px solid var(--accent);
+  border-radius: 0 0 2px 0;
+}
+
+.logo-row { display: flex; align-items: center; gap: 10px; margin-bottom: 28px; }
+.logo-icon {
+  width: 32px; height: 32px; background: var(--accent); border-radius: 2px;
+  display: flex; align-items: center; justify-content: center;
+  font-family: 'Syne', sans-serif; font-weight: 800; font-size: 14px; color: #fff;
+  letter-spacing: -0.5px; flex-shrink: 0;
+}
+.logo-text { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 16px; color: var(--text); letter-spacing: 0.05em; text-transform: uppercase; }
+.logo-sub { font-size: 10px; color: var(--muted); letter-spacing: 0.1em; text-transform: uppercase; margin-top: 1px; }
+.divider-v { width: 1px; height: 28px; background: var(--border-hi); margin: 0 4px; }
+
+/* Tabs */
+.tabs { display: flex; border-bottom: 1px solid var(--border-hi); margin-bottom: 24px; gap: 0; }
+.tab-btn {
+  flex: 1; padding: 10px 0;
+  font-family: 'Syne', sans-serif; font-size: 12px; font-weight: 700;
+  letter-spacing: 0.08em; text-transform: uppercase; cursor: pointer;
+  background: none; border: none; color: var(--muted);
+  border-bottom: 2px solid transparent; margin-bottom: -1px;
+  transition: color 0.15s, border-color 0.15s;
+}
+.tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+.tab-btn:hover:not(.active) { color: var(--text); }
+
+/* Fields */
+.field { margin-bottom: 14px; }
+.field-label {
+  display: block; font-size: 10px; font-weight: 500; color: var(--muted);
+  letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 6px;
+}
+input[type="text"], input[type="email"], input[type="password"], input[type="tel"] {
+  width: 100%; background: var(--bg); border: 1px solid var(--border-hi);
+  border-radius: 2px; padding: 11px 13px;
+  font-family: 'DM Mono', monospace; font-size: 13px; color: var(--text);
+  outline: none; transition: border-color 0.15s, box-shadow 0.15s;
+  caret-color: var(--accent);
+}
+input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-lo); }
+input::placeholder { color: var(--muted); }
+input.err { border-color: var(--error); box-shadow: 0 0 0 3px rgba(244,63,94,0.12); }
+
+.hint { font-size: 11px; color: var(--muted); margin-top: 5px; }
+.hint.warn { color: var(--error); }
+
+.row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+.btn {
+  width: 100%; background: var(--accent); color: #fff; border: none;
+  border-radius: 2px; padding: 13px;
+  font-family: 'Syne', sans-serif; font-weight: 700; font-size: 13px;
+  letter-spacing: 0.08em; text-transform: uppercase; cursor: pointer;
+  transition: background 0.15s, transform 0.1s, opacity 0.15s;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  margin-top: 6px;
+}
+.btn:hover:not(:disabled) { background: #ea6c10; }
+.btn:active:not(:disabled) { transform: scale(0.99); }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.spinner {
+  width: 14px; height: 14px; border: 2px solid rgba(255,255,255,0.3);
+  border-top-color: #fff; border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.msg {
+  border-radius: 2px; padding: 12px 14px;
+  font-size: 12px; line-height: 1.6; margin-top: 14px;
+  display: flex; gap: 10px; align-items: flex-start;
+}
+.msg.success { background: rgba(34,211,168,0.08); border: 1px solid rgba(34,211,168,0.25); color: var(--success); }
+.msg.error   { background: rgba(244,63,94,0.08);  border: 1px solid rgba(244,63,94,0.25);  color: var(--error); }
+.msg.info    { background: rgba(249,115,22,0.08);  border: 1px solid rgba(249,115,22,0.25);  color: var(--accent); }
+.msg-icon { flex-shrink: 0; font-size: 14px; }
+
+.footer-note {
+  margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--border);
+  font-size: 11px; color: var(--muted); text-align: center; line-height: 1.6;
+}
+.tag {
+  display: inline-block; background: rgba(249,115,22,0.1); color: var(--accent);
+  border: 1px solid rgba(249,115,22,0.2); border-radius: 2px;
+  padding: 1px 6px; font-size: 10px; font-weight: 500;
+  letter-spacing: 0.08em; text-transform: uppercase; vertical-align: middle;
+}
+`;
+
+// ── Inner component (uses useSearchParams, must be in Suspense) ───────────────
+function LoginContent() {
     const router = useRouter();
     const searchParams = useSearchParams();
 
-    const [email, setEmail] = useState('');
-    const [status, setStatus] = useState<'idle' | 'loading' | 'sent' | 'error'>('idle');
-    const [errorMsg, setErrorMsg] = useState('');
-    const [domainErr, setDomainErr] = useState(false);
+    const [tab, setTab] = useState<'signin' | 'register'>('signin');
 
-    // If already logged in, redirect to app
+    // Sign-in state
+    const [siEmail, setSiEmail]     = useState('');
+    const [siPass, setSiPass]       = useState('');
+    const [siStatus, setSiStatus]   = useState<'idle' | 'loading' | 'error'>('idle');
+    const [siError, setSiError]     = useState('');
+    const [needsConfirmation, setNeedsConfirmation] = useState(false);
+    const [resendStatus, setResendStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
+    const [resendMsg, setResendMsg] = useState('');
+
+    // Register state
+    const [rName, setRName]         = useState('');
+    const [rPhone, setRPhone]       = useState('');
+    const [rEmail, setREmail]       = useState('');
+    const [rPass, setRPass]         = useState('');
+    const [rPass2, setRPass2]       = useState('');
+    const [rDomainErr, setRDomainErr] = useState(false);
+    const [rStatus, setRStatus]     = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+    const [rError, setRError]       = useState('');
+
+    // Global message (from URL params)
+    const [globalMsg, setGlobalMsg] = useState<{ type: 'error' | 'info'; text: string } | null>(null);
+
+    // Redirect if already logged in
     useEffect(() => {
         getSession().then(session => {
-            if (session) router.replace('/');
+            if (session) {
+                const email = session.user.email ?? '';
+                router.replace(email.toLowerCase() === 'aniket.karmakar@seple.in' ? '/admin' : '/');
+            }
         });
     }, [router]);
 
-    // Show error from auth callback redirect
+    // Handle URL error/confirmation params
     useEffect(() => {
         const err = searchParams.get('error');
+        const confirmed = searchParams.get('confirmed');
         if (err && ERROR_MESSAGES[err]) {
-            setStatus('error');
-            setErrorMsg(ERROR_MESSAGES[err]);
+            setGlobalMsg({ type: 'error', text: ERROR_MESSAGES[err] });
+        } else if (confirmed === '1') {
+            setGlobalMsg({ type: 'info', text: '✓ Email confirmed! Sign in below with your password.' });
+            setTab('signin');
         }
     }, [searchParams]);
 
-    function handleEmailChange(e: React.ChangeEvent<HTMLInputElement>) {
-        const val = e.target.value;
-        setEmail(val);
-        // Live domain hint
-        if (val.includes('@') && !isAllowedEmail(val) && val.length > 6) {
-            setDomainErr(true);
+    // ── Sign In submit ────────────────────────────────────────────────────────
+    async function handleSignIn(e: React.FormEvent) {
+        e.preventDefault();
+        if (!siEmail || !siPass) return;
+        setSiStatus('loading');
+        setSiError('');
+        setNeedsConfirmation(false);
+        setResendStatus('idle');
+        setResendMsg('');
+        const { error, needsConfirmation: nc, redirectTo } = await login(siEmail, siPass);
+        if (error) {
+            setSiStatus('error');
+            setSiError(error);
+            setNeedsConfirmation(nc ?? false);
         } else {
-            setDomainErr(false);
+            router.push(redirectTo ?? '/');
         }
-        if (status === 'error') { setStatus('idle'); setErrorMsg(''); }
     }
 
-    async function handleSubmit(e: React.FormEvent) {
-        e.preventDefault();
-        if (!email.trim()) return;
-
-        setStatus('loading');
-        setErrorMsg('');
-
-        const { error } = await sendMagicLink(email);
+    // ── Resend confirmation email ─────────────────────────────────────────────
+    async function handleResend() {
+        if (!siEmail || resendStatus === 'sending' || resendStatus === 'sent') return;
+        setResendStatus('sending');
+        const { error } = await resendConfirmation(siEmail);
         if (error) {
-            setStatus('error');
-            setErrorMsg(error);
+            setResendStatus('error');
+            setResendMsg(error);
         } else {
-            setStatus('sent');
+            setResendStatus('sent');
+            setResendMsg(`Confirmation email sent to ${siEmail}. Check your inbox.`);
         }
+    }
+
+    // ── Register submit ───────────────────────────────────────────────────────
+    async function handleRegister(e: React.FormEvent) {
+        e.preventDefault();
+        if (rPass !== rPass2) { setRError('Passwords do not match.'); setRStatus('error'); return; }
+        setRStatus('loading');
+        setRError('');
+        const { error } = await register(rEmail, rPass, rName, rPhone);
+        if (error) {
+            setRStatus('error');
+            setRError(error);
+        } else {
+            setRStatus('success');
+        }
+    }
+
+    function handleRegEmailChange(val: string) {
+        setREmail(val);
+        setRDomainErr(val.includes('@') && val.length > 6 && !isAllowedEmail(val));
+        if (rStatus === 'error') { setRStatus('idle'); setRError(''); }
     }
 
     return (
-        <>
-            <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@600;700;800&display=swap');
-
-        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-        :root {
-          --bg:        #0a0c0f;
-          --surface:   #111318;
-          --border:    #1e2128;
-          --border-hi: #2e3340;
-          --text:      #e8eaf0;
-          --muted:     #5a6070;
-          --accent:    #f97316;
-          --accent-lo: rgba(249,115,22,0.12);
-          --success:   #22d3a8;
-          --error:     #f43f5e;
-        }
-
-        html, body { height: 100%; background: var(--bg); }
-
-        .page {
-          min-height: 100vh;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-family: 'DM Mono', monospace;
-          background:
-            radial-gradient(ellipse 80% 50% at 20% -10%, rgba(249,115,22,0.06) 0%, transparent 60%),
-            radial-gradient(ellipse 60% 40% at 80% 110%, rgba(34,211,168,0.04) 0%, transparent 60%),
-            var(--bg);
-          padding: 24px;
-        }
-
-        /* Grid texture */
-        .page::before {
-          content: '';
-          position: fixed;
-          inset: 0;
-          background-image:
-            linear-gradient(var(--border) 1px, transparent 1px),
-            linear-gradient(90deg, var(--border) 1px, transparent 1px);
-          background-size: 40px 40px;
-          opacity: 0.35;
-          pointer-events: none;
-        }
-
-        .card {
-          position: relative;
-          z-index: 1;
-          width: 100%;
-          max-width: 420px;
-          background: var(--surface);
-          border: 1px solid var(--border-hi);
-          border-radius: 2px;
-          padding: 40px;
-          box-shadow:
-            0 0 0 1px rgba(255,255,255,0.03) inset,
-            0 32px 64px rgba(0,0,0,0.5);
-          animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
-        }
-
-        @keyframes slideUp {
-          from { opacity: 0; transform: translateY(20px); }
-          to   { opacity: 1; transform: translateY(0); }
-        }
-
-        /* Corner accent */
-        .card::before {
-          content: '';
-          position: absolute;
-          top: -1px; left: -1px;
-          width: 40px; height: 40px;
-          border-top: 2px solid var(--accent);
-          border-left: 2px solid var(--accent);
-          border-radius: 2px 0 0 0;
-        }
-        .card::after {
-          content: '';
-          position: absolute;
-          bottom: -1px; right: -1px;
-          width: 40px; height: 40px;
-          border-bottom: 2px solid var(--accent);
-          border-right: 2px solid var(--accent);
-          border-radius: 0 0 2px 0;
-        }
-
-        .logo-row {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          margin-bottom: 32px;
-        }
-
-        .logo-icon {
-          width: 32px; height: 32px;
-          background: var(--accent);
-          border-radius: 2px;
-          display: flex; align-items: center; justify-content: center;
-          font-family: 'Syne', sans-serif;
-          font-weight: 800;
-          font-size: 14px;
-          color: #fff;
-          letter-spacing: -0.5px;
-          flex-shrink: 0;
-        }
-
-        .logo-text {
-          font-family: 'Syne', sans-serif;
-          font-weight: 700;
-          font-size: 16px;
-          color: var(--text);
-          letter-spacing: 0.05em;
-          text-transform: uppercase;
-        }
-
-        .logo-sub {
-          font-size: 10px;
-          color: var(--muted);
-          letter-spacing: 0.1em;
-          text-transform: uppercase;
-          margin-top: 1px;
-        }
-
-        .divider {
-          width: 1px;
-          height: 28px;
-          background: var(--border-hi);
-          margin: 0 4px;
-        }
-
-        h1 {
-          font-family: 'Syne', sans-serif;
-          font-weight: 800;
-          font-size: 22px;
-          color: var(--text);
-          letter-spacing: -0.02em;
-          line-height: 1.2;
-          margin-bottom: 6px;
-        }
-
-        .subtitle {
-          font-size: 12px;
-          color: var(--muted);
-          letter-spacing: 0.02em;
-          margin-bottom: 28px;
-          line-height: 1.5;
-        }
-
-        .field-label {
-          display: block;
-          font-size: 10px;
-          font-weight: 500;
-          color: var(--muted);
-          letter-spacing: 0.12em;
-          text-transform: uppercase;
-          margin-bottom: 8px;
-        }
-
-        .input-wrap {
-          position: relative;
-          margin-bottom: 6px;
-        }
-
-        input[type="email"] {
-          width: 100%;
-          background: var(--bg);
-          border: 1px solid var(--border-hi);
-          border-radius: 2px;
-          padding: 12px 14px;
-          font-family: 'DM Mono', monospace;
-          font-size: 13px;
-          color: var(--text);
-          outline: none;
-          transition: border-color 0.15s, box-shadow 0.15s;
-          caret-color: var(--accent);
-        }
-
-        input[type="email"]:focus {
-          border-color: var(--accent);
-          box-shadow: 0 0 0 3px var(--accent-lo);
-        }
-
-        input[type="email"]::placeholder { color: var(--muted); }
-
-        input[type="email"].error-input {
-          border-color: var(--error);
-          box-shadow: 0 0 0 3px rgba(244,63,94,0.12);
-        }
-
-        .domain-hint {
-          font-size: 11px;
-          color: var(--muted);
-          margin-bottom: 20px;
-          margin-top: 6px;
-        }
-        .domain-hint.warn { color: var(--error); }
-
-        .btn {
-          width: 100%;
-          background: var(--accent);
-          color: #fff;
-          border: none;
-          border-radius: 2px;
-          padding: 13px;
-          font-family: 'Syne', sans-serif;
-          font-weight: 700;
-          font-size: 13px;
-          letter-spacing: 0.08em;
-          text-transform: uppercase;
-          cursor: pointer;
-          transition: background 0.15s, transform 0.1s, opacity 0.15s;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 8px;
-        }
-
-        .btn:hover:not(:disabled) { background: #ea6c10; }
-        .btn:active:not(:disabled) { transform: scale(0.99); }
-        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
-
-        .spinner {
-          width: 14px; height: 14px;
-          border: 2px solid rgba(255,255,255,0.3);
-          border-top-color: #fff;
-          border-radius: 50%;
-          animation: spin 0.7s linear infinite;
-        }
-        @keyframes spin { to { transform: rotate(360deg); } }
-
-        .message-box {
-          border-radius: 2px;
-          padding: 14px;
-          font-size: 12px;
-          line-height: 1.6;
-          margin-top: 16px;
-          display: flex;
-          gap: 10px;
-          align-items: flex-start;
-        }
-
-        .message-box.success {
-          background: rgba(34,211,168,0.08);
-          border: 1px solid rgba(34,211,168,0.25);
-          color: var(--success);
-        }
-
-        .message-box.error {
-          background: rgba(244,63,94,0.08);
-          border: 1px solid rgba(244,63,94,0.25);
-          color: var(--error);
-        }
-
-        .msg-icon { flex-shrink: 0; font-size: 14px; margin-top: 1px; }
-
-        .footer-note {
-          margin-top: 24px;
-          padding-top: 20px;
-          border-top: 1px solid var(--border);
-          font-size: 11px;
-          color: var(--muted);
-          text-align: center;
-          line-height: 1.6;
-        }
-
-        .tag {
-          display: inline-block;
-          background: rgba(249,115,22,0.1);
-          color: var(--accent);
-          border: 1px solid rgba(249,115,22,0.2);
-          border-radius: 2px;
-          padding: 1px 6px;
-          font-size: 10px;
-          font-weight: 500;
-          letter-spacing: 0.08em;
-          text-transform: uppercase;
-          vertical-align: middle;
-          margin-left: 4px;
-        }
-      `}</style>
-
-            <div className="page">
-                <div className="card">
-                    {/* Logo */}
-                    <div className="logo-row">
-                        <div className="logo-icon">DX</div>
-                        <div className="divider" />
-                        <div>
-                            <div className="logo-text">Dexter HMS</div>
-                            <div className="logo-sub">Industrial Support Bot</div>
-                        </div>
+        <div className="page">
+            <div className="card">
+                {/* Logo */}
+                <div className="logo-row">
+                    <div className="logo-icon">DX</div>
+                    <div className="divider-v" />
+                    <div>
+                        <div className="logo-text">Dexter HMS</div>
+                        <div className="logo-sub">Industrial Support Bot</div>
                     </div>
+                </div>
 
-                    {status === 'sent' ? (
-                        /* ── Sent state ───────────────────────────────────────── */
-                        <>
-                            <h1>Check your inbox</h1>
-                            <p className="subtitle">
-                                We sent a login link to<br />
-                                <strong style={{ color: 'var(--text)' }}>{email}</strong>
-                            </p>
-                            <div className="message-box success">
+                {/* Global message (confirmed / error from URL) */}
+                {globalMsg && (
+                    <div className={`msg ${globalMsg.type}`} style={{ marginBottom: 16 }}>
+                        <span className="msg-icon">{globalMsg.type === 'info' ? '✓' : '✕'}</span>
+                        <span>{globalMsg.text}</span>
+                    </div>
+                )}
+
+                {/* Tabs */}
+                <div className="tabs">
+                    <button className={`tab-btn ${tab === 'signin' ? 'active' : ''}`} onClick={() => setTab('signin')}>Sign In</button>
+                    <button className={`tab-btn ${tab === 'register' ? 'active' : ''}`} onClick={() => setTab('register')}>Register</button>
+                </div>
+
+                {/* ── Sign In Tab ────────────────────────────────────────────── */}
+                {tab === 'signin' && (
+                    <>
+                        {rStatus === 'success' && (
+                            <div className="msg info" style={{ marginBottom: 16 }}>
                                 <span className="msg-icon">✓</span>
-                                <span>
-                                    Click the link in the email to sign in.
-                                    The link expires in 1 hour. Check your spam folder if you don't see it.
-                                </span>
+                                <span>Registration successful! Check your email to confirm your account, then sign in here.</span>
                             </div>
-                            <div className="footer-note">
-                                Wrong email?{' '}
-                                <button
-                                    onClick={() => { setStatus('idle'); setEmail(''); }}
-                                    style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontFamily: 'inherit', fontSize: 'inherit' }}
-                                >
-                                    Try again
-                                </button>
+                        )}
+                        <form onSubmit={handleSignIn}>
+                            <div className="field">
+                                <label className="field-label" htmlFor="si-email">Work Email</label>
+                                <input
+                                    id="si-email" type="email" placeholder="yourname@seple.in"
+                                    value={siEmail}
+                                    onChange={e => {
+                                        setSiEmail(e.target.value);
+                                        if (siStatus === 'error') {
+                                            setSiStatus('idle');
+                                            setSiError('');
+                                            setNeedsConfirmation(false);
+                                            setResendStatus('idle');
+                                        }
+                                    }}
+                                    disabled={siStatus === 'loading'}
+                                    autoComplete="email" autoFocus required
+                                />
                             </div>
-                        </>
-                    ) : (
-                        /* ── Login form ───────────────────────────────────────── */
-                        <>
-                            <h1>Sign in</h1>
-                            <p className="subtitle">
-                                Access restricted to SEPLe employees.
-                                We'll email you a one-time login link.
-                            </p>
+                            <div className="field">
+                                <label className="field-label" htmlFor="si-pass">Password</label>
+                                <input
+                                    id="si-pass" type="password" placeholder="••••••••"
+                                    value={siPass} onChange={e => setSiPass(e.target.value)}
+                                    disabled={siStatus === 'loading'}
+                                    autoComplete="current-password" required
+                                />
+                            </div>
 
-                            <form onSubmit={handleSubmit}>
-                                <label className="field-label" htmlFor="email">
-                                    Work Email
-                                </label>
-
-                                <div className="input-wrap">
-                                    <input
-                                        id="email"
-                                        type="email"
-                                        placeholder="yourname@seple.in"
-                                        value={email}
-                                        onChange={handleEmailChange}
-                                        className={domainErr ? 'error-input' : ''}
-                                        autoComplete="email"
-                                        autoFocus
-                                        disabled={status === 'loading'}
-                                        required
-                                    />
+                            {/* Standard error (wrong password, no account, etc.) */}
+                            {siStatus === 'error' && !needsConfirmation && (
+                                <div className="msg error">
+                                    <span className="msg-icon">✕</span>
+                                    <span>{siError}</span>
                                 </div>
+                            )}
 
-                                <div className={`domain-hint ${domainErr ? 'warn' : ''}`}>
-                                    {domainErr
-                                        ? '⚠ Only @seple.in addresses are permitted'
-                                        : 'Only @seple.in addresses are permitted'
-                                    }
-                                </div>
-
-                                {status === 'error' && (
-                                    <div className="message-box error" style={{ marginBottom: 16, marginTop: 0 }}>
+                            {/* Email not confirmed — show resend option */}
+                            {siStatus === 'error' && needsConfirmation && (
+                                <div className="msg error" style={{ flexDirection: 'column', gap: 10 }}>
+                                    <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
                                         <span className="msg-icon">✕</span>
-                                        <span>{errorMsg}</span>
+                                        <span>{siError}</span>
+                                    </div>
+                                    {resendStatus === 'sent' ? (
+                                        <div style={{ fontSize: 11, color: 'var(--success)', paddingLeft: 24 }}>
+                                            ✓ {resendMsg}
+                                        </div>
+                                    ) : (
+                                        <button
+                                            type="button"
+                                            onClick={handleResend}
+                                            disabled={resendStatus === 'sending'}
+                                            style={{
+                                                background: 'transparent',
+                                                border: '1px solid var(--error)',
+                                                borderRadius: 2,
+                                                color: 'var(--error)',
+                                                fontSize: 11,
+                                                fontFamily: 'inherit',
+                                                letterSpacing: '0.08em',
+                                                textTransform: 'uppercase',
+                                                cursor: resendStatus === 'sending' ? 'not-allowed' : 'pointer',
+                                                padding: '6px 12px',
+                                                marginLeft: 24,
+                                                opacity: resendStatus === 'sending' ? 0.6 : 1,
+                                            }}
+                                        >
+                                            {resendStatus === 'sending' ? 'Sending…' : 'Resend confirmation email'}
+                                        </button>
+                                    )}
+                                    {resendStatus === 'error' && (
+                                        <div style={{ fontSize: 11, color: 'var(--error)', paddingLeft: 24 }}>
+                                            {resendMsg}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            <button type="submit" className="btn" disabled={siStatus === 'loading' || !siEmail || !siPass}>
+                                {siStatus === 'loading' ? <><div className="spinner" /> Signing in…</> : 'Sign In'}
+                            </button>
+                        </form>
+                        <div className="footer-note">
+                            No account yet?{' '}
+                            <span style={{ color: 'var(--accent)', cursor: 'pointer' }} onClick={() => setTab('register')}>Register here</span>
+                            <br />Access restricted to <span className="tag">@seple.in</span>
+                        </div>
+                    </>
+                )}
+
+                {/* ── Register Tab ──────────────────────────────────────────── */}
+                {tab === 'register' && (
+                    <>
+                        {rStatus === 'success' ? (
+                            <>
+                                <div className="msg success">
+                                    <span className="msg-icon">✓</span>
+                                    <span>
+                                        Account created! We sent a confirmation link to <strong>{rEmail}</strong>.
+                                        Click the link, then come back to Sign In.
+                                    </span>
+                                </div>
+                                <div className="footer-note">
+                                    <span style={{ color: 'var(--accent)', cursor: 'pointer' }} onClick={() => setTab('signin')}>← Back to Sign In</span>
+                                </div>
+                            </>
+                        ) : (
+                            <form onSubmit={handleRegister}>
+                                <div className="row-2">
+                                    <div className="field">
+                                        <label className="field-label" htmlFor="r-name">Full Name</label>
+                                        <input id="r-name" type="text" placeholder="Aniket Karmakar"
+                                            value={rName} onChange={e => setRName(e.target.value)}
+                                            disabled={rStatus === 'loading'} autoComplete="name" required />
+                                    </div>
+                                    <div className="field">
+                                        <label className="field-label" htmlFor="r-phone">Phone</label>
+                                        <input id="r-phone" type="tel" placeholder="+91 98765 43210"
+                                            value={rPhone} onChange={e => setRPhone(e.target.value)}
+                                            disabled={rStatus === 'loading'} autoComplete="tel" />
+                                    </div>
+                                </div>
+                                <div className="field">
+                                    <label className="field-label" htmlFor="r-email">Work Email</label>
+                                    <input id="r-email" type="email" placeholder="yourname@seple.in"
+                                        value={rEmail} onChange={e => handleRegEmailChange(e.target.value)}
+                                        className={rDomainErr ? 'err' : ''}
+                                        disabled={rStatus === 'loading'} autoComplete="email" required />
+                                    <div className={`hint ${rDomainErr ? 'warn' : ''}`}>
+                                        {rDomainErr ? '⚠ Only @seple.in addresses are permitted' : 'Only @seple.in addresses are permitted'}
+                                    </div>
+                                </div>
+                                <div className="row-2">
+                                    <div className="field">
+                                        <label className="field-label" htmlFor="r-pass">Password</label>
+                                        <input id="r-pass" type="password" placeholder="min 8 chars"
+                                            value={rPass} onChange={e => setRPass(e.target.value)}
+                                            disabled={rStatus === 'loading'} autoComplete="new-password" required />
+                                    </div>
+                                    <div className="field">
+                                        <label className="field-label" htmlFor="r-pass2">Confirm</label>
+                                        <input id="r-pass2" type="password" placeholder="repeat"
+                                            value={rPass2} onChange={e => setRPass2(e.target.value)}
+                                            className={rPass2 && rPass !== rPass2 ? 'err' : ''}
+                                            disabled={rStatus === 'loading'} autoComplete="new-password" required />
+                                        {rPass2 && rPass !== rPass2 && (
+                                            <div className="hint warn">Passwords don&apos;t match</div>
+                                        )}
+                                    </div>
+                                </div>
+                                {rStatus === 'error' && (
+                                    <div className="msg error">
+                                        <span className="msg-icon">✕</span>
+                                        <span>{rError}</span>
                                     </div>
                                 )}
-
                                 <button
-                                    type="submit"
-                                    className="btn"
-                                    disabled={status === 'loading' || !email.trim() || domainErr}
+                                    type="submit" className="btn"
+                                    disabled={rStatus === 'loading' || rDomainErr || !rName || !rEmail || !rPass || !rPass2 || rPass !== rPass2}
                                 >
-                                    {status === 'loading' ? (
-                                        <><div className="spinner" /> Sending link…</>
-                                    ) : (
-                                        'Send Login Link'
-                                    )}
+                                    {rStatus === 'loading' ? <><div className="spinner" /> Creating account…</> : 'Create Account'}
                                 </button>
+                                <div className="footer-note">
+                                    Already have an account?{' '}
+                                    <span style={{ color: 'var(--accent)', cursor: 'pointer' }} onClick={() => setTab('signin')}>Sign in here</span>
+                                </div>
                             </form>
-
-                            <div className="footer-note">
-                                Passwordless login <span className="tag">Magic Link</span><br />
-                                No password needed — just click the email link.
-                            </div>
-                        </>
-                    )}
-                </div>
+                        )}
+                    </>
+                )}
             </div>
+        </div>
+    );
+}
+
+// ── Page wrapper with Suspense ────────────────────────────────────────────────
+export default function LoginPage() {
+    return (
+        <>
+            <style>{CSS}</style>
+            <Suspense fallback={
+                <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#0a0c0f' }}>
+                    <div style={{ color: '#5a6070', fontFamily: 'monospace', fontSize: 13 }}>Loading…</div>
+                </div>
+            }>
+                <LoginContent />
+            </Suspense>
         </>
     );
 }

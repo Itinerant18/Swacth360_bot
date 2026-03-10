@@ -13,7 +13,7 @@ import {
 } from '@fortawesome/free-solid-svg-icons';
 import LanguageSelector from '../components/LanguageSelector';
 import DiagramCard from '../components/DiagramCard';
-import { getSession, signOut } from '@/lib/auth';
+import { getSession, signOut, isAdminEmail } from '@/lib/auth';
 
 // Lazy-load heavy markdown renderer
 const ReactMarkdown = dynamic(() => import('react-markdown'), {
@@ -101,18 +101,21 @@ const TEXT_MAP = {
 };
 
 export default function Chat() {
-    // ─── User Registration State ──────────────────────────────
+    // ─── Auth State ───────────────────────────────────────────
     const [userId, setUserId] = useState<string | null>(null);
     const [userName, setUserName] = useState('');
-    const [showRegistration, setShowRegistration] = useState(true);
 
     useEffect(() => {
         getSession().then(session => {
             if (session) {
+                const email = session.user.email ?? '';
+                // Admin gets routed to /admin directly
+                if (isAdminEmail(email)) {
+                    window.location.href = '/admin';
+                    return;
+                }
                 setUserId(session.user.id);
-                // Extract local part of email before @ for display name
-                setUserName(session.user.email?.split('@')[0] || 'User');
-                setShowRegistration(false);
+                setUserName(session.user.user_metadata?.full_name || email.split('@')[0] || 'User');
             } else {
                 window.location.href = '/login';
             }
@@ -121,10 +124,6 @@ export default function Chat() {
 
     const handleSignOut = async () => {
         await signOut();
-        const projectRef = process.env.NEXT_PUBLIC_SUPABASE_URL!
-            .replace('https://', '')
-            .split('.')[0];
-        document.cookie = `sb-${projectRef}-auth-token=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT;`;
         window.location.href = '/login';
     };
 
@@ -213,8 +212,8 @@ export default function Chat() {
 
     // Focus input
     useEffect(() => {
-        if (!isLoading && !showRegistration) inputRef.current?.focus();
-    }, [isLoading, showRegistration]);
+        if (!isLoading && userId) inputRef.current?.focus();
+    }, [isLoading, userId]);
 
     // Scroll-to-bottom button visibility
     const handleScroll = useCallback(() => {
@@ -254,8 +253,8 @@ export default function Chat() {
         return suggestedQuestions.length >= 4 ? suggestedQuestions.slice(0, 4) : getCuratedSuggestions();
     }, [suggestedQuestions]);
 
-    // ─── Registration Modal ───────────────────────────────────
-    if (showRegistration) {
+    // ─── Loading state (waiting for session check) ────────────
+    if (!userId) {
         return (
             <div className="min-h-screen flex flex-col items-center justify-center p-4">
                 <div className="skeuo-card p-7 sm:p-10 max-w-md w-full animate-fade-up text-center">
@@ -285,10 +284,6 @@ export default function Chat() {
                     </div>
                     <div className="flex items-center gap-2 sm:gap-3">
                         <LanguageSelector language={language as "en" | "bn" | "hi"} setLanguage={setLanguage as any} />
-                        <a href="/admin" className="skeuo-raised flex items-center gap-1.5 text-xs text-[#44403C] px-2.5 py-1.5 sm:px-3 sm:py-2 transition-all">
-                            <FontAwesomeIcon icon={faGear} className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
-                            <span className="hidden sm:inline">Admin</span>
-                        </a>
                         <button onClick={handleSignOut} className="skeuo-raised flex items-center gap-1.5 text-xs text-[#44403C] px-2.5 py-1.5 sm:px-3 sm:py-2 transition-all hover:bg-red-50 hover:text-red-700">
                             <FontAwesomeIcon icon={faSignOutAlt} className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
                             <span className="hidden sm:inline">Sign Out</span>
