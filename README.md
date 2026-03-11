@@ -157,8 +157,8 @@ tech-support-ai/                              # Root folder
 │   │   ├── 📄 query-expansion.ts            # Make queries smarter
 │   │   ├── 📄 pdf-extract.ts                # Extract text from PDFs
 │   │   ├── 📄 auth.ts                       # User authentication utilities
-│   │   ├── 📄 thingsboard.ts               # Connect to IoT devices
-│   │   └── 📄 utils.ts                      # Misc utilities
+│   │   ├── 📄 util.ts                       # Misc utilities
+│   │ 
 │   │
 │   └── 📂 components/                       # React UI components
 │       ├── 📄 ChatInterface.tsx             # Main chat UI
@@ -359,7 +359,6 @@ Lucide React       ← Additional icons
 Node.js (runtime) → TypeScript (type-safe code)
   ↓
 LangChain 1.2      ← Chain AI calls together
-Vercel AI SDK 4    ← Stream responses efficiently
 ```
 
 ### **AI Models (The Intelligence)**
@@ -404,25 +403,25 @@ npm                     ← Package manager
 ### **Complete Data Flow Diagram**
 
 ```
-┌─────────────────────────────────────────────────────────────┐
+┌──────────────────────────────────────────────────────────────┐
 │                     USER (Frontend)                          │
 │                   http://localhost:3000                      │
 │                   (Chat Interface)                           │
-└────────────────────────┬────────────────────────────────────┘
+└────────────────────────┬─────────────────────────────────────┘
                          │
                     POST /api/chat
                     {question, language}
                          │
                          ▼
 ┌─────────────────────────────────────────────────────────────┐
-│              Next.js API Route Handler                       │
+│              Next.js API Route Handler                      │
 │            (app/api/chat/route.ts)                          │
 │                                                             │
 │  Responsibilities:                                          │
 │  • Validate request                                         │
-│  • Orchestrate the pipeline                                │
-│  • Stream response                                         │
-└─────────┬──────────────────────────────────────────────────┘
+│  • Orchestrate the pipeline                                 │
+│  • Stream response                                          │
+└─────────┬───────────────────────────────────────────────────┘
           │
           ├─→ [1. TRANSLATE]
           │     Sarvam AI: Bengali/Hindi → English
@@ -436,7 +435,7 @@ npm                     ← Package manager
           ├─→ [3. RETRIEVE]
           │     ├─ If IoT:
           │     │   └─ Fetch from ThingsBoard API
-          │     │       (Real device status)
+          │     │       (Real device status, this feature are currently not needed)
           │     │
           │     └─ If Knowledge:
           │         ├─ Create embedding (OpenAI)
@@ -466,7 +465,7 @@ npm                     ← Package manager
           │     • Language: User's original language
           │
           └─→ [6. STREAM]
-                Vercel AI SDK:
+                AI SDK:
                 Stream response word-by-word
                 to UI in real-time
                 
@@ -485,7 +484,7 @@ npm                     ← Package manager
                          │
                          ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                  Frontend (React)                            │
+│                  Frontend (React)                           │
 │            Displays response in chat window                 │
 │            Renders Markdown (tables, bold, code)            │
 │            Shows loading indicator while streaming          │
@@ -758,12 +757,6 @@ GEMINI_API_KEY=AIzaSyBbDibYRVRMsNsx0...
 RESEND_API_KEY=re_BuqZCaaR_N4URiMf...
 
 # ============================================================
-# IOT INTEGRATION (ThingsBoard)
-# ============================================================
-THINGSBOARD_URL=https://iot.seple.in
-THINGSBOARD_TOKEN=your-thingsboard-token
-
-# ============================================================
 # ADMIN DASHBOARD
 # ============================================================
 # Password to access /admin dashboard
@@ -806,12 +799,6 @@ NODE_ENV=development
 1. Visit [makersuite.google.com](https://makersuite.google.com)
 2. Create API key
 3. Enable Generative AI API
-
-#### **ThingsBoard Token**
-1. Contact your IoT admin
-2. Get device token
-3. Add to `.env.local`
-
 ---
 
 ## 🗄️ Database Schema
@@ -1312,7 +1299,6 @@ const get_user_data = (userId: any) => {
 ### **What's Implemented**
 - ✅ Multilingual RAG (English, Bengali, Hindi)
 - ✅ Semantic vector search (1536-dim embeddings)
-- ✅ Real-time IoT integration (ThingsBoard)
 - ✅ PDF knowledge base training
 - ✅ Admin dashboard (Review/Analytics/Train/Ingest)
 - ✅ Diagram generation (ASCII + Markdown)
@@ -1333,9 +1319,8 @@ const get_user_data = (userId: any) => {
 1. **TypeScript Linting:** 45+ `any` type violations (code works, but type safety needs improvement)
 2. **Knowledge Base Scale:** Current max ~100K entries; Pinecone needed for larger scale
 3. **Streaming Timeout:** Netlify free tier: 10s timeout (Pro: 26s)
-4. **ThingsBoard Cache:** 5-10 min delay (shows "stale" device data)
-5. **PDF Parsing:** Struggles with scanned PDFs & multi-column layouts
-6. **LLM Hallucination:** Mitigated by confidence thresholds & warnings
+4. **PDF Parsing:** Struggles with scanned PDFs & multi-column layouts
+5. **LLM Hallucination:** Mitigated by confidence thresholds & warnings
 
 ### **Performance Metrics**
 - **Chat Response Time:** 2-5 seconds (typical)
@@ -1597,3 +1582,4 @@ This documentation covers everything you need to understand, set up, and extend 
 - **📊 Data Scientist:** Check "Database Schema" and "Performance Metrics"
 
 **Questions?** Open a GitHub issue or email support. Happy coding! 🚀
+
