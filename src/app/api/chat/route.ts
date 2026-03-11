@@ -13,6 +13,7 @@ import { buildDecomposedPromptPrefix, decomposeQuery, mergeSubQueryResults, type
 import { logRoute, selectRoute } from '@/lib/router';
 import { classifyQuery, retrieve, type QueryType, type RAGResult, type RankedMatch } from '@/lib/rag-engine';
 import { getSupabase } from '@/lib/supabase';
+import { createServerSupabaseClient } from '@/lib/auth-server';
 
 dns.setDefaultResultOrder('ipv4first');
 
@@ -99,6 +100,45 @@ function elapsed(start: number): string {
     return `${((performance.now() - start) / 1000).toFixed(2)}s`;
 }
 
+type StoredConversationMessage = {
+    role: 'user' | 'assistant';
+    content: string;
+};
+
+type RecoverableChatSession = {
+    user_question: string | null;
+    bot_answer: string | null;
+    created_at: string;
+};
+
+type RecoverableConversationMessage = StoredConversationMessage & {
+    createdAt: string;
+};
+
+function buildRecoveredConversationMessages(sessions: RecoverableChatSession[]): RecoverableConversationMessage[] {
+    const recovered: RecoverableConversationMessage[] = [];
+
+    for (const session of sessions) {
+        if (session.user_question?.trim()) {
+            recovered.push({
+                role: 'user',
+                content: session.user_question,
+                createdAt: session.created_at,
+            });
+        }
+
+        if (session.bot_answer?.trim()) {
+            recovered.push({
+                role: 'assistant',
+                content: session.bot_answer,
+                createdAt: session.created_at,
+            });
+        }
+    }
+
+    return recovered;
+}
+
 function mergeMatches(matchGroups: RankedMatch[][]): RankedMatch[] {
     const merged = new Map<string, RankedMatch>();
 
@@ -181,14 +221,97 @@ export async function POST(req: Request) {
     const requestStart = performance.now();
 
     try {
-        const { messages, userId, language = 'en', searchMode = 'standard' } = await req.json();
+        const { messages, userId, language = 'en', searchMode = 'standard', conversationId: reqConversationId } = await req.json();
         const languageNames = { en: 'English', bn: 'Bengali', hi: 'Hindi' } as const;
         const langName = languageNames[language as keyof typeof languageNames] || 'English';
 
-        const historyMessages = messages.slice(0, -1);
         const latestMessage = messages[messages.length - 1].content;
-        const recentHistory = historyMessages.slice(-(MAX_HISTORY_TURNS * 2));
-        const conversationHistory = recentHistory
+
+        // ── Resolve authenticated user + conversation (if logged in) ──────
+        let authUserId: string | null = null;
+        let activeConversationId: string | null = reqConversationId || null;
+        let dbHistory: StoredConversationMessage[] = [];
+
+        try {
+            const authSupabase = await createServerSupabaseClient();
+            const { data: { user } } = await authSupabase.auth.getUser();
+            if (user) {
+                authUserId = user.id;
+
+                // Create or verify conversation
+                if (!activeConversationId) {
+                    const { data: conv } = await authSupabase
+                        .from('conversations')
+                        .insert({ user_id: user.id, title: 'New Conversation' })
+                        .select('id')
+                        .single();
+                    if (conv) activeConversationId = conv.id;
+                }
+
+                // Load last 15 messages from DB for history context
+                if (activeConversationId) {
+                    const { data: historyRows } = await authSupabase
+                        .from('messages')
+                        .select('role, content')
+                        .eq('conversation_id', activeConversationId)
+                        .order('created_at', { ascending: false })
+                        .limit(15);
+
+                    if (historyRows?.length) {
+                        dbHistory = historyRows.reverse() as StoredConversationMessage[];
+                    } else {
+                        const { data: sessionRows, error: sessionHistoryError } = await authSupabase
+                            .from('chat_sessions')
+                            .select('user_question, bot_answer, created_at')
+                            .eq('conversation_id', activeConversationId)
+                            .order('created_at', { ascending: true });
+
+                        if (sessionHistoryError) {
+                            console.warn('Chat session recovery skipped:', sessionHistoryError.message);
+                        } else if (sessionRows?.length) {
+                            const recoveredHistory = buildRecoveredConversationMessages(sessionRows as RecoverableChatSession[]);
+                            dbHistory = recoveredHistory.map(({ role, content }) => ({ role, content }));
+
+                            if (recoveredHistory.length > 0) {
+                                const rowsToInsert = recoveredHistory.map((message, index) => ({
+                                    conversation_id: activeConversationId,
+                                    role: message.role,
+                                    content: message.content,
+                                    created_at: new Date(new Date(message.createdAt).getTime() + index).toISOString(),
+                                }));
+
+                                const { error: recoveryInsertError } = await authSupabase
+                                    .from('messages')
+                                    .insert(rowsToInsert);
+
+                                if (recoveryInsertError) {
+                                    console.warn('Recovered history persistence failed:', recoveryInsertError.message);
+                                }
+                            }
+                        }
+                    }
+
+                    // Save user message
+                    const { error: saveUserMessageError } = await authSupabase.from('messages').insert({
+                        conversation_id: activeConversationId,
+                        role: 'user',
+                        content: latestMessage,
+                    });
+                    if (saveUserMessageError) {
+                        console.warn('User message persistence failed:', saveUserMessageError.message);
+                    }
+                }
+            }
+        } catch (authErr) {
+            // Auth is optional — continue without persistence
+            console.warn('Auth/conversation resolution skipped:', (authErr as Error).message);
+        }
+
+        // Build conversation history from DB (preferred) or client messages
+        const historySource = dbHistory.length > 0
+            ? dbHistory
+            : messages.slice(0, -1).slice(-(MAX_HISTORY_TURNS * 2));
+        const conversationHistory = historySource
             .map((message: { role: string; content: string }) => `${message.role === 'user' ? 'User' : 'Assistant'}: ${message.content}`)
             .join('\n');
 
@@ -357,15 +480,56 @@ export async function POST(req: Request) {
             answer_mode: dbAnswerMode,
             top_similarity: matches[0]?.finalScore || confidence,
             bot_answer: answer,
-            user_id: userId || null,
+            user_id: authUserId || userId || null,
+            conversation_id: activeConversationId || null,
         });
+
+        // ── Save assistant message + auto-title ──
+        if (authUserId && activeConversationId) {
+            try {
+                const authSupabase = await createServerSupabaseClient();
+
+                // Save assistant message before returning so resumed conversations can load reliably.
+                const { error: saveAssistantMessageError } = await authSupabase.from('messages').insert({
+                    conversation_id: activeConversationId,
+                    role: 'assistant',
+                    content: answer,
+                });
+                if (saveAssistantMessageError) {
+                    console.warn('Assistant message persistence failed:', saveAssistantMessageError.message);
+                }
+
+                // Auto-title if still "New Conversation"
+                const { data: conv } = await authSupabase
+                    .from('conversations')
+                    .select('title')
+                    .eq('id', activeConversationId)
+                    .single();
+
+                if (conv && conv.title === 'New Conversation') {
+                    const titlePrompt = `Generate a concise 4-6 word title for this conversation. Output ONLY the title, no quotes.\nUser: ${latestMessage}\nAssistant: ${answer.slice(0, 200)}\nTitle:`;
+                    sarvamLlm.invoke(titlePrompt).then(async (titleResult) => {
+                        const title = String(titleResult.content).trim().replace(/^["']|["']$/g, '').slice(0, 80);
+                        if (title) {
+                            const as = await createServerSupabaseClient();
+                            void as.from('conversations').update({ title }).eq('id', activeConversationId);
+                        }
+                    }).catch(() => { /* title generation is non-critical */ });
+                }
+            } catch { /* persistence is non-critical */ }
+        }
 
         console.log(`Response complete [${elapsed(requestStart)}] mode=${answerMode} conf=${(confidence * 100).toFixed(0)}%`);
         console.log(`Stats: ${retrievalStats.totalCandidates} candidates -> ${retrievalStats.afterRerank} after rerank | ${retrievalStats.latencyMs.toFixed(0)}ms`);
         console.log(`Sources: ${retrievalMetadata?.sourcesUsed?.join(', ') || 'none'}`);
         console.log(`${'='.repeat(60)}\n`);
 
-        return textStreamResponse(answer);
+        // Return with conversation ID header for frontend
+        const chatResponse = textStreamResponse(answer);
+        if (activeConversationId) {
+            chatResponse.headers.set('x-conversation-id', activeConversationId);
+        }
+        return chatResponse;
     } catch (error: unknown) {
         console.error('Chat API Error:', error);
         return new Response(

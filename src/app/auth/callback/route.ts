@@ -1,9 +1,9 @@
 /**
  * src/app/auth/callback/route.ts
  *
- * Handles email confirmation redirect from Supabase.
+ * Handles email confirmation and password-reset redirects from Supabase.
  * After user confirms their email, they are redirected here.
- * We exchange the token, validate the domain, and redirect to login.
+ * We exchange the token and redirect appropriately.
  *
  * Admin email (aniket.karmakar@seple.in) is routed to /admin after login —
  * but that routing happens on the login page after signInWithPassword, not here.
@@ -13,14 +13,13 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 
-const ALLOWED_DOMAIN = '@seple.in';
 const ADMIN_EMAIL = 'aniket.karmakar@seple.in';
 
 export async function GET(request: NextRequest) {
     const { searchParams, origin } = new URL(request.url);
     const code = searchParams.get('code');
     const tokenHash = searchParams.get('token_hash');
-    const type = searchParams.get('type') as 'signup' | 'magiclink' | 'email' | null;
+    const type = searchParams.get('type') as 'signup' | 'magiclink' | 'email' | 'recovery' | null;
     const next = searchParams.get('next') ?? '/';
 
     const response = NextResponse.redirect(`${origin}${next}`);
@@ -45,13 +44,13 @@ export async function GET(request: NextRequest) {
     let userEmail: string | null = null;
     let sessionError: string | null = null;
 
-    // ── PKCE code exchange (signInWithPassword after confirmation) ────────────
+    // ── PKCE code exchange ───────────────────────────────────────────────────
     if (code) {
         const { data, error } = await supabase.auth.exchangeCodeForSession(code);
         if (error) sessionError = error.message;
         else userEmail = data.session?.user?.email ?? null;
     }
-    // ── token_hash (email confirmation link from signUp) ──────────────────────
+    // ── token_hash (email confirmation / recovery link) ──────────────────────
     else if (tokenHash && type) {
         const { data, error } = await supabase.auth.verifyOtp({ token_hash: tokenHash, type });
         if (error) sessionError = error.message;
@@ -65,18 +64,19 @@ export async function GET(request: NextRequest) {
         return NextResponse.redirect(`${origin}/login?error=auth_failed`);
     }
 
-    // ── Domain check ──────────────────────────────────────────────────────────
-    if (!userEmail || !userEmail.toLowerCase().endsWith(ALLOWED_DOMAIN)) {
-        await supabase.auth.signOut();
-        return NextResponse.redirect(`${origin}/login?error=unauthorized_domain`);
+    if (!userEmail) {
+        return NextResponse.redirect(`${origin}/login?error=auth_failed`);
     }
 
-    // ── Email confirmed → redirect appropriately ──────────────────────────────
-    // If admin and session was created (rare: only if they confirm via magic link)
+    // ── Password reset flow → redirect to reset-password page ────────────────
+    if (type === 'recovery') {
+        return NextResponse.redirect(`${origin}/reset-password`);
+    }
+
+    // ── Email confirmed → redirect appropriately ─────────────────────────────
     const isAdmin = userEmail.toLowerCase() === ADMIN_EMAIL.toLowerCase();
 
     // For normal signUp confirmation: sign them out so they have to log in with password
-    // This gives them the proper password-based session
     if (type === 'signup' || type === 'email') {
         await supabase.auth.signOut();
         return NextResponse.redirect(
@@ -85,5 +85,5 @@ export async function GET(request: NextRequest) {
     }
 
     // For code-based (PKCE) — already signed in, route by role
-    return NextResponse.redirect(`${origin}${isAdmin ? '/admin' : '/'}`);
+    return NextResponse.redirect(`${origin}${isAdmin ? '/admin' : next}`);
 }

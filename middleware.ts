@@ -13,6 +13,7 @@ import { createServerClient } from '@supabase/ssr';
 const PUBLIC_PATHS = [
   '/login',
   '/auth/callback',
+  '/reset-password',
   '/api/',          // all API routes stay open (chat API needs to work)
   '/_next/',
   '/favicon.ico',

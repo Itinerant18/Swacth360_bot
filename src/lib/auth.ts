@@ -2,13 +2,12 @@
  * src/lib/auth.ts
  *
  * Supabase Auth helper — Email + Password flow.
- * Domain restricted to @seple.in only.
+ * Open registration (any valid email).
  * Admin email: aniket.karmakar@seple.in
  */
 
 import { createBrowserClient } from '@supabase/ssr';
 
-const ALLOWED_DOMAIN = '@seple.in';
 export const ADMIN_EMAIL = 'aniket.karmakar@seple.in';
 
 // ─── Supabase browser client ──────────────────────────────────────────────────
@@ -19,10 +18,6 @@ export function getSupabaseAuth() {
     );
 }
 
-// ─── Domain check ─────────────────────────────────────────────────────────────
-export function isAllowedEmail(email: string): boolean {
-    return email.trim().toLowerCase().endsWith(ALLOWED_DOMAIN);
-}
 
 // ─── Admin check ─────────────────────────────────────────────────────────────
 export function isAdminEmail(email: string): boolean {
@@ -62,9 +57,6 @@ export async function register(
 ): Promise<{ error: string | null }> {
     const normalizedEmail = email.trim().toLowerCase();
 
-    if (!isAllowedEmail(normalizedEmail)) {
-        return { error: `Only ${ALLOWED_DOMAIN} email addresses are allowed.` };
-    }
     if (password.length < 8) {
         return { error: 'Password must be at least 8 characters.' };
     }
@@ -93,10 +85,6 @@ export async function login(
 ): Promise<{ error: string | null; needsConfirmation?: boolean; redirectTo?: string }> {
     const normalizedEmail = email.trim().toLowerCase();
 
-    if (!isAllowedEmail(normalizedEmail)) {
-        return { error: `Only ${ALLOWED_DOMAIN} email addresses are allowed.` };
-    }
-
     const supabase = getSupabaseAuth();
     const { error } = await supabase.auth.signInWithPassword({
         email: normalizedEmail,
@@ -124,6 +112,19 @@ export async function resendConfirmation(
         options: {
             emailRedirectTo: `${window.location.origin}/auth/callback`,
         },
+    });
+    if (error) return { error: mapAuthError(error.message).message };
+    return { error: null };
+}
+
+// ─── Reset password ──────────────────────────────────────────────────────────
+export async function resetPassword(
+    email: string,
+): Promise<{ error: string | null }> {
+    const normalizedEmail = email.trim().toLowerCase();
+    const supabase = getSupabaseAuth();
+    const { error } = await supabase.auth.resetPasswordForEmail(normalizedEmail, {
+        redirectTo: `${window.location.origin}/auth/callback?next=/reset-password`,
     });
     if (error) return { error: mapAuthError(error.message).message };
     return { error: null };
