@@ -19,14 +19,14 @@ loadEnvConfig(process.cwd());
 dns.setDefaultResultOrder('ipv4first');
 const googleResolver = new dns.promises.Resolver();
 googleResolver.setServers(['8.8.8.8', '8.8.4.4']);
-function customLookup(hostname: string, _opts: any, cb: Function) {
+function customLookup(hostname: string, _opts: unknown, cb: (err: Error | null, address?: string, family?: number) => void) {
     googleResolver.resolve4(hostname)
         .then((addrs: string[]) => cb(null, addrs[0], 4))
         .catch((err: Error) => cb(err));
 }
-const agent = new Agent({ connect: { family: 4, lookup: customLookup as any } });
-const customFetch = (input: any, init?: any) =>
-    undiciFetch(input, { ...init, dispatcher: agent }) as unknown as Promise<Response>;
+const agent = new Agent({ connect: { family: 4, lookup: customLookup as never } });
+const customFetch = (input: unknown, init?: unknown) =>
+    undiciFetch(input as Parameters<typeof undiciFetch>[0], { ...(init as Parameters<typeof undiciFetch>[1]), dispatcher: agent } as Parameters<typeof undiciFetch>[1]) as unknown as Promise<Response>;
 
 // ─── CLI Args ────────────────────────────────────────────────
 function parseArgs() {
@@ -218,7 +218,7 @@ async function ingestPdf() {
 
     // Init clients
     const supabase = createClient(supabaseUrl, supabaseKey, {
-        auth: { persistSession: false }, global: { fetch: customFetch as any },
+        auth: { persistSession: false }, global: { fetch: customFetch as never },
     });
 
     // OpenAI for embeddings
@@ -285,8 +285,8 @@ async function ingestPdf() {
             // Throttle between chunks
             if (i < chunks.length - 1) await new Promise(r => setTimeout(r, 200));
 
-        } catch (err: any) {
-            console.error(`   ❌ ${prog} ${err.message}`);
+        } catch (err: unknown) {
+            console.error(`   ❌ ${prog} ${(err as Error).message}`);
             errors++;
         }
     }

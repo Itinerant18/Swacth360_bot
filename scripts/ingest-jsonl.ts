@@ -29,14 +29,14 @@ loadEnvConfig(process.cwd());
 dns.setDefaultResultOrder('ipv4first');
 const googleResolver = new dns.promises.Resolver();
 googleResolver.setServers(['8.8.8.8', '8.8.4.4']);
-function customLookup(hostname: string, _opts: any, cb: Function) {
+function customLookup(hostname: string, _opts: unknown, cb: (err: Error | null, address?: string, family?: number) => void) {
     googleResolver.resolve4(hostname)
         .then((addrs: string[]) => cb(null, addrs[0], 4))
         .catch((err: Error) => cb(err));
 }
-const agent = new Agent({ connect: { family: 4, lookup: customLookup as any } });
-const customFetch = (input: any, init?: any) =>
-    undiciFetch(input, { ...init, dispatcher: agent }) as unknown as Promise<Response>;
+const agent = new Agent({ connect: { family: 4, lookup: customLookup as never } });
+const customFetch = (input: unknown, init?: unknown) =>
+    undiciFetch(input as Parameters<typeof undiciFetch>[0], { ...(init as Parameters<typeof undiciFetch>[1]), dispatcher: agent } as Parameters<typeof undiciFetch>[1]) as unknown as Promise<Response>;
 
 // ─── CLI Args ────────────────────────────────────────────────
 function parseArgs() {
@@ -125,7 +125,7 @@ async function ingestJsonl() {
 
     const supabase = createClient(supabaseUrl, supabaseKey, {
         auth: { persistSession: false },
-        global: { fetch: customFetch as any },
+        global: { fetch: customFetch as never },
     });
 
     const embeddings = new OpenAIEmbeddings({
@@ -147,8 +147,8 @@ async function ingestJsonl() {
         let vectors: number[][];
         try {
             vectors = await embeddings.embedDocuments(batch.map(e => e.content));
-        } catch (err: any) {
-            console.error(`   ❌ Batch embedding failed: ${err.message}`);
+        } catch (err: unknown) {
+            console.error(`   ❌ Batch embedding failed: ${(err as Error).message}`);
             errors += batch.length;
             continue;
         }
@@ -181,8 +181,8 @@ async function ingestJsonl() {
                     console.log(`   ✅ ${icon} [${entry.entity_class}] ${finalEntry.question.substring(0, 60)}…`);
                     success++;
                 }
-            } catch (err: any) {
-                console.error(`   ❌ ${finalEntry.id}: ${err.message}`);
+            } catch (err: unknown) {
+                console.error(`   ❌ ${finalEntry.id}: ${(err as Error).message}`);
                 errors++;
             }
         }

@@ -66,8 +66,8 @@ export async function POST(req: NextRequest) {
             message: 'Answer saved and bot trained successfully!',
         });
 
-    } catch (err: any) {
+    } catch (err: unknown) {
         console.error('❌ Seed answer error:', err);
-        return NextResponse.json({ error: err.message }, { status: 500 });
+        return NextResponse.json({ error: (err as Error).message }, { status: 500 });
     }
 }

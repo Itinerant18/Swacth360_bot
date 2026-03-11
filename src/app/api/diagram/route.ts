@@ -101,7 +101,7 @@ async function searchKBForDiagram(query: string, diagramType: string): Promise<s
         if (!matches?.length) return '';
 
         // Prioritise wiring/visual/connection entries
-        const relevant = matches.filter((m: any) => {
+        const relevant = matches.filter((m: { question: string; answer: string; content?: string; subcategory?: string }) => {
             const t = `${m.question} ${m.answer} ${m.content || ''}`.toLowerCase();
             return (
                 t.includes('wire') || t.includes('terminal') || t.includes('connect') ||
@@ -113,7 +113,7 @@ async function searchKBForDiagram(query: string, diagramType: string): Promise<s
         });
 
         const toUse = relevant.length > 0 ? relevant.slice(0, 5) : matches.slice(0, 4);
-        return toUse.map((m: any) =>
+        return toUse.map((m: { category: string; question: string; answer: string }) =>
             `### ${m.category}\n**Q:** ${m.question}\n**A:** ${m.answer}`
         ).join('\n\n');
     } catch {
@@ -441,8 +441,8 @@ ALWAYS output valid markdown that renders correctly.`;
 
         return { markdown, title, diagramType };
 
-    } catch (err: any) {
-        console.error('Sarvam diagram generation failed:', err.message);
+    } catch (err: unknown) {
+        console.error('Sarvam diagram generation failed:', (err as Error).message);
 
         // Structured fallback
         const fallback = buildFallbackMarkdown(panelType, diagramType, kbContext);
@@ -644,8 +644,8 @@ export async function POST(req: NextRequest) {
         const { query, englishQuery, diagramType, language } = await req.json();
         const result = await generateDiagramInternal(query, englishQuery, diagramType, language);
         return NextResponse.json(result);
-    } catch (err: any) {
+    } catch (err: unknown) {
         console.error('❌ Diagram error:', err);
-        return NextResponse.json({ error: err.message }, { status: 500 });
+        return NextResponse.json({ error: (err as Error).message }, { status: 500 });
     }
 }

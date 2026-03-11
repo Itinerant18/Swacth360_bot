@@ -220,11 +220,11 @@ If no specific technical facts found, return [].`;
         const parsed = JSON.parse(raw);
         if (!Array.isArray(parsed)) return [];
         return parsed
-            .filter((p: any) => p.fact && p.fact.length > 20)
-            .map((p: any) => ({
-                fact: p.fact.trim(),
+            .filter((p: { fact?: string; entities?: string[]; category?: string }) => p.fact && p.fact.length > 20)
+            .map((p: { fact?: string; entities?: string[]; category?: string }) => ({
+                fact: p.fact!.trim(),
                 entities: Array.isArray(p.entities) ? p.entities.slice(0, 6) : [],
-                category: VALID_CATEGORIES.includes(p.category) ? p.category : 'General Knowledge',
+                category: VALID_CATEGORIES.includes(p.category || '') ? (p.category as string) : 'General Knowledge',
             }))
             .slice(0, MAX_PROPOSITIONS_PER_CHUNK);
     } catch {
@@ -407,7 +407,7 @@ If NO technical images: return []`;
         const text = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
         if (!text.trim()) return [];
         const cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-        let parsed: any[];
+        let parsed: unknown[];
         try { parsed = JSON.parse(cleaned); }
         catch {
             const match = cleaned.match(/\[[\s\S]*\]/);
@@ -415,7 +415,8 @@ If NO technical images: return []`;
             parsed = JSON.parse(match[0]);
         }
         if (!Array.isArray(parsed)) return [];
-        return parsed.slice(0, MAX_IMAGES_PER_PDF).map((item: any, idx: number) => ({
+        type ParsedImage = { pageNumber?: number; imageType?: string; title?: string; description?: string; technicalDetails?: string; relevantFor?: string };
+        return (parsed as ParsedImage[]).slice(0, MAX_IMAGES_PER_PDF).map((item, idx: number) => ({
             imageIndex: idx + 1,
             pageNumber: item.pageNumber ?? 0,
             imageType: item.imageType ?? 'Technical Diagram',

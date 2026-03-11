@@ -34,7 +34,7 @@ async function seed() {
     const qaData = JSON.parse(rawData);
 
     // 3. Prepare Langchain Documents with Full Context
-    const documents: Document[] = qaData.map((item: any) => {
+    const documents: Document[] = qaData.map((item: { id: string; product: string; category: string; subcategory: string; tags: string[]; question: string; answer: string }) => {
 
         // Construct a highly detailed text string for the embedding model to read
         const embeddingText = `[ID: ${item.id}]

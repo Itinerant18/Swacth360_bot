@@ -1922,11 +1922,11 @@ Move from a "chatbot answering questions" system to an "autonomous HMS managemen
 │  - Cache responses by region                                            │
 │  - Route to nearest origin                                              │
 │  - DDoS protection, WAF                                                 │
-└────────┬──────────────────────────────────────────────────────────┬──────┘
+└────────┬────────────────────────────────────────────────────────────┬───┘
          │                                                            │
     ┌────┴─────┐  ┌────────────┐  ┌──────────────────┐
     │ US Region│  │ EU Region  │  │ APAC Region      │
-    └────┬─────┘  └────┬───────┘  └────────┬─────────┘
+    └────┬─────┘  └────┬───────┘  └─────────┬────────┘
          │             │                    │
     ┌────▼─────────────▼────────────────────▼──────────────────────┐
     │           ORCHESTRATION LAYER                                │
@@ -1934,7 +1934,7 @@ Move from a "chatbot answering questions" system to an "autonomous HMS managemen
     │ - Async job processing (Bull queue)                          │
     │ - Streaming response handling                                │
     └────┬──────────────────────────────────────────────────────┬──┘
-         │                                                        │
+         │                                                      │
     ┌────▼────────────┐                          ┌──────────────▼──┐
     │  CACHE LAYER    │                          │  ADMIN CONSOLE  │
     │  ─────────────  │                          │  ─────────────  │
@@ -1942,10 +1942,10 @@ Move from a "chatbot answering questions" system to an "autonomous HMS managemen
     │ • Semantic      │                          │ • KB Management │
     │   cache         │                          │ • Analytics     │
     │ • Query cache   │                          │ • Alerts        │
-    └────┬────────────┘                          └────────────────┘
+    └────┬────────────┘                          └─────────────────┘
          │
-    ┌────▼──────────────────────────────────────────────────────┐
-    │         INTELLIGENT REQUEST PROCESSOR                     │
+    ┌────▼─────────────────────────────────────────────────────┐
+    │         INTELLIGENT REQUEST PROCESSOR                    │
     │ ─────────────────────────────────────────────────────────│
     │ ① Intent Classification (local ML model)                 │
     │ ② Query Rewriting (local LLM: Ollama)                    │
@@ -1956,72 +1956,72 @@ Move from a "chatbot answering questions" system to an "autonomous HMS managemen
     │    - IoT → ThingsBoard                                   │
     │    - Predict → ML model                                  │
     │    - Escalate → human review                             │
-    └────┬──────────────────────────────────────────────────────┘
+    └────┬─────────────────────────────────────────────────────┘
          │
     ┌────┴─────────────────────────────────────────────────────┐
-    │                 AI REASONING ENGINES                      │
+    │                 AI REASONING ENGINES                     │
     │  ────────────────────────────────────────────────────────│
-    │                                                           │
+    │                                                          │
     │  ① RAG ENGINE                                            │
-    │     • Custom embedding model (fine-tuned)               │
-    │     • Hybrid search (dense + sparse + graph)            │
-    │     • Cross-encoder reranking (local)                   │
+    │     • Custom embedding model (fine-tuned)                │
+    │     • Hybrid search (dense + sparse + graph)             │
+    │     • Cross-encoder reranking (local)                    │
     │     • Contextual compression                             │
-    │     → Supabase + Pinecone (vector DB)                   │
-    │                                                           │
+    │     → Supabase + Pinecone (vector DB)                    │
+    │                                                          │
     │  ② IoT ENGINE                                            │
-    │     • Real-time telemetry (ThingsBoard)                 │
+    │     • Real-time telemetry (ThingsBoard)                  │
     │     • Trend analysis (min/max/avg)                       │
     │     • Anomaly detection (ML model)                       │
     │     • Predictive maintenance (LSTM)                      │
     │     → TimescaleDB (time-series)                          │
-    │                                                           │
+    │                                                          │
     │  ③ KNOWLEDGE GRAPH ENGINE                                │
     │     • Entity relationships                               │
     │     • Multi-hop reasoning (2-3 hops)                     │
     │     • Confidence scoring                                 │
     │     • Graph updates on ingestion                         │
     │     → Neo4j or custom graph DB                           │
-    │                                                           │
+    │                                                          │
     │  ④ RESPONSE SYNTHESIS ENGINE                             │
     │     • System prompt building                             │
     │     • Context injection                                  │
     │     • Format selection (text/diagram/table)              │
     │     • Language generation (local LLM)                    │
     │     → Ollama + Sarvam AI (backup)                        │
-    │                                                           │
+    │                                                          │
     │  ⑤ LEARNING ENGINE                                       │
     │     • Feedback collection                                │
     │     • Quality metrics calculation                        │
     │     • Automatic KB updates                               │
     │     • Model retraining triggers                          │
     │     → Feedback stored in event stream                    │
-    │                                                           │
-    └────┬──────────────────────────────────────────────────────┘
+    │                                                          │
+    └────┬─────────────────────────────────────────────────────┘
          │
-    ┌────▼──────────────────────────────────────────────────────┐
-    │           DATA PERSISTENCE & ANALYTICS                    │
-    │ ────────────────────────────────────────────────────────│
+    ┌────▼─────────────────────────────────────────────────────┐
+    │           DATA PERSISTENCE & ANALYTICS                   │
+    │ ─────────────────────────────────────────────────────────│
     │ • Supabase (operational DB)                              │
     │ • Pinecone (vector index)                                │
     │ • TimescaleDB (time-series metrics)                      │
     │ • Neo4j (knowledge graph)                                │
     │ • S3/GCS (backup, training data)                         │
     │ • Event stream (Kafka: audit trail)                      │
-    │                                                           │
+    │                                                          │
     │ Replication across regions                               │
-    └────┬──────────────────────────────────────────────────────┘
+    └────┬─────────────────────────────────────────────────────┘
          │
-    ┌────▼──────────────────────────────────────────────────────┐
-    │         EXTERNAL INTEGRATIONS & SERVICES                  │
-    │ ────────────────────────────────────────────────────────│
+    ┌────▼─────────────────────────────────────────────────────┐
+    │         EXTERNAL INTEGRATIONS & SERVICES                 │
+    │ ─────────────────────────────────────────────────────────│
     │ • ThingsBoard (device telemetry)                         │
     │ • Jira/Zendesk (ticketing)                               │
     │ • Email/SMS (notifications)                              │
     │ • Slack (escalations)                                    │
     │ • Webhooks (custom integrations)                         │
-    │                                                           │
-    └────────────────────────────────────────────────────────────┘
+    │                                                          │
+    └──────────────────────────────────────────────────────────┘
 ```
 
 ### 11.2 Key Architectural Changes

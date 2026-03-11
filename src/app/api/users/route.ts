@@ -14,7 +14,7 @@ export async function GET() {
         if (error) throw error;
 
         // Map it to fit the interface expected by the Admin dashboard
-        const enrichedUsers = (activeUsers || []).map((u: any) => ({
+        const enrichedUsers = (activeUsers || []).map((u: { id: string; email: string; total_chats: number; created_at?: string; last_sign_in_at?: string; last_chat?: string }) => ({
             id: u.id,
             name: u.email.split('@')[0],
             email: u.email,
@@ -25,9 +25,9 @@ export async function GET() {
         }));
 
         return NextResponse.json({ users: enrichedUsers });
-    } catch (err: any) {
+    } catch (err: unknown) {
         console.error('❌ Users list error:', err);
-        return NextResponse.json({ error: err.message }, { status: 500 });
+        return NextResponse.json({ error: (err as Error).message }, { status: 500 });
     }
 }
 

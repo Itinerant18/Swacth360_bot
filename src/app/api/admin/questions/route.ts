@@ -29,7 +29,7 @@ export async function GET(req: NextRequest) {
         const { data, error } = await Promise.race([
             queryPromise,
             timeoutPromise,
-        ]) as any;
+        ]) as { data: unknown[] | null; error: Error | null };
 
         if (error) {
             console.warn('⚠️  Admin questions error:', error.message);
@@ -38,8 +38,8 @@ export async function GET(req: NextRequest) {
 
         console.log(`✅ Found ${data?.length || 0} ${status} questions`);
         return NextResponse.json({ questions: data || [] });
-    } catch (err: any) {
-        console.warn('⚠️  Admin questions timeout:', err.message);
+    } catch (err: unknown) {
+        console.warn('⚠️  Admin questions timeout:', (err as Error).message);
         return NextResponse.json({ questions: [], offline: true });
     }
 }
@@ -61,7 +61,7 @@ export async function PATCH(req: NextRequest) {
 
         if (error) throw error;
         return NextResponse.json({ success: true });
-    } catch (err: any) {
-        return NextResponse.json({ error: err.message }, { status: 500 });
+    } catch (err: unknown) {
+        return NextResponse.json({ error: (err as Error).message }, { status: 500 });
     }
 }

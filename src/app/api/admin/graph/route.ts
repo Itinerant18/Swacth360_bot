@@ -146,7 +146,7 @@ export async function POST(request: NextRequest) {
                 const rels: Relationship[] = [];
 
                 if (relations) {
-                    relations.forEach((r: any) => {
+                    relations.forEach((r: { entity_a: string; entity_b: string; relationship: string; confidence: number }) => {
                         entitySet.add(r.entity_a);
                         entitySet.add(r.entity_b);
                         rels.push({

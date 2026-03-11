@@ -33,15 +33,15 @@ dns.setDefaultResultOrder('ipv4first');
 const googleResolver = new dns.promises.Resolver();
 googleResolver.setServers(['8.8.8.8', '8.8.4.4']);
 
-function customLookup(hostname: string, _opts: any, cb: Function) {
+function customLookup(hostname: string, _opts: unknown, cb: (err: Error | null, address?: string, family?: number) => void) {
     googleResolver.resolve4(hostname)
         .then((addrs: string[]) => cb(null, addrs[0], 4))
         .catch((err: Error) => cb(err));
 }
 
-const agent = new Agent({ connect: { family: 4, lookup: customLookup as any } });
-const customFetch = (input: any, init?: any) =>
-    undiciFetch(input, { ...init, dispatcher: agent }) as unknown as Promise<Response>;
+const agent = new Agent({ connect: { family: 4, lookup: customLookup as never } });
+const customFetch = (input: unknown, init?: unknown) =>
+    undiciFetch(input as Parameters<typeof undiciFetch>[0], { ...(init as Parameters<typeof undiciFetch>[1]), dispatcher: agent } as Parameters<typeof undiciFetch>[1]) as unknown as Promise<Response>;
 
 // ═══════════════════════════════════════════════════════════════
 // Constants
@@ -202,14 +202,14 @@ If you find multiple diagrams, create one entry per diagram. If the PDF has a si
         const parsed = JSON.parse(cleaned);
 
         if (!Array.isArray(parsed)) return [parsed];
-        return parsed.map((entry: any) => ({
+        return parsed.map((entry: { question?: string; answer?: string; category?: string; keywords?: string[] }) => ({
             question: entry.question || `What does this diagram in ${fileName} show?`,
             answer: entry.answer || 'Technical diagram from PDF',
             keywords: Array.isArray(entry.keywords) ? entry.keywords : [],
-            category: VALID_CATEGORIES.includes(entry.category) ? entry.category : 'General Knowledge',
+            category: VALID_CATEGORIES.includes(entry.category as string) ? (entry.category as string) : 'General Knowledge',
         }));
-    } catch (err: any) {
-        console.error(`      ⚠️  Gemini Vision failed: ${err.message}`);
+    } catch (err: unknown) {
+        console.error(`      ⚠️  Gemini Vision failed: ${(err as Error).message}`);
         return [{
             question: `What technical content is shown in ${fileName}?`,
             answer: `Technical diagram/schematic from ${fileName}. Visual content could not be fully analyzed.`,
@@ -300,7 +300,7 @@ Options:
     // ── Init clients ───────────────────────────────────────────
     const supabase = createClient(supabaseUrl, supabaseKey, {
         auth: { persistSession: false },
-        global: { fetch: customFetch as any },
+        global: { fetch: customFetch as never },
     });
 
     const embeddings = new OpenAIEmbeddings({
@@ -345,15 +345,15 @@ Options:
                 await parser.load();
                 const textResult = await parser.getText();
                 rawText = cleanText(
-                    (textResult.pages || []).map((pg: any) => pg.text || '').join('\n')
+                    (textResult.pages || []).map((pg: { text?: string }) => pg.text || '').join('\n')
                 );
                 try {
                     const info = await parser.getInfo();
                     numPages = info?.numPages || 0;
                 } catch { /* ignore info errors */ }
                 parser.destroy();
-            } catch (parseErr: any) {
-                console.log(`│    ⚠️  pdf-parse failed: ${parseErr.message}`);
+            } catch (parseErr: unknown) {
+                console.log(`│    ⚠️  pdf-parse failed: ${(parseErr as Error).message}`);
                 console.log(`│    → Treating as image-only PDF`);
             }
 
@@ -413,8 +413,8 @@ Options:
                     let vectors: number[][];
                     try {
                         vectors = await embeddings.embedDocuments(batchTexts);
-                    } catch (embErr: any) {
-                        console.error(`│    ❌ Batch embedding failed: ${embErr.message}`);
+                    } catch (embErr: unknown) {
+                        console.error(`│    ❌ Batch embedding failed: ${(embErr as Error).message}`);
                         pdfErrors += batch.length;
                         continue;
                     }
@@ -492,9 +492,9 @@ Options:
 
                         if (error) { pdfErrors++; console.error(`│    ❌ ${id}: ${error.message}`); }
                         else { pdfSuccess++; }
-                    } catch (err: any) {
+                    } catch (err: unknown) {
                         pdfErrors++;
-                        console.error(`│    ❌ ${id}: ${err.message}`);
+                        console.error(`│    ❌ ${id}: ${(err as Error).message}`);
                     }
                 }
 
@@ -510,8 +510,8 @@ Options:
 
             console.log(`└─── Done`);
 
-        } catch (err: any) {
-            console.error(`│    ❌ FATAL: ${err.message}`);
+        } catch (err: unknown) {
+            console.error(`│    ❌ FATAL: ${(err as Error).message}`);
             console.log(`└─── Failed\n`);
             totalErrors++;
             skippedPdfCount++;

@@ -298,8 +298,8 @@ export async function POST(req: Request) {
                     const payload = JSON.stringify({ __type: 'diagram', ...diagramData });
                     return textStreamResponse(`DIAGRAM_RESPONSE:${payload}`);
                 }
-            } catch (err: any) {
-                console.warn(`Diagram failed: ${err.message}`);
+            } catch (err: unknown) {
+                console.warn(`Diagram failed: ${(err as Error).message}`);
             }
         }
 
@@ -366,7 +366,7 @@ export async function POST(req: Request) {
         console.log(`${'='.repeat(60)}\n`);
 
         return textStreamResponse(answer);
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error('Chat API Error:', error);
         return new Response(
             JSON.stringify({ error: 'Failed to process chat request.' }),

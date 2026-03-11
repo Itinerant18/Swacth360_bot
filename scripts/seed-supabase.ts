@@ -12,20 +12,20 @@ import * as path from 'path';
 dns.setDefaultResultOrder('ipv4first');
 const googleResolver = new dns.promises.Resolver();
 googleResolver.setServers(['8.8.8.8', '8.8.4.4']);
-function customLookup(hostname: string, _opts: any, cb: Function) {
+function customLookup(hostname: string, _opts: unknown, cb: (err: Error | null, address?: string, family?: number) => void) {
     googleResolver.resolve4(hostname)
         .then((addrs: string[]) => cb(null, addrs[0], 4))
         .catch((err: Error) => cb(err));
 }
-const agent = new Agent({ connect: { family: 4, lookup: customLookup as any } });
-const customFetch = (input: any, init?: any) =>
-    undiciFetch(input, { ...init, dispatcher: agent }) as unknown as Promise<Response>;
+const agent = new Agent({ connect: { family: 4, lookup: customLookup as never } });
+const customFetch = (input: unknown, init?: unknown) =>
+    undiciFetch(input as Parameters<typeof undiciFetch>[0], { ...(init as Parameters<typeof undiciFetch>[1]), dispatcher: agent } as Parameters<typeof undiciFetch>[1]) as unknown as Promise<Response>;
 
 loadEnvConfig(process.cwd());
 
 // ─── Build rich embedding text ────────────────────────────────
-function buildEmbeddingText(item: any): string {
-    const tagPhrases = (item.tags as string[]).map((t: string) => t.toLowerCase()).join(', ');
+function buildEmbeddingText(item: { tags: string[]; subcategory: string; product: string; category: string; question: string; answer: string }): string {
+    const tagPhrases = item.tags.map((t: string) => t.toLowerCase()).join(', ');
 
     const altPhrasings = [
         `How to handle ${item.subcategory.toLowerCase()} issues`,
@@ -68,7 +68,7 @@ async function seed() {
         throw new Error(`❌ Dataset not found: ${dataPath}`);
     }
 
-    const qaData: any[] = JSON.parse(fs.readFileSync(dataPath, 'utf-8'));
+    const qaData: { id: string; question: string; answer: string; category: string; subcategory: string; product: string; tags: string[] }[] = JSON.parse(fs.readFileSync(dataPath, 'utf-8'));
 
     console.log(`📚 Dataset:   ${dataFile}`);
     console.log(`📦 Entries:   ${qaData.length}`);
@@ -77,7 +77,7 @@ async function seed() {
 
     const supabase = createClient(supabaseUrl, supabaseKey, {
         auth: { persistSession: false },
-        global: { fetch: customFetch as any },
+        global: { fetch: customFetch as never },
     });
 
     // OpenAI embedding client — supports batching natively
@@ -99,14 +99,14 @@ async function seed() {
         console.log(`\n⏳ Batch ${String(batchNum).padStart(3)}/${total}  (items ${i + 1}–${Math.min(i + BATCH, qaData.length)})`);
 
         // Build all embedding texts for this batch
-        const embeddingTexts = batch.map((item: any) => buildEmbeddingText(item));
+        const embeddingTexts = batch.map(item => buildEmbeddingText(item));
 
         // Embed entire batch in ONE OpenAI API call (much faster than one-by-one)
         let vectors: number[][];
         try {
             vectors = await embeddings.embedDocuments(embeddingTexts);
-        } catch (batchErr: any) {
-            console.error(`   ❌ Batch embedding failed: ${batchErr.message}`);
+        } catch (batchErr: unknown) {
+            console.error(`   ❌ Batch embedding failed: ${(batchErr as Error).message}`);
             errors += batch.length;
             continue;
         }
@@ -136,8 +136,8 @@ async function seed() {
                     console.log(`   ✅ ${item.id}: "${item.question.substring(0, 60)}…"`);
                     success++;
                 }
-            } catch (err: any) {
-                console.error(`   ❌ ${item.id}: ${err.message}`);
+            } catch (err: unknown) {
+                console.error(`   ❌ ${item.id}: ${(err as Error).message}`);
                 errors++;
             }
         }

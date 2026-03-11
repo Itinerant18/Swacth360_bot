@@ -58,7 +58,7 @@ export async function GET() {
 
         // Group by source
         const sourceMap: Record<string, { count: number; name: string }> = {};
-        kbComposition?.forEach((row: any) => {
+        kbComposition?.forEach((row: { source: string; source_name: string }) => {
             const key = row.source || 'json';
             if (!sourceMap[key]) {
                 sourceMap[key] = { count: 0, name: row.source_name || 'Unknown' };
@@ -89,8 +89,8 @@ export async function GET() {
             knowledgeBase: sourceMap,
             recentSessions: recentSessions || [],
         });
-    } catch (err: any) {
+    } catch (err: unknown) {
         console.error('❌ Analytics error:', err);
-        return NextResponse.json({ error: err.message }, { status: 500 });
+        return NextResponse.json({ error: (err as Error).message }, { status: 500 });
     }
 }

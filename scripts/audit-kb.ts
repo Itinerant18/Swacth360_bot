@@ -34,7 +34,7 @@ async function main() {
     console.log('═══════════════════════════════════════════════════\n');
 
     // ─── 1. JSON QA Analysis ──────────────────────────────────
-    const entries = qaData as any[];
+    const entries = qaData as { id: string; question: string; answer: string; category: string }[];
     console.log(`📚 Total JSON QA entries: ${entries.length}\n`);
 
     // Category breakdown
@@ -73,8 +73,8 @@ async function main() {
 
         if (error) console.warn('   ⚠️  Could not query hms_knowledge:', error.message);
         else console.log(`   Total embeddings: ${count}`);
-    } catch (e: any) {
-        console.warn('   ⚠️  Supabase connection failed:', e.message);
+    } catch (e: unknown) {
+        console.warn('   ⚠️  Supabase connection failed:', (e as Error).message);
     }
 
     // ─── 3. Unknown Questions (user gaps) ─────────────────────
@@ -99,8 +99,8 @@ async function main() {
                 console.log(`       BN: ${q.user_question}\n`);
             });
         }
-    } catch (e: any) {
-        console.warn('   ⚠️  unknown_questions query failed:', e.message);
+    } catch (e: unknown) {
+        console.warn('   ⚠️  unknown_questions query failed:', (e as Error).message);
     }
 
     // ─── 4. Recommendations ───────────────────────────────────

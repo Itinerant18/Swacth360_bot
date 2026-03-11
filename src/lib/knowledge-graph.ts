@@ -154,7 +154,7 @@ export async function findRelatedEntities(
         return [];
     }
 
-    return (data || []).map((r: any) => ({
+    return (data || []).map((r: { entity_b: string; relationship: string; confidence: number }) => ({
         entityA: entity,
         entityB: r.entity_b,
         relationship: r.relationship,

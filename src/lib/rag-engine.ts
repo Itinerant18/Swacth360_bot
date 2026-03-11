@@ -475,7 +475,8 @@ async function multiVectorSearch(
                 time_boost_days: timeBoostDays,
             });
             if (error || !mmrData) return [];
-            return (mmrData as any[]).map(row => ({
+            type SupabaseRow = { id: string; question: string; answer: string; category: string; subcategory?: string; content: string; source: string; source_name: string; chunk_type?: string; similarity: number; mmr_score?: number; weighted_score?: number };
+            return (mmrData as SupabaseRow[]).map(row => ({
                 id: row.id,
                 question: row.question,
                 answer: row.answer,
@@ -489,7 +490,7 @@ async function multiVectorSearch(
                 mmrScore: row.mmr_score,
                 crossScore: 0,
                 bm25Score: 0,
-                finalScore: row.mmr_score,
+                finalScore: row.mmr_score ?? 0,
                 retrievalVector: label,
             }));
         } else if (useWeighted) {
@@ -500,7 +501,8 @@ async function multiVectorSearch(
                 match_count: RETRIEVAL_CONFIG.CANDIDATES_PER_VECTOR,
             });
             if (error || !weightedData) return [];
-            return (weightedData as any[]).map(row => ({
+            type SupabaseRow = { id: string; question: string; answer: string; category: string; subcategory?: string; content: string; source: string; source_name: string; chunk_type?: string; similarity: number; mmr_score?: number; weighted_score?: number };
+            return (weightedData as SupabaseRow[]).map(row => ({
                 id: row.id,
                 question: row.question,
                 answer: row.answer,
@@ -514,7 +516,7 @@ async function multiVectorSearch(
                 weightedScore: row.weighted_score,
                 crossScore: 0,
                 bm25Score: 0,
-                finalScore: row.weighted_score,
+                finalScore: row.weighted_score ?? 0,
                 retrievalVector: label,
             }));
         } else {
@@ -525,7 +527,8 @@ async function multiVectorSearch(
                 match_count: RETRIEVAL_CONFIG.CANDIDATES_PER_VECTOR,
             });
             if (error || !data) return [];
-            return (data as any[]).map(row => ({
+            type SupabaseRow = { id: string; question: string; answer: string; category: string; subcategory?: string; content: string; source: string; source_name: string; chunk_type?: string; similarity: number; mmr_score?: number; weighted_score?: number };
+            return (data as SupabaseRow[]).map(row => ({
                 id: row.id,
                 question: row.question,
                 answer: row.answer,
@@ -695,7 +698,7 @@ async function enhancedRetrieve(
 
     // Convert to RankedMatch format
     const scoredCandidates = hybridResults.map(result => {
-        const crossScore = crossEncoderScore(query, result as any);
+        const crossScore = crossEncoderScore(query, result as { question: string; answer: string; content: string });
         const finalScore =
             result.vectorScore * RETRIEVAL_CONFIG.VECTOR_WEIGHT +
             crossScore * RETRIEVAL_CONFIG.CROSS_WEIGHT +

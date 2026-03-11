@@ -62,7 +62,7 @@ export async function POST(req: NextRequest) {
             stats,
             latencyMs: Date.now() - start,
         });
-    } catch (err: any) {
+    } catch (err: unknown) {
         if (err instanceof RaptorBuildInProgressError) {
             return NextResponse.json(
                 { success: false, error: err.message },
@@ -70,7 +70,7 @@ export async function POST(req: NextRequest) {
             );
         }
         return NextResponse.json(
-            { success: false, error: err.message },
+            { success: false, error: (err as Error).message },
             { status: 500 }
         );
     }
@@ -95,9 +95,9 @@ export async function GET(req: NextRequest) {
             gaps: gapsRes.data ?? [],
             buildLog: logRes.data ?? [],
         });
-    } catch (err: any) {
+    } catch (err: unknown) {
         return NextResponse.json(
-            { success: false, error: err.message },
+            { success: false, error: (err as Error).message },
             { status: 500 }
         );
     }
