@@ -1,36 +1,25 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faSliders, faBrain, faBolt, faMagnifyingGlass, faChartLine, faSave, faRotate } from '@fortawesome/free-solid-svg-icons';
-
-type RAGSettings = {
-    useHybridSearch: boolean;
-    useReranker: boolean;
-    useQueryExpansion: boolean;
-    useGraphBoost: boolean;
-    topK: number;
-    alpha: number;
-    mmrLambda: number;
-};
+import { faSliders, faBrain, faMagnifyingGlass, faSave, faRotate } from '@fortawesome/free-solid-svg-icons';
+import {
+    DEFAULT_RAG_SETTINGS,
+    RAG_SETTINGS_STORAGE_KEY,
+    type RAGSettings,
+    loadStoredRAGSettings,
+} from '@/lib/rag-settings';
 
 export default function RAGSettingsTab() {
-    const [settings, setSettings] = useState<RAGSettings>({
-        useHybridSearch: true,
-        useReranker: true,
-        useQueryExpansion: true,
-        useGraphBoost: true,
-        topK: 10,
-        alpha: 0.5,
-        mmrLambda: 0.5,
-    });
+    const [settings, setSettings] = useState<RAGSettings>(() => (
+        loadStoredRAGSettings() ?? DEFAULT_RAG_SETTINGS
+    ));
     const [saving, setSaving] = useState(false);
     const [saved, setSaved] = useState(false);
 
     const handleSave = async () => {
         setSaving(true);
-        // In production, save to database/config
-        localStorage.setItem('rag_settings', JSON.stringify(settings));
+        localStorage.setItem(RAG_SETTINGS_STORAGE_KEY, JSON.stringify(settings));
         setTimeout(() => {
             setSaving(false);
             setSaved(true);
@@ -39,15 +28,7 @@ export default function RAGSettingsTab() {
     };
 
     const handleReset = () => {
-        setSettings({
-            useHybridSearch: true,
-            useReranker: true,
-            useQueryExpansion: true,
-            useGraphBoost: true,
-            topK: 10,
-            alpha: 0.5,
-            mmrLambda: 0.5,
-        });
+        setSettings(DEFAULT_RAG_SETTINGS);
     };
 
     return (

@@ -37,7 +37,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabase } from '@/lib/supabase';
-import { embedText, embedTexts } from '@/lib/embeddings';
+import { embedText } from '@/lib/embeddings';
 import { extractPdfText } from '@/lib/pdf-extract';
 import { ChatOpenAI } from '@langchain/openai';
 
@@ -425,21 +425,26 @@ If NO technical images: return []`;
             technicalDetails: item.technicalDetails ?? '',
             relevantFor: item.relevantFor ?? '',
         }));
-    } catch (err: any) {
-        console.warn(`⚠️  Gemini image extraction failed: ${err.message}`);
+    } catch (err: unknown) {
+        console.warn(`⚠️  Gemini image extraction failed: ${(err as Error).message}`);
         return [];
     }
 }
 
 // ─── Main Handler ─────────────────────────────────────────────
 export async function POST(req: NextRequest) {
-    const supabase = getSupabase();
     const sarvamKey = process.env.SARVAM_API_KEY;
     const openaiKey = process.env.OPENAI_API_KEY;
     const geminiKey = process.env.GEMINI_API_KEY;
+    if (!sarvamKey) {
+        console.error('[admin.ingest] config_error', { missing: 'SARVAM_API_KEY' });
+        return NextResponse.json({ error: 'SARVAM_API_KEY not configured' }, { status: 500 });
+    }
+    if (!openaiKey) {
+        console.error('[admin.ingest] config_error', { missing: 'OPENAI_API_KEY' });
+        return NextResponse.json({ error: 'OPENAI_API_KEY not configured' }, { status: 500 });
+    }
 
-    if (!sarvamKey) return NextResponse.json({ error: 'SARVAM_API_KEY not configured' }, { status: 500 });
-    if (!openaiKey) return NextResponse.json({ error: 'OPENAI_API_KEY not configured' }, { status: 500 });
     if (!geminiKey) console.warn('⚠️  GEMINI_API_KEY not set — image extraction skipped');
 
     const sarvamLlm = new ChatOpenAI({
@@ -456,6 +461,10 @@ export async function POST(req: NextRequest) {
     let pdfBuffer: ArrayBuffer | null = null;
 
     const contentType = req.headers.get('content-type') ?? '';
+    console.info('[admin.ingest] request', {
+        contentType,
+        hasGemini: Boolean(geminiKey),
+    });
 
     if (contentType.includes('multipart/form-data')) {
         const form = await req.formData();
@@ -464,9 +473,14 @@ export async function POST(req: NextRequest) {
             || file?.name.replace('.pdf', '') || 'Uploaded PDF';
         inputType = 'pdf';
 
-        if (!file) return NextResponse.json({ error: 'No file provided' }, { status: 400 });
-        if (!file.name.toLowerCase().endsWith('.pdf'))
+        if (!file) {
+            console.warn('[admin.ingest] validation_error', { inputType, reason: 'missing_file' });
+            return NextResponse.json({ error: 'No file provided' }, { status: 400 });
+        }
+        if (!file.name.toLowerCase().endsWith('.pdf')) {
+            console.warn('[admin.ingest] validation_error', { inputType, reason: 'invalid_file_type', fileName: file.name });
             return NextResponse.json({ error: 'Only PDF files are supported' }, { status: 400 });
+        }
         if (file.size > 10 * 1024 * 1024)
             return NextResponse.json({ error: 'File too large — max 10 MB' }, { status: 400 });
 
@@ -474,8 +488,8 @@ export async function POST(req: NextRequest) {
         try {
             rawText = await extractPdfText(pdfBuffer);
             console.log(`📄 Extracted ${rawText.length} chars from PDF`);
-        } catch (err: any) {
-            console.warn(`⚠️  Text extraction failed: ${err.message}`);
+        } catch (err: unknown) {
+            console.warn(`⚠️  Text extraction failed: ${(err as Error).message}`);
             rawText = '';
         }
     } else {
@@ -486,6 +500,14 @@ export async function POST(req: NextRequest) {
         if (rawText.length < 50)
             return NextResponse.json({ error: 'Text too short — paste at least 50 characters' }, { status: 400 });
     }
+
+    const supabase = getSupabase();
+    console.info('[admin.ingest] parsed', {
+        inputType,
+        sourceName,
+        rawLength: rawText.length,
+        hasPdfBuffer: Boolean(pdfBuffer),
+    });
 
     const hasText = rawText.trim().length >= 50;
     const chunkPairs = hasText ? buildParentChildChunks(rawText) : [];
@@ -575,6 +597,8 @@ export async function POST(req: NextRequest) {
                 product: 'HMS Panel',
                 tags: [...qa.tags, ...entities.slice(0, 3)],
                 content: embeddingText,
+                parent_content: parent,
+                entities,
                 embedding: vector,
                 source: inputType === 'pdf' ? 'pdf' : 'admin',
                 source_name: sourceName,
@@ -620,6 +644,8 @@ export async function POST(req: NextRequest) {
                             product: 'HMS Panel',
                             tags: propEntities,
                             content: propEmbeddingText,
+                            parent_content: parent,
+                            entities: propEntities,
                             embedding: propVector,
                             source: inputType === 'pdf' ? 'pdf' : 'admin',
                             source_name: sourceName,
@@ -634,8 +660,8 @@ export async function POST(req: NextRequest) {
 
             if (i < chunkPairs.length - 1) await new Promise(r => setTimeout(r, 150));
 
-        } catch (err: any) {
-            results.push({ id, question: '(error)', status: 'error', type: 'text', error: err.message });
+        } catch (err: unknown) {
+            results.push({ id, question: '(error)', status: 'error', type: 'text', error: (err as Error).message });
             errorCount++;
         }
     }
@@ -699,6 +725,8 @@ export async function POST(req: NextRequest) {
                     product: 'HMS Panel',
                     tags: imageTags,
                     content: embeddingText,
+                    parent_content: imageContent,
+                    entities,
                     embedding: vector,
                     source: 'pdf_image',
                     source_name: sourceName,
@@ -714,8 +742,8 @@ export async function POST(req: NextRequest) {
                 }
 
                 if (i < extractedImages.length - 1) await new Promise(r => setTimeout(r, 150));
-            } catch (err: any) {
-                results.push({ id, question: `[Image] ${img.title} (error)`, status: 'error', type: 'image', error: err.message });
+            } catch (err: unknown) {
+                results.push({ id, question: `[Image] ${img.title} (error)`, status: 'error', type: 'image', error: (err as Error).message });
                 errorCount++;
             }
         }
@@ -724,6 +752,17 @@ export async function POST(req: NextRequest) {
     const textResults = results.filter(r => r.type === 'text');
     const propResults = results.filter(r => r.type === 'proposition');
     const imageResults = results.filter(r => r.type === 'image');
+
+    console.info('[admin.ingest] success', {
+        inputType,
+        sourceName,
+        totalChunks: chunkPairs.length,
+        totalImages: extractedImages.length,
+        successCount,
+        skippedCount,
+        duplicateCount,
+        errorCount,
+    });
 
     return NextResponse.json({
         success: true,

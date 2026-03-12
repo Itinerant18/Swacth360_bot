@@ -19,8 +19,6 @@ const ERROR_MESSAGES: Record<string, string> = {
 
 // ── Styles ───────────────────────────────────────────────────────────────────
 const CSS = `
-@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@600;700;800&display=swap');
-
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
@@ -43,7 +41,7 @@ html, body { height: 100%; background: var(--bg); }
   display: flex;
   align-items: center;
   justify-content: center;
-  font-family: 'DM Mono', monospace;
+  font-family: ui-monospace, 'SFMono-Regular', 'Cascadia Mono', Consolas, monospace;
   background:
     radial-gradient(ellipse 80% 50% at 20% -10%, rgba(202,138,4,0.06) 0%, transparent 60%),
     radial-gradient(ellipse 60% 40% at 80% 110%, rgba(13,148,136,0.04) 0%, transparent 60%),
@@ -96,10 +94,10 @@ html, body { height: 100%; background: var(--bg); }
 .logo-icon {
   width: 32px; height: 32px; background: var(--accent); border-radius: 4px;
   display: flex; align-items: center; justify-content: center;
-  font-family: 'Syne', sans-serif; font-weight: 800; font-size: 14px; color: #fff;
+  font-family: 'Trebuchet MS', 'Segoe UI', sans-serif; font-weight: 800; font-size: 14px; color: #fff;
   letter-spacing: -0.5px; flex-shrink: 0;
 }
-.logo-text { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 16px; color: var(--text); letter-spacing: 0.05em; text-transform: uppercase; }
+.logo-text { font-family: 'Trebuchet MS', 'Segoe UI', sans-serif; font-weight: 700; font-size: 16px; color: var(--text); letter-spacing: 0.05em; text-transform: uppercase; }
 .logo-sub { font-size: 10px; color: var(--muted); letter-spacing: 0.1em; text-transform: uppercase; margin-top: 1px; }
 .divider-v { width: 1px; height: 28px; background: var(--border-hi); margin: 0 4px; }
 
@@ -107,7 +105,7 @@ html, body { height: 100%; background: var(--bg); }
 .tabs { display: flex; border-bottom: 1px solid var(--border-hi); margin-bottom: 24px; gap: 0; }
 .tab-btn {
   flex: 1; padding: 10px 0;
-  font-family: 'Syne', sans-serif; font-size: 12px; font-weight: 700;
+  font-family: 'Trebuchet MS', 'Segoe UI', sans-serif; font-size: 12px; font-weight: 700;
   letter-spacing: 0.08em; text-transform: uppercase; cursor: pointer;
   background: none; border: none; color: var(--muted);
   border-bottom: 2px solid transparent; margin-bottom: -1px;
@@ -125,7 +123,7 @@ html, body { height: 100%; background: var(--bg); }
 input[type="text"], input[type="email"], input[type="password"], input[type="tel"] {
   width: 100%; background: var(--surface); border: 1px solid var(--border-hi);
   border-radius: 4px; padding: 11px 13px;
-  font-family: 'DM Mono', monospace; font-size: 13px; color: var(--text);
+  font-family: ui-monospace, 'SFMono-Regular', 'Cascadia Mono', Consolas, monospace; font-size: 13px; color: var(--text);
   outline: none; transition: border-color 0.15s, box-shadow 0.15s;
   caret-color: var(--accent);
 }
@@ -141,7 +139,7 @@ input.err { border-color: var(--error); box-shadow: 0 0 0 3px rgba(220, 38, 38, 
 .btn {
   width: 100%; background: var(--text); color: #fff; border: none;
   border-radius: 4px; padding: 13px;
-  font-family: 'Syne', sans-serif; font-weight: 700; font-size: 13px;
+  font-family: 'Trebuchet MS', 'Segoe UI', sans-serif; font-weight: 700; font-size: 13px;
   letter-spacing: 0.08em; text-transform: uppercase; cursor: pointer;
   transition: background 0.15s, transform 0.1s, opacity 0.15s;
   display: flex; align-items: center; justify-content: center; gap: 8px;
@@ -212,9 +210,6 @@ function LoginContent() {
     const [rStatus, setRStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
     const [rError, setRError] = useState('');
 
-    // Global message (from URL params)
-    const [globalMsg, setGlobalMsg] = useState<{ type: 'error' | 'info'; text: string } | null>(null);
-
     // Redirect if already logged in
     useEffect(() => {
         getSession().then(session => {
@@ -225,17 +220,13 @@ function LoginContent() {
         });
     }, [router]);
 
-    // Handle URL error/confirmation params
-    useEffect(() => {
-        const err = searchParams.get('error');
-        const confirmed = searchParams.get('confirmed');
-        if (err && ERROR_MESSAGES[err]) {
-            setGlobalMsg({ type: 'error', text: ERROR_MESSAGES[err] });
-        } else if (confirmed === '1') {
-            setGlobalMsg({ type: 'info', text: 'Email confirmed! Sign in below with your password.' });
-            setTab('signin');
-        }
-    }, [searchParams]);
+    const err = searchParams.get('error');
+    const confirmed = searchParams.get('confirmed');
+    const globalMsg = err && ERROR_MESSAGES[err]
+        ? { type: 'error' as const, text: ERROR_MESSAGES[err] }
+        : confirmed === '1'
+            ? { type: 'info' as const, text: 'Email confirmed! Sign in below with your password.' }
+            : null;
 
     // ── Sign In submit ────────────────────────────────────────────────────────
     async function handleSignIn(e: React.FormEvent) {

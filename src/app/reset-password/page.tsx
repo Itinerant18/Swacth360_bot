@@ -57,8 +57,6 @@ function ResetPasswordContent() {
   }
 
   const CSS = `
-@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@600;700;800&display=swap');
-
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
@@ -81,7 +79,7 @@ html, body { height: 100%; background: var(--bg); }
   display: flex;
   align-items: center;
   justify-content: center;
-  font-family: 'DM Mono', monospace;
+  font-family: ui-monospace, 'SFMono-Regular', 'Cascadia Mono', Consolas, monospace;
   background:
     radial-gradient(ellipse 80% 50% at 20% -10%, rgba(202,138,4,0.06) 0%, transparent 60%),
     radial-gradient(ellipse 60% 40% at 80% 110%, rgba(13,148,136,0.04) 0%, transparent 60%),
@@ -131,7 +129,7 @@ html, body { height: 100%; background: var(--bg); }
 }
 
 h1 {
-  font-family: 'Syne', sans-serif; font-weight: 700; font-size: 18px; color: var(--text);
+  font-family: 'Trebuchet MS', 'Segoe UI', sans-serif; font-weight: 700; font-size: 18px; color: var(--text);
   letter-spacing: 0.05em; text-transform: uppercase; margin-bottom: 8px;
 }
 p.sub { font-size: 12px; color: var(--muted); margin-bottom: 24px; }
@@ -145,7 +143,7 @@ p.sub { font-size: 12px; color: var(--muted); margin-bottom: 24px; }
 input[type="password"] {
   width: 100%; background: var(--surface); border: 1px solid var(--border-hi);
   border-radius: 4px; padding: 11px 13px;
-  font-family: 'DM Mono', monospace; font-size: 13px; color: var(--text);
+  font-family: ui-monospace, 'SFMono-Regular', 'Cascadia Mono', Consolas, monospace; font-size: 13px; color: var(--text);
   outline: none; transition: border-color 0.15s, box-shadow 0.15s;
   caret-color: var(--accent);
 }
@@ -159,7 +157,7 @@ input.err { border-color: var(--error); box-shadow: 0 0 0 3px rgba(220, 38, 38, 
 .btn {
   width: 100%; background: var(--text); color: #fff; border: none;
   border-radius: 4px; padding: 13px;
-  font-family: 'Syne', sans-serif; font-weight: 700; font-size: 13px;
+  font-family: 'Trebuchet MS', 'Segoe UI', sans-serif; font-weight: 700; font-size: 13px;
   letter-spacing: 0.08em; text-transform: uppercase; cursor: pointer;
   transition: background 0.15s, transform 0.1s, opacity 0.15s;
   display: flex; align-items: center; justify-content: center; gap: 8px;

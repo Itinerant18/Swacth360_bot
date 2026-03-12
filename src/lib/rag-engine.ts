@@ -40,13 +40,14 @@
  *    - Reduces API costs by 40-60% in production
  */
 
-import { embedText, embedTexts } from './embeddings';
+import { embedText } from './embeddings';
 import { getSupabase } from './supabase';
 import { ChatOpenAI } from '@langchain/openai';
 
 // New imports for enhanced RAG
 import { hybridSearch, selectSearchStrategy } from './hybrid-search';
-import { extractEntities, getGraphBoostedIds } from './knowledge-graph';
+import { extractEntities } from './knowledge-graph';
+import { expandQueryWithLLM } from './query-expansion';
 import { mergeWithRaptorHits, raptorSearch } from './raptor-retrieval';
 
 // ─── Types ────────────────────────────────────────────────────
@@ -369,6 +370,32 @@ function crossEncoderScore(query: string, match: { question: string; answer: str
     return Math.max(0, Math.min(score, 1.0));
 }
 
+type PreferredChunkType = 'proposition' | 'chunk' | 'any';
+
+function chunkTypeBoost(
+    chunkType: string | undefined,
+    preferredChunkType: PreferredChunkType,
+): number {
+    if (preferredChunkType === 'any') {
+        return 0;
+    }
+
+    const normalized = (chunkType || 'chunk').toLowerCase();
+    if (normalized === preferredChunkType) {
+        return 0.08;
+    }
+
+    if (preferredChunkType === 'proposition' && normalized === 'chunk') {
+        return 0.02;
+    }
+
+    if (preferredChunkType === 'chunk' && normalized === 'proposition') {
+        return 0.01;
+    }
+
+    return -0.02;
+}
+
 // ─── Semantic Cache ────────────────────────────────────────────
 interface SemanticCacheEntry {
     query: string;
@@ -392,8 +419,7 @@ function cosineSimilarity(a: number[], b: number[]): number {
 }
 
 export async function checkSemanticCache(
-    queryVector: number[],
-    query: string
+    queryVector: number[]
 ): Promise<RAGResult | null> {
     const now = Date.now();
 
@@ -451,7 +477,9 @@ async function multiVectorSearch(
         useMMR?: boolean;
         useWeighted?: boolean;
         mmrLambda?: number;
-        timeBoostDays?: number;
+        recencyBoost?: number;
+        similarityThreshold?: number;
+        preferredChunkType?: PreferredChunkType;
     } = {}
 ): Promise<{
     queryHits: RankedMatch[];
@@ -462,17 +490,28 @@ async function multiVectorSearch(
         vector: number[],
         label: 'query' | 'hyde' | 'expanded'
     ): Promise<RankedMatch[]> => {
-        const { useMMR = RETRIEVAL_CONFIG.USE_MMR, useWeighted = false, mmrLambda = RETRIEVAL_CONFIG.MMR_LAMBDA, timeBoostDays = RETRIEVAL_CONFIG.TIME_BOOST_DAYS } = options;
+        const {
+            useMMR = RETRIEVAL_CONFIG.USE_MMR,
+            useWeighted = false,
+            mmrLambda = RETRIEVAL_CONFIG.MMR_LAMBDA,
+            recencyBoost = 0.10,
+            similarityThreshold = RETRIEVAL_CONFIG.SUPABASE_FETCH_THRESHOLD,
+            preferredChunkType = 'any',
+        } = options;
+        const chunkWeights = preferredChunkType === 'proposition'
+            ? { proposition: 1.18, chunk: 1.0, image: 0.94, qa: 0.98 }
+            : preferredChunkType === 'chunk'
+                ? { proposition: 0.98, chunk: 1.12, image: 0.94, qa: 1.0 }
+                : { proposition: 1.05, chunk: 1.0, image: 0.97, qa: 1.0 };
 
-        let data;
         if (useMMR) {
             // Use MMR diversity search
             const { data: mmrData, error } = await supabase.rpc('search_hms_knowledge_mmr', {
                 query_embedding: vector,
-                similarity_threshold: RETRIEVAL_CONFIG.SUPABASE_FETCH_THRESHOLD,
+                similarity_threshold: similarityThreshold,
                 match_count: RETRIEVAL_CONFIG.CANDIDATES_PER_VECTOR,
                 mmr_lambda: mmrLambda,
-                time_boost_days: timeBoostDays,
+                recency_boost: recencyBoost,
             });
             if (error || !mmrData) return [];
             type SupabaseRow = { id: string; question: string; answer: string; category: string; subcategory?: string; content: string; source: string; source_name: string; chunk_type?: string; similarity: number; mmr_score?: number; weighted_score?: number };
@@ -497,53 +536,58 @@ async function multiVectorSearch(
             // Use weighted search by chunk type
             const { data: weightedData, error } = await supabase.rpc('search_hms_knowledge_weighted', {
                 query_embedding: vector,
-                similarity_threshold: RETRIEVAL_CONFIG.SUPABASE_FETCH_THRESHOLD,
+                similarity_threshold: similarityThreshold,
                 match_count: RETRIEVAL_CONFIG.CANDIDATES_PER_VECTOR,
+                chunk_weights: chunkWeights,
             });
-            if (error || !weightedData) return [];
-            type SupabaseRow = { id: string; question: string; answer: string; category: string; subcategory?: string; content: string; source: string; source_name: string; chunk_type?: string; similarity: number; mmr_score?: number; weighted_score?: number };
-            return (weightedData as SupabaseRow[]).map(row => ({
-                id: row.id,
-                question: row.question,
-                answer: row.answer,
-                category: row.category,
-                subcategory: row.subcategory || '',
-                content: row.content,
-                source: row.source,
-                source_name: row.source_name,
-                chunkType: row.chunk_type,
-                vectorSimilarity: row.similarity,
-                weightedScore: row.weighted_score,
-                crossScore: 0,
-                bm25Score: 0,
-                finalScore: row.weighted_score ?? 0,
-                retrievalVector: label,
-            }));
-        } else {
-            // Fall back to standard search
-            const { data, error } = await supabase.rpc('search_hms_knowledge', {
-                query_embedding: vector,
-                similarity_threshold: RETRIEVAL_CONFIG.SUPABASE_FETCH_THRESHOLD,
-                match_count: RETRIEVAL_CONFIG.CANDIDATES_PER_VECTOR,
-            });
-            if (error || !data) return [];
-            type SupabaseRow = { id: string; question: string; answer: string; category: string; subcategory?: string; content: string; source: string; source_name: string; chunk_type?: string; similarity: number; mmr_score?: number; weighted_score?: number };
-            return (data as SupabaseRow[]).map(row => ({
-                id: row.id,
-                question: row.question,
-                answer: row.answer,
-                category: row.category,
-                subcategory: row.subcategory || '',
-                content: row.content,
-                source: row.source,
-                source_name: row.source_name,
-                vectorSimilarity: row.similarity,
-                crossScore: 0,
-                bm25Score: 0,
-                finalScore: 0,
-                retrievalVector: label,
-            }));
+            if (error || !weightedData) {
+                console.warn('  ⚠️  Weighted search unavailable, falling back to standard vector search');
+            } else {
+                type SupabaseRow = { id: string; question: string; answer: string; category: string; subcategory?: string; content: string; source: string; source_name: string; chunk_type?: string; similarity: number; mmr_score?: number; weighted_score?: number };
+                return (weightedData as SupabaseRow[]).map(row => ({
+                    id: row.id,
+                    question: row.question,
+                    answer: row.answer,
+                    category: row.category,
+                    subcategory: row.subcategory || '',
+                    content: row.content,
+                    source: row.source,
+                    source_name: row.source_name,
+                    chunkType: row.chunk_type,
+                    vectorSimilarity: row.similarity,
+                    weightedScore: row.weighted_score,
+                    crossScore: 0,
+                    bm25Score: 0,
+                    finalScore: row.weighted_score ?? 0,
+                    retrievalVector: label,
+                }));
+            }
         }
+
+        // Fall back to standard search
+        const { data, error } = await supabase.rpc('search_hms_knowledge', {
+            query_embedding: vector,
+            similarity_threshold: similarityThreshold,
+            match_count: RETRIEVAL_CONFIG.CANDIDATES_PER_VECTOR,
+        });
+        if (error || !data) return [];
+        type SupabaseRow = { id: string; question: string; answer: string; category: string; subcategory?: string; content: string; source: string; source_name: string; chunk_type?: string; similarity: number; mmr_score?: number; weighted_score?: number };
+        return (data as SupabaseRow[]).map(row => ({
+            id: row.id,
+            question: row.question,
+            answer: row.answer,
+            category: row.category,
+            subcategory: row.subcategory || '',
+            content: row.content,
+            source: row.source,
+            source_name: row.source_name,
+            chunkType: row.chunk_type,
+            vectorSimilarity: row.similarity,
+            crossScore: 0,
+            bm25Score: 0,
+            finalScore: 0,
+            retrievalVector: label,
+        }));
     };
 
     const [queryHits, hydeHits, expandedHits] = await Promise.all([
@@ -585,13 +629,6 @@ function mergeAndDeduplicateToMap(
     return seen;
 }
 
-function mergeAndDeduplicate(
-    queryHits: RankedMatch[],
-    hydeHits: RankedMatch[],
-    expandedHits: RankedMatch[]
-): RankedMatch[] {
-    return [...mergeAndDeduplicateToMap(queryHits, hydeHits, expandedHits).values()];
-}
 
 // ─── Contextual Compression ───────────────────────────────────
 /**
@@ -637,7 +674,7 @@ function calibrateConfidence(rawSimilarity: number, queryType: QueryType): numbe
     const k = 12;     // steepness
     const center = 0.52; // center point (where calibrated = 0.5)
 
-    let calibrated = 1 / (1 + Math.exp(-k * (rawSimilarity - center)));
+    const calibrated = 1 / (1 + Math.exp(-k * (rawSimilarity - center)));
 
     // Adjust by query type — factual queries get a slight boost (easier to answer)
     // diagnostic queries are harder, require more exact matches
@@ -665,13 +702,25 @@ async function enhancedRetrieve(
         topK: number;
         useMMR: boolean;
         mmrLambda: number;
-        timeBoostDays: number;
+        recencyBoost: number;
         useQueryExpansion: boolean;
         useGraphBoost: boolean;
+        useReranker: boolean;
+        alpha: number;
+        similarityThreshold: number;
+        preferredChunkType: PreferredChunkType;
     }
 ): Promise<RAGResult> {
     const startMs = performance.now();
-    const { topK, useQueryExpansion, useGraphBoost } = options;
+    const {
+        topK,
+        useQueryExpansion,
+        useGraphBoost,
+        useReranker,
+        alpha,
+        similarityThreshold,
+        preferredChunkType,
+    } = options;
 
     console.log(`\n🚀 Enhanced RAG — Hybrid Search Mode`);
 
@@ -685,11 +734,21 @@ async function enhancedRetrieve(
 
     // Get dynamic search strategy based on query type
     const strategy = selectSearchStrategy(queryAnalysis.type);
+    let searchQuery = query;
+
+    if (useQueryExpansion) {
+        const expansions = await expandQueryWithLLM(query, llm);
+        searchQuery = [...expansions.slice(0, 4)].join(' ');
+        console.log(`  Query expansion: ${expansions.length} variants`);
+    }
 
     // Perform hybrid search
-    const hybridResults = await hybridSearch(query, {
+    const hybridResults = await hybridSearch(searchQuery, {
         ...strategy,
+        alpha,
         topK: topK * 2, // Get more for reranking
+        minSimilarity: similarityThreshold,
+        useReranker,
         useGraphBoost,
         queryEntities: entityNames,
     });
@@ -699,11 +758,13 @@ async function enhancedRetrieve(
     // Convert to RankedMatch format
     const scoredCandidates = hybridResults.map(result => {
         const crossScore = crossEncoderScore(query, result as { question: string; answer: string; content: string });
+        const typeBoost = chunkTypeBoost(result.chunk_type, preferredChunkType);
         const finalScore =
             result.vectorScore * RETRIEVAL_CONFIG.VECTOR_WEIGHT +
             crossScore * RETRIEVAL_CONFIG.CROSS_WEIGHT +
             result.bm25Score * RETRIEVAL_CONFIG.BM25_WEIGHT +
-            result.graphBoost;
+            result.graphBoost +
+            typeBoost;
 
         return {
             ...result,
@@ -742,7 +803,7 @@ async function enhancedRetrieve(
 
     // Build context string
     const contextString = reranked
-        .filter(m => m.finalScore > RETRIEVAL_CONFIG.SUPABASE_FETCH_THRESHOLD)
+        .filter(m => m.finalScore > similarityThreshold)
         .map((m, i) => {
             const conf = `${(m.finalScore * 100).toFixed(0)}%`;
             const sourceLabel = m.source_name || m.source || 'Knowledge Base';
@@ -784,11 +845,15 @@ export async function retrieve(
         useMMR?: boolean;
         useWeighted?: boolean;
         mmrLambda?: number;
-        timeBoostDays?: number;
+        recencyBoost?: number;
         // Enhanced RAG options
         useHybridSearch?: boolean;
         useQueryExpansion?: boolean;
         useGraphBoost?: boolean;
+        useReranker?: boolean;
+        alpha?: number;
+        similarityThreshold?: number;
+        preferredChunkType?: PreferredChunkType;
     } = {}
 ): Promise<RAGResult> {
     const startMs = performance.now();
@@ -798,11 +863,15 @@ export async function retrieve(
         useMMR = RETRIEVAL_CONFIG.USE_MMR,
         useWeighted = false,
         mmrLambda = RETRIEVAL_CONFIG.MMR_LAMBDA,
-        timeBoostDays = RETRIEVAL_CONFIG.TIME_BOOST_DAYS,
+        recencyBoost = 0.10,
         // Enhanced RAG defaults
         useHybridSearch = false,
         useQueryExpansion = false,
         useGraphBoost = false,
+        useReranker = true,
+        alpha = 0.5,
+        similarityThreshold = RETRIEVAL_CONFIG.SUPABASE_FETCH_THRESHOLD,
+        preferredChunkType = 'any',
     } = options;
 
     // ─── ENHANCED RAG: Hybrid Search Path ───
@@ -811,7 +880,19 @@ export async function retrieve(
         const queryAnalysis = classifyQuery(query);
         return enhancedRetrieve(
             query, llm, queryAnalysis,
-            { useHYDE, topK, useMMR, mmrLambda, timeBoostDays, useQueryExpansion, useGraphBoost }
+            {
+                useHYDE,
+                topK,
+                useMMR,
+                mmrLambda,
+                recencyBoost,
+                useQueryExpansion,
+                useGraphBoost,
+                useReranker,
+                alpha,
+                similarityThreshold,
+                preferredChunkType,
+            }
         );
     }
 
@@ -820,7 +901,13 @@ export async function retrieve(
     console.log(`\n🔍 RAG Engine — Query type: ${queryAnalysis.type} | Entities: [${queryAnalysis.entities.join(', ')}] | Complexity: ${queryAnalysis.complexity}`);
 
     // Step 2: Generate vectors
-    const expandedQuery = buildExpandedQuery(query, queryAnalysis);
+    let expandedQuery = buildExpandedQuery(query, queryAnalysis);
+
+    if (useQueryExpansion) {
+        const expansions = await expandQueryWithLLM(query, llm);
+        expandedQuery = [expandedQuery, ...expansions.slice(1, 4)].join(' | ');
+        console.log(`  Query expansion: ${Math.max(expansions.length - 1, 0)} extra variants`);
+    }
 
     let hydeText: string | null = null;
 
@@ -842,7 +929,7 @@ export async function retrieve(
     console.log(`  HYDE: ${hydeText ? `"${hydeText.slice(0, 80)}..."` : 'skipped (timeout/disabled)'}`);
 
     // Check semantic cache (after getting vector, before DB query)
-    const cachedResult = await checkSemanticCache(queryVector, query);
+    const cachedResult = await checkSemanticCache(queryVector);
     if (cachedResult) {
         return { ...cachedResult, retrievalStats: { ...cachedResult.retrievalStats, latencyMs: performance.now() - startMs } };
     }
@@ -856,7 +943,7 @@ export async function retrieve(
     const [{ queryHits, hydeHits, expandedHits }, raptorHits] = await Promise.all([
         multiVectorSearch(
             queryVector, hydeVector, expandedVector, supabase,
-            { useMMR, useWeighted, mmrLambda, timeBoostDays }
+            { useMMR, useWeighted, mmrLambda, recencyBoost, similarityThreshold, preferredChunkType }
         ),
         raptorSearch(queryVector, queryAnalysis),
     ]);
@@ -872,11 +959,13 @@ export async function retrieve(
     const scoredCandidates = allCandidates.map(candidate => {
         const crossScore = crossEncoderScore(query, candidate);
         const bm25 = bm25Score(query, `${candidate.question} ${candidate.answer}`);
+        const typeBoost = chunkTypeBoost(candidate.chunkType, preferredChunkType);
 
         const finalScore =
             candidate.vectorSimilarity * RETRIEVAL_CONFIG.VECTOR_WEIGHT +
             crossScore * RETRIEVAL_CONFIG.CROSS_WEIGHT +
-            bm25 * RETRIEVAL_CONFIG.BM25_WEIGHT;
+            bm25 * RETRIEVAL_CONFIG.BM25_WEIGHT +
+            typeBoost;
 
         // Contextual compression
         const relevantPassage = extractRelevantPassage(query, candidate.answer);
@@ -907,7 +996,7 @@ export async function retrieve(
 
     // Step 9: Build context string with compressed passages (enhanced format)
     const contextString = reranked
-        .filter(m => m.finalScore > RETRIEVAL_CONFIG.SUPABASE_FETCH_THRESHOLD)
+        .filter(m => m.finalScore > similarityThreshold)
         .map((m, i) => {
             const vectorSource = m.retrievalVector === 'hyde' ? '🔮 HYDE' : m.retrievalVector === 'query' ? '📌 Query' : '🔍 Expanded';
             const conf = `${(m.finalScore * 100).toFixed(0)}%`;
@@ -935,7 +1024,11 @@ export async function retrieve(
             expanded: expandedHits.length,
         },
         topConfidence: calibratedConfidence,
-        retrievalMethod: answerMode.startsWith('rag') ? 'hybrid-vector-hybrid' : 'general-llm',
+        retrievalMethod: useMMR
+            ? 'multi-vector-mmr'
+            : useWeighted
+                ? 'multi-vector-weighted'
+                : 'multi-vector-standard',
     };
 
     const latencyMs = performance.now() - startMs;
@@ -964,9 +1057,9 @@ export async function retrieve(
         const supabase = getSupabase();
         await supabase.rpc('log_kb_query', {
             p_query_text: query,
-            p_query_embedding: queryVector,
-            p_results_count: reranked.length,
+            p_english_query: query,
             p_top_similarity: topScore,
+            p_matches_found: reranked.length,
             p_answer_mode: answerMode,
             p_latency_ms: Math.round(latencyMs),
         });
@@ -977,7 +1070,7 @@ export async function retrieve(
                 await supabase.rpc('record_knowledge_access', { p_id: match.id });
             } catch { /* ignore individual access logging failures */ }
         }
-    } catch (err) {
+    } catch {
         console.log('  ⚠️  Query logging failed (non-critical)');
     }
 

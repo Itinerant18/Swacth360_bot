@@ -48,7 +48,7 @@
 @theme inline {
   --color-background: var(--bg-desk);
   --color-foreground: var(--text-ink);
-  --font-sans: 'Lexend', system-ui, -apple-system, sans-serif;
+  --font-sans: "Trebuchet MS", "Segoe UI", system-ui, -apple-system, sans-serif;
 }
 
 /* ─── Base ──────────────────────────────────────────────── */
@@ -57,7 +57,7 @@ html {
 }
 
 body {
-  font-family: 'Lexend', system-ui, -apple-system, sans-serif;
+  font-family: "Trebuchet MS", "Segoe UI", system-ui, -apple-system, sans-serif;
   background: var(--bg-desk);
   color: var(--text-ink);
   min-height: 100vh;

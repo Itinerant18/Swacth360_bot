@@ -33,8 +33,6 @@ export default function LanguageSelector({ language, setLanguage }: LanguageSele
   return (
     <>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&display=swap');
-
         .lang-selector * { font-family: 'DM Sans', sans-serif; box-sizing: border-box; }
 
         .lang-trigger {

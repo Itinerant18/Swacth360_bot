@@ -58,6 +58,7 @@ export async function POST(request: NextRequest) {
     try {
         const body = await request.json();
         const { action, data } = body;
+        console.info('[admin.graph.post] request', { action });
 
         switch (action) {
             case 'add_entities': {
@@ -114,7 +115,11 @@ export async function POST(request: NextRequest) {
                 return NextResponse.json({
                     success: true,
                     entity: data.entity,
-                    related
+                    related: related.map((item) => ({
+                        entity_b: item.entityB,
+                        relationship: item.relationship,
+                        confidence: item.confidence,
+                    })),
                 });
             }
 
@@ -227,7 +232,7 @@ export async function POST(request: NextRequest) {
                 );
         }
     } catch (error) {
-        console.error('Knowledge graph error:', error);
+        console.error('[admin.graph.post] error', error);
         return NextResponse.json(
             { error: 'Failed to process knowledge graph request' },
             { status: 500 }
@@ -236,29 +241,35 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
+    void request;
     // Get knowledge graph statistics
     const supabase = getSupabase();
+    console.info('[admin.graph.get] request');
 
-    const { data: stats, error } = await supabase
+    const { data: rows, error } = await supabase
         .from('knowledge_graph')
-        .select('relationship', { count: 'exact', head: true });
+        .select('entity_a, entity_b, relationship');
 
     if (error) {
+        console.error('[admin.graph.get] error', error);
         return NextResponse.json(
             { error: 'Failed to fetch graph stats' },
             { status: 500 }
         );
     }
 
-    const { data: entities } = await supabase
-        .from('knowledge_graph')
-        .select('entity_a');
+    const uniqueEntities = new Set<string>();
+    const relationshipTypes = new Set<string>();
 
-    const uniqueEntities = new Set((entities || []).map(e => e.entity_a));
+    (rows || []).forEach((row: { entity_a: string; entity_b: string; relationship: string }) => {
+        uniqueEntities.add(row.entity_a);
+        uniqueEntities.add(row.entity_b);
+        relationshipTypes.add(row.relationship);
+    });
 
     return NextResponse.json({
-        total_relationships: stats?.length || 0,
+        total_relationships: rows?.length || 0,
         unique_entities: uniqueEntities.size,
-        relationship_types: [...new Set((stats || []).map(s => s.relationship))]
+        relationship_types: [...relationshipTypes],
     });
 }

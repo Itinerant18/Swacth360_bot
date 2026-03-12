@@ -10,11 +10,12 @@ import {
     faSignal, faRobot, faPaperPlane,
     faCopy, faCheck, faChevronDown, faSpinner, faDiagramProject,
     faThumbsUp, faThumbsDown, faSignOutAlt, faBolt,
-    faPlus, faTrash, faBars, faTimes, faComment,
+    faPlus, faTrash, faTimes, faComment,
 } from '@fortawesome/free-solid-svg-icons';
 import LanguageSelector from '../components/LanguageSelector';
 import DiagramCard from '../components/DiagramCard';
 import { signOut, isAdminEmail, getSupabaseAuth } from '@/lib/auth';
+import { loadStoredRAGSettings, type RAGSettings } from '@/lib/rag-settings';
 
 interface Conversation {
     id: string;
@@ -285,12 +286,26 @@ export default function Chat() {
     const [isLoadingHistory, setIsLoadingHistory] = useState(false);
     const [loadingConversationId, setLoadingConversationId] = useState<string | null>(null);
     const [historyError, setHistoryError] = useState<ConversationHistoryError | null>(null);
+    const [ragSettings, setRagSettings] = useState<RAGSettings | null>(null);
 
     useEffect(() => {
         if (typeof window !== 'undefined' && isAuthenticated && window.innerWidth >= 1024) {
             setSidebarOpen(true);
         }
     }, [isAuthenticated]);
+
+    useEffect(() => {
+        const refreshSettings = () => {
+            setRagSettings(loadStoredRAGSettings());
+        };
+
+        refreshSettings();
+        window.addEventListener('storage', refreshSettings);
+
+        return () => {
+            window.removeEventListener('storage', refreshSettings);
+        };
+    }, []);
 
     // ─── Chat State ───────────────────────────────────────────
     const [language, setLanguage] = useState<'en' | 'bn' | 'hi'>('en');
@@ -322,7 +337,7 @@ export default function Chat() {
 
     const { messages, input, handleInputChange, handleSubmit: rawHandleSubmit, isLoading, append, setMessages, stop } = useChat({
         credentials: 'include',
-        body: { userId, language, conversationId: activeConversationId },
+        body: { userId, language, conversationId: activeConversationId, ragSettings },
         onResponse: (response) => {
             const conversationId = response.headers.get('x-conversation-id');
             if (conversationId) {

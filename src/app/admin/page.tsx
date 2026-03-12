@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import type { IconDefinition } from '@fortawesome/fontawesome-svg-core';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
     faGear, faPenToSquare, faChartLine,
@@ -8,7 +9,7 @@ import {
     faCircleExclamation, faCubes, faFire, faClock, faUsers,
     faPhone, faEnvelope, faUpload, faFileAlt, faCloudUploadAlt,
     faCheckCircle, faTimesCircle, faMinusCircle, faSpinner,
-    faTrash, faDatabase, faDiagramProject, faSliders, faStar, faBrain,
+    faDatabase, faDiagramProject, faSliders, faStar,
     faSignOutAlt,
 } from '@fortawesome/free-solid-svg-icons';
 import GraphTab from '@/components/GraphTab';
@@ -39,6 +40,19 @@ type Analytics = {
     recentSessions: { user_question: string; answer_mode: string; top_similarity: number; created_at: string }[];
 };
 
+const EMPTY_ANALYTICS: Analytics = {
+    totalChats: 0,
+    ragCount: 0,
+    generalCount: 0,
+    diagramCount: 0,
+    ragPercent: 0,
+    diagramPercent: 0,
+    unknownQuestions: { total: 0, pending: 0, reviewed: 0 },
+    topUnknown: [],
+    knowledgeBase: {},
+    recentSessions: [],
+};
+
 type TrackedUser = {
     id: string; name: string; phone: string; email: string;
     created_at: string; queryCount: number; lastActive: string;
@@ -47,8 +61,8 @@ type TrackedUser = {
 type IngestResult = {
     id: string;
     question: string;
-    status: 'success' | 'skipped' | 'error';
-    type: 'text' | 'image';
+    status: 'success' | 'skipped' | 'error' | 'duplicate';
+    type: 'text' | 'proposition' | 'image';
     error?: string;
 };
 
@@ -61,14 +75,16 @@ type IngestResponse = {
     successCount: number;
     skippedCount: number;
     errorCount: number;
+    duplicateCount: number;
     textSuccess: number;
+    propositionSuccess?: number;
     imageSuccess: number;
     imageTypes: string[];
     results: IngestResult[];
     error?: string;
 };
 
-// ─── Tab type ─────────────────────────────────────────────────
+// Tab type
 type Tab = 'review' | 'analytics' | 'users' | 'ingest' | 'graph' | 'settings' | 'feedback';
 
 export default function AdminDashboard() {
@@ -82,8 +98,12 @@ export default function AdminDashboard() {
     const [category, setCategory] = useState('');
     const [saving, setSaving] = useState(false);
     const [toast, setToast] = useState('');
+    const [reviewError, setReviewError] = useState('');
+    const [analyticsError, setAnalyticsError] = useState('');
+    const [usersError, setUsersError] = useState('');
+    const [activeQuestionId, setActiveQuestionId] = useState<string | null>(null);
 
-    // ─── Ingest State ──────────────────────────────────────
+    // Ingest state
     const [ingestMode, setIngestMode] = useState<'pdf' | 'text'>('pdf');
     const [dragOver, setDragOver] = useState(false);
     const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -101,25 +121,61 @@ export default function AdminDashboard() {
 
     const fetchQuestions = useCallback(async () => {
         setLoading(true);
-        const res = await fetch('/api/admin/questions?status=pending');
-        const data = await res.json();
-        setQuestions(data.questions || []);
+        setReviewError('');
+        try {
+            const res = await fetch('/api/admin/questions?status=pending');
+            const data = await res.json();
+
+            if (!res.ok) {
+                throw new Error(data.error || 'Failed to load review queue');
+            }
+
+            setQuestions(data.questions || []);
+            if (data.offline) {
+                setReviewError('Review queue is temporarily unavailable.');
+            }
+        } catch (err: unknown) {
+            setQuestions([]);
+            setReviewError((err as Error).message || 'Failed to load review queue');
+        }
         setLoading(false);
     }, []);
 
     const fetchAnalytics = useCallback(async () => {
         setLoading(true);
-        const res = await fetch('/api/admin/analytics');
-        const data = await res.json();
-        setAnalytics(data);
+        setAnalyticsError('');
+        try {
+            const res = await fetch('/api/admin/analytics');
+            const data = await res.json();
+
+            if (!res.ok) {
+                throw new Error(data.error || 'Failed to load analytics');
+            }
+
+            setAnalytics({ ...EMPTY_ANALYTICS, ...data });
+        } catch (err: unknown) {
+            setAnalytics(EMPTY_ANALYTICS);
+            setAnalyticsError((err as Error).message || 'Failed to load analytics');
+        }
         setLoading(false);
     }, []);
 
     const fetchUsers = useCallback(async () => {
         setLoading(true);
-        const res = await fetch('/api/users');
-        const data = await res.json();
-        setUsers(data.users || []);
+        setUsersError('');
+        try {
+            const res = await fetch('/api/users');
+            const data = await res.json();
+
+            if (!res.ok) {
+                throw new Error(data.error || 'Failed to load users');
+            }
+
+            setUsers(data.users || []);
+        } catch (err: unknown) {
+            setUsers([]);
+            setUsersError((err as Error).message || 'Failed to load users');
+        }
         setLoading(false);
     }, []);
 
@@ -137,6 +193,7 @@ export default function AdminDashboard() {
 
     const handleSaveAndTrain = async (q: UnknownQuestion) => {
         if (!answerText.trim()) return;
+        setActiveQuestionId(q.id);
         setSaving(true);
         try {
             const res = await fetch('/api/admin/seed-answer', {
@@ -150,32 +207,52 @@ export default function AdminDashboard() {
                 }),
             });
             const data = await res.json();
-            if (data.success) {
-                showToast('Bot trained!');
-                setExpandedId(null);
-                setAnswerText('');
-                setCategory('');
-                fetchQuestions();
-            } else {
-                showToast(`Error: ${data.error}`);
+
+            if (!res.ok || !data.success) {
+                throw new Error(data.error || 'Failed to save answer');
             }
-        } catch {
-            showToast('Network error');
+
+            showToast(data.message || 'Bot trained!');
+            setExpandedId(null);
+            setAnswerText('');
+            setCategory('');
+            await fetchQuestions();
+        } catch (err: unknown) {
+            showToast(`Error: ${(err as Error).message}`);
         }
+        setActiveQuestionId(null);
         setSaving(false);
     };
 
     const handleDismiss = async (id: string) => {
-        await fetch('/api/admin/questions', {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ id, status: 'dismissed' }),
-        });
-        fetchQuestions();
-        showToast('Dismissed');
+        setActiveQuestionId(id);
+        try {
+            const res = await fetch('/api/admin/questions', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id, status: 'dismissed' }),
+            });
+            const data = await res.json();
+
+            if (!res.ok || !data.success) {
+                throw new Error(data.error || 'Failed to dismiss question');
+            }
+
+            if (expandedId === id) {
+                setExpandedId(null);
+                setAnswerText('');
+                setCategory('');
+            }
+
+            await fetchQuestions();
+            showToast('Dismissed');
+        } catch (err: unknown) {
+            showToast(`Error: ${(err as Error).message}`);
+        }
+        setActiveQuestionId(null);
     };
 
-    // ─── Ingest Handlers ───────────────────────────────────
+    // Ingest handlers
     const handleDragOver = (e: React.DragEvent) => {
         e.preventDefault();
         setDragOver(true);
@@ -186,9 +263,10 @@ export default function AdminDashboard() {
         e.preventDefault();
         setDragOver(false);
         const file = e.dataTransfer.files[0];
-        if (file && file.name.endsWith('.pdf')) {
+        if (file && file.name.toLowerCase().endsWith('.pdf')) {
             setSelectedFile(file);
             if (!sourceName) setSourceName(file.name.replace('.pdf', ''));
+            setIngestError('');
         } else {
             setIngestError('Please drop a PDF file.');
         }
@@ -196,9 +274,13 @@ export default function AdminDashboard() {
 
     const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
-        if (file) {
+        if (file && file.name.toLowerCase().endsWith('.pdf')) {
             setSelectedFile(file);
             if (!sourceName) setSourceName(file.name.replace('.pdf', ''));
+            setIngestError('');
+        } else if (file) {
+            setSelectedFile(null);
+            setIngestError('Please choose a PDF file.');
         }
     };
 
@@ -234,14 +316,22 @@ export default function AdminDashboard() {
 
             const data: IngestResponse = await response.json();
 
-            if (data.error) {
-                setIngestError(data.error);
+            if (!response.ok || data.error) {
+                setIngestResult(null);
+                setIngestError(data.error || 'Training failed');
             } else {
                 setIngestResult(data);
-                showToast(`✅ ${data.successCount} entries added to knowledge base!`);
+                if (data.successCount > 0) {
+                    showToast(`Added ${data.successCount} knowledge entries`);
+                } else if (data.duplicateCount > 0) {
+                    showToast(`No new entries added. ${data.duplicateCount} duplicates skipped`);
+                } else {
+                    showToast('Training finished with no new entries');
+                }
             }
-        } catch (err: any) {
-            setIngestError(`Network error: ${err.message}`);
+        } catch (err: unknown) {
+            setIngestResult(null);
+            setIngestError(`Network error: ${(err as Error).message}`);
         }
 
         setProcessing(false);
@@ -256,7 +346,7 @@ export default function AdminDashboard() {
         if (fileInputRef.current) fileInputRef.current.value = '';
     };
 
-    // ─── Dashboard ─────────────────────────────────────────
+    // Dashboard
     return (
         <div className="min-h-screen">
             {toast && (
@@ -277,7 +367,7 @@ export default function AdminDashboard() {
                             <h1 className="text-base sm:text-lg font-semibold tracking-tight text-[#1C1917]">
                                 Admin <span className="text-[#CA8A04]">Dashboard</span>
                             </h1>
-                            <p className="text-[10px] sm:text-[11px] text-[#78716C]">Dexter HMS Bot — Train & Monitor</p>
+                            <p className="text-[10px] sm:text-[11px] text-[#78716C]">Dexter HMS Bot - Train & Monitor</p>
                         </div>
                     </div>
                     <div className="flex items-center gap-2">
@@ -324,7 +414,7 @@ export default function AdminDashboard() {
             {/* Content */}
             <main className="max-w-5xl mx-auto px-4 sm:px-6 py-5 sm:py-6">
 
-                {/* ── Loading ── */}
+                {/* Loading */}
                 {loading && tab !== 'ingest' ? (
                     <div className="flex items-center justify-center py-20">
                         <div className="flex gap-1.5">
@@ -335,13 +425,22 @@ export default function AdminDashboard() {
                     </div>
                 ) : tab === 'review' ? (
 
-                    /* ─────────────────── REVIEW TAB ─────────────────── */
+                    /* Review tab */
                     <div className="space-y-3 sm:space-y-4">
+                        {reviewError && (
+                            <div className="skeuo-card p-4 sm:p-5 border-red-200 bg-red-50/40">
+                                <p className="text-sm text-red-700">{reviewError}</p>
+                            </div>
+                        )}
                         {questions.length === 0 ? (
                             <div className="text-center py-16 sm:py-20 animate-fade-up">
                                 <FontAwesomeIcon icon={faCircleCheck} className="w-10 h-10 sm:w-12 sm:h-12 text-emerald-600 mb-3 sm:mb-4" />
-                                <h2 className="text-lg sm:text-xl font-semibold text-[#1C1917] mb-2">All caught up!</h2>
-                                <p className="text-[#78716C] text-sm">No pending questions to review.</p>
+                                <h2 className="text-lg sm:text-xl font-semibold text-[#1C1917] mb-2">
+                                    {reviewError ? 'Review queue unavailable' : 'All caught up!'}
+                                </h2>
+                                <p className="text-[#78716C] text-sm">
+                                    {reviewError ? 'Retry after checking the Supabase connection.' : 'No pending questions to review.'}
+                                </p>
                             </div>
                         ) : questions.map((q) => (
                             <div key={q.id} className={`skeuo-card overflow-hidden ${expandedId === q.id ? 'border-[#CA8A04]/40 shadow-lg' : ''}`}>
@@ -355,7 +454,7 @@ export default function AdminDashboard() {
                                     </div>
                                     <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
                                         <span className="text-[10px] sm:text-[11px] px-2 py-0.5 rounded-full bg-red-50 text-red-700 border border-red-200 shadow-[inset_0_1px_2px_rgba(0,0,0,0.06)]">
-                                            {q.frequency}× asked
+                                            {q.frequency}x asked
                                         </span>
                                         <span className="text-[10px] sm:text-[11px] px-2 py-0.5 rounded-full bg-[#F0EBE3] text-[#78716C] border border-[#D6CFC4] shadow-[inset_0_1px_2px_rgba(0,0,0,0.06)] hidden sm:inline-flex">
                                             {(q.top_similarity * 100).toFixed(0)}%
@@ -386,17 +485,18 @@ export default function AdminDashboard() {
                                         <div className="flex gap-2 sm:gap-3">
                                             <button
                                                 onClick={() => handleSaveAndTrain(q)}
-                                                disabled={saving || !answerText.trim()}
+                                                disabled={saving || activeQuestionId === q.id || !answerText.trim()}
                                                 className="skeuo-brass flex-1 py-2.5 px-4 text-xs sm:text-sm flex items-center justify-center gap-2"
                                             >
                                                 <FontAwesomeIcon icon={faRocket} className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
-                                                {saving ? 'Training...' : 'Save & Train Bot'}
+                                                {saving && activeQuestionId === q.id ? 'Training...' : 'Save & Train Bot'}
                                             </button>
                                             <button
                                                 onClick={() => handleDismiss(q.id)}
+                                                disabled={activeQuestionId === q.id}
                                                 className="skeuo-raised py-2.5 px-3 sm:px-4 text-[#78716C] text-xs sm:text-sm hover:text-red-600 transition-colors"
                                             >
-                                                Dismiss
+                                                {activeQuestionId === q.id ? 'Working...' : 'Dismiss'}
                                             </button>
                                         </div>
                                     </div>
@@ -407,8 +507,13 @@ export default function AdminDashboard() {
 
                 ) : tab === 'analytics' && analytics ? (
 
-                    /* ─────────────────── ANALYTICS TAB ─────────────────── */
+                    /* Analytics tab */
                     <div className="space-y-4 sm:space-y-6">
+                        {analyticsError && (
+                            <div className="skeuo-card p-4 sm:p-5 border-red-200 bg-red-50/40">
+                                <p className="text-sm text-red-700">{analyticsError}</p>
+                            </div>
+                        )}
                         <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4">
                             <SkeuoStat label="Total Chats" value={analytics.totalChats} icon={faComment} />
                             <SkeuoStat label="RAG Answers" value={`${analytics.ragCount} (${analytics.ragPercent}%)`} icon={faBook} accent="text-emerald-700" />
@@ -421,17 +526,21 @@ export default function AdminDashboard() {
                             <h3 className="text-xs sm:text-sm font-semibold text-[#1C1917] uppercase tracking-wider mb-3 sm:mb-4 flex items-center gap-2">
                                 <FontAwesomeIcon icon={faCubes} className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-[#CA8A04]" /> Knowledge Base
                             </h3>
-                            <div className="space-y-2">
-                                {Object.entries(analytics.knowledgeBase).map(([source, info]) => (
-                                    <div key={source} className="flex items-center justify-between py-2 px-3 rounded-lg bg-[#F0EBE3] border border-[#D6CFC4] shadow-[inset_0_1px_2px_rgba(0,0,0,0.04)]">
-                                        <div className="flex items-center gap-2">
-                                            <span className={`w-2 h-2 rounded-full ${source === 'json' ? 'bg-blue-500' : source === 'pdf' ? 'bg-green-500' : source === 'admin' ? 'bg-[#CA8A04]' : 'bg-purple-500'}`} />
-                                            <span className="text-xs sm:text-sm text-[#44403C]">{info.name}</span>
+                            {Object.keys(analytics.knowledgeBase).length === 0 ? (
+                                <p className="text-sm text-[#78716C]">No knowledge base records found yet.</p>
+                            ) : (
+                                <div className="space-y-2">
+                                    {Object.entries(analytics.knowledgeBase).map(([source, info]) => (
+                                        <div key={source} className="flex items-center justify-between py-2 px-3 rounded-lg bg-[#F0EBE3] border border-[#D6CFC4] shadow-[inset_0_1px_2px_rgba(0,0,0,0.04)]">
+                                            <div className="flex items-center gap-2">
+                                                <span className={`w-2 h-2 rounded-full ${source === 'json' ? 'bg-blue-500' : source === 'pdf' ? 'bg-green-500' : source === 'admin' ? 'bg-[#CA8A04]' : 'bg-purple-500'}`} />
+                                                <span className="text-xs sm:text-sm text-[#44403C]">{info.name}</span>
+                                            </div>
+                                            <span className="text-xs sm:text-sm text-[#78716C] font-mono">{info.count}</span>
                                         </div>
-                                        <span className="text-xs sm:text-sm text-[#78716C] font-mono">{info.count}</span>
-                                    </div>
-                                ))}
-                            </div>
+                                    ))}
+                                </div>
+                            )}
                         </div>
 
                         {analytics.topUnknown.length > 0 && (
@@ -444,7 +553,7 @@ export default function AdminDashboard() {
                                         <div key={i} className="flex items-center justify-between py-2 px-3 rounded-lg bg-[#F0EBE3] border border-[#D6CFC4] shadow-[inset_0_1px_2px_rgba(0,0,0,0.04)]">
                                             <p className="text-xs sm:text-sm text-[#44403C] truncate flex-1 mr-3">{q.english_text}</p>
                                             <span className="text-[10px] sm:text-xs text-red-700 bg-red-50 px-2 py-0.5 rounded-full border border-red-200 flex-shrink-0">
-                                                {q.frequency}×
+                                                {q.frequency}x
                                             </span>
                                         </div>
                                     ))}
@@ -473,11 +582,11 @@ export default function AdminDashboard() {
                                                         ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
                                                         : 'bg-amber-50 text-amber-800 border border-amber-200'
                                                         }`}>
-                                                        {s.answer_mode?.toUpperCase() || '—'}
+                                                        {s.answer_mode?.toUpperCase() || '-'}
                                                     </span>
                                                 </td>
                                                 <td className="py-2.5 text-center font-mono text-xs">
-                                                    {s.top_similarity ? `${(s.top_similarity * 100).toFixed(0)}%` : '—'}
+                                                    {s.top_similarity ? `${(s.top_similarity * 100).toFixed(0)}%` : '-'}
                                                 </td>
                                                 <td className="py-2.5 text-right text-xs text-[#A8A29E]">
                                                     {new Date(s.created_at).toLocaleTimeString()}
@@ -492,8 +601,13 @@ export default function AdminDashboard() {
 
                 ) : tab === 'users' ? (
 
-                    /* ─────────────────── USERS TAB ─────────────────── */
+                    /* Users tab */
                     <div className="space-y-4 sm:space-y-6">
+                        {usersError && (
+                            <div className="skeuo-card p-4 sm:p-5 border-red-200 bg-red-50/40">
+                                <p className="text-sm text-red-700">{usersError}</p>
+                            </div>
+                        )}
                         <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
                             <SkeuoStat label="Total Users" value={users.length} icon={faUsers} accent="text-[#CA8A04]" />
                             <SkeuoStat label="Total Queries" value={users.reduce((sum, u) => sum + u.queryCount, 0)} icon={faComment} />
@@ -551,7 +665,7 @@ export default function AdminDashboard() {
 
                 ) : tab === 'ingest' ? (
 
-                    /* ─────────────────── INGEST / TRAIN BOT TAB ─────────────────── */
+                    /* Ingest / train bot tab */
                     <div className="space-y-4 sm:space-y-6">
 
                         {/* Header card */}
@@ -563,7 +677,7 @@ export default function AdminDashboard() {
                                 <div>
                                     <h2 className="text-sm sm:text-base font-semibold text-[#1C1917]">Train Bot from Documents</h2>
                                     <p className="text-xs sm:text-sm text-[#78716C] mt-1">
-                                        Upload a PDF manual or paste text — the bot will automatically extract knowledge,
+                                        Upload a PDF manual or paste text - the bot will automatically extract knowledge,
                                         generate Q&A pairs using AI, and add them to the knowledge base.
                                     </p>
                                     <div className="mt-2 flex flex-wrap gap-2">
@@ -657,7 +771,7 @@ export default function AdminDashboard() {
                                                 <div>
                                                     <FontAwesomeIcon icon={faCloudUploadAlt} className="w-8 h-8 text-[#A8A29E] mb-2" />
                                                     <p className="text-sm font-medium text-[#44403C]">Drop PDF here or click to browse</p>
-                                                    <p className="text-xs text-[#A8A29E] mt-1">Maximum 10MB · PDF only, for larger files use CLI (Contact with Dev Team)</p>
+                                                    <p className="text-xs text-[#A8A29E] mt-1">Maximum 10MB - PDF only. For larger files, use the CLI or contact the dev team.</p>
                                                 </div>
                                             )}
                                         </div>
@@ -675,12 +789,12 @@ export default function AdminDashboard() {
                                             value={rawText}
                                             onChange={e => setRawText(e.target.value)}
                                             rows={10}
-                                            placeholder={`Paste technical content here. Examples:\n• Service report: "Unit showed CRC errors on COM2. Root cause was reversed A/B polarity on RS-485 terminal. Resolution: swap wires at slave device terminal block."\n• Manual excerpt from HMS documentation\n• Troubleshooting notes from field engineers\n• Error code descriptions and solutions`}
+                                            placeholder={`Paste technical content here. Examples:\n- Service report: "Unit showed CRC errors on COM2. Root cause was reversed A/B polarity on RS-485 terminal. Resolution: swap wires at slave device terminal block."\n- Manual excerpt from HMS documentation\n- Troubleshooting notes from field engineers\n- Error code descriptions and solutions`}
                                             className="skeuo-input w-full p-3 sm:p-4 text-sm resize-none font-mono leading-relaxed"
                                         />
                                         <p className="text-[10px] text-[#A8A29E] mt-1.5">
                                             {rawText.length} characters
-                                            {rawText.length > 0 && ` · ~${Math.ceil(rawText.length / 800)} chunks to process`}
+                                            {rawText.length > 0 && ` - ~${Math.ceil(rawText.length / 800)} chunks to process`}
                                         </p>
                                     </div>
                                 )}
@@ -689,18 +803,18 @@ export default function AdminDashboard() {
                                 <div className="bg-[#F0EBE3] border border-[#D6CFC4] rounded-xl p-3 sm:p-4 shadow-[inset_0_1px_2px_rgba(0,0,0,0.04)]">
                                     <p className="text-[10px] sm:text-xs text-[#78716C] font-semibold uppercase tracking-wider mb-2">What happens when you click Process:</p>
 
-                                    <p className="text-[10px] sm:text-xs text-[#78716C] font-semibold mt-2 mb-1">📄 Text Pipeline</p>
+                                    <p className="text-[10px] sm:text-xs text-[#78716C] font-semibold mt-2 mb-1">Text Pipeline</p>
                                     <div className="space-y-1.5 text-xs text-[#44403C]">
                                         <div className="flex items-center gap-2"><span className="w-5 h-5 rounded-full bg-[#0D9488]/15 text-[#0D9488] flex items-center justify-center text-[10px] font-bold flex-shrink-0">1</span> Text is split into ~800-char chunks with 150-char overlap</div>
                                         <div className="flex items-center gap-2"><span className="w-5 h-5 rounded-full bg-[#0D9488]/15 text-[#0D9488] flex items-center justify-center text-[10px] font-bold flex-shrink-0">2</span> Sarvam AI generates a Q&amp;A pair for each chunk</div>
                                         <div className="flex items-center gap-2"><span className="w-5 h-5 rounded-full bg-[#0D9488]/15 text-[#0D9488] flex items-center justify-center text-[10px] font-bold flex-shrink-0">3</span> OpenAI text-embedding-3-small creates a 1536-dim vector</div>
                                     </div>
 
-                                    <p className="text-[10px] sm:text-xs text-[#78716C] font-semibold mt-3 mb-1">🖼️ Image Pipeline (PDF only)</p>
+                                    <p className="text-[10px] sm:text-xs text-[#78716C] font-semibold mt-3 mb-1">Image Pipeline (PDF only)</p>
                                     <div className="space-y-1.5 text-xs text-[#44403C]">
-                                        <div className="flex items-center gap-2"><span className="w-5 h-5 rounded-full bg-[#0D9488]/15 text-[#0D9488] flex items-center justify-center text-[10px] font-bold flex-shrink-0">4</span> Gemini 2.0 Flash reads the entire PDF — text AND images</div>
-                                        <div className="flex items-center gap-2"><span className="w-5 h-5 rounded-full bg-[#0D9488]/15 text-[#0D9488] flex items-center justify-center text-[10px] font-bold flex-shrink-0">5</span> Identifies wiring diagrams, schematics, panel layouts, pinouts…</div>
-                                        <div className="flex items-center gap-2"><span className="w-5 h-5 rounded-full bg-[#0D9488]/15 text-[#0D9488] flex items-center justify-center text-[10px] font-bold flex-shrink-0">6</span> Sarvam generates Q&amp;A for each visual — stored as <code className="text-[#0D9488] bg-[#0D9488]/10 px-1 rounded">pdf_image</code></div>
+                                        <div className="flex items-center gap-2"><span className="w-5 h-5 rounded-full bg-[#0D9488]/15 text-[#0D9488] flex items-center justify-center text-[10px] font-bold flex-shrink-0">4</span> Gemini 2.0 Flash reads the entire PDF - text and images</div>
+                                        <div className="flex items-center gap-2"><span className="w-5 h-5 rounded-full bg-[#0D9488]/15 text-[#0D9488] flex items-center justify-center text-[10px] font-bold flex-shrink-0">5</span> Identifies wiring diagrams, schematics, panel layouts, and pinouts</div>
+                                        <div className="flex items-center gap-2"><span className="w-5 h-5 rounded-full bg-[#0D9488]/15 text-[#0D9488] flex items-center justify-center text-[10px] font-bold flex-shrink-0">6</span> Sarvam generates Q&amp;A for each visual and stores it as <code className="text-[#0D9488] bg-[#0D9488]/10 px-1 rounded">pdf_image</code></div>
                                         <div className="flex items-center gap-2"><span className="w-5 h-5 rounded-full bg-[#0D9488]/15 text-[#0D9488] flex items-center justify-center text-[10px] font-bold flex-shrink-0">7</span> Bot now answers questions about diagrams, not just text</div>
                                     </div>
                                 </div>
@@ -722,7 +836,7 @@ export default function AdminDashboard() {
                                     {processing ? (
                                         <>
                                             <FontAwesomeIcon icon={faSpinner} className="w-4 h-4 animate-spin" />
-                                            Processing… (this may take 30-60 seconds)
+                                            Processing... (this may take 30-60 seconds)
                                         </>
                                     ) : (
                                         <>
@@ -735,7 +849,7 @@ export default function AdminDashboard() {
                                 {processing && (
                                     <div className="text-center">
                                         <p className="text-xs text-[#78716C]">
-                                            AI is reading the content, generating Q&A pairs, and building embeddings…
+                                            AI is reading the content, generating Q&amp;A pairs, and building embeddings...
                                         </p>
                                         <div className="flex justify-center gap-1.5 mt-2">
                                             <div className="w-1.5 h-1.5 rounded-full bg-[#0D9488] animate-bounce" style={{ animationDelay: '0ms' }} />
@@ -751,8 +865,8 @@ export default function AdminDashboard() {
                         {ingestResult && (
                             <div className="space-y-3 sm:space-y-4 animate-fade-up">
 
-                                {/* Summary stats — now shows text vs image breakdown */}
-                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                                {/* Summary stats - shows text vs image breakdown */}
+                                <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
                                     <div className="skeuo-card p-3 sm:p-4 text-center">
                                         <FontAwesomeIcon icon={faCheckCircle} className="w-5 h-5 text-emerald-600 mb-1" />
                                         <p className="text-xl font-bold text-emerald-700">{ingestResult.successCount}</p>
@@ -764,9 +878,14 @@ export default function AdminDashboard() {
                                         <p className="text-[10px] text-[#78716C] uppercase tracking-wider">From Text</p>
                                     </div>
                                     <div className="skeuo-card p-3 sm:p-4 text-center border-[#0D9488]/30">
-                                        <span className="text-2xl mb-1 block">🖼️</span>
+                                        <FontAwesomeIcon icon={faDiagramProject} className="w-5 h-5 text-[#0D9488] mb-1 mx-auto" />
                                         <p className="text-xl font-bold text-[#0D9488]">{ingestResult.imageSuccess}</p>
                                         <p className="text-[10px] text-[#78716C] uppercase tracking-wider">From Images</p>
+                                    </div>
+                                    <div className="skeuo-card p-3 sm:p-4 text-center">
+                                        <FontAwesomeIcon icon={faMinusCircle} className="w-5 h-5 text-[#A8A29E] mb-1" />
+                                        <p className="text-xl font-bold text-[#78716C]">{ingestResult.duplicateCount}</p>
+                                        <p className="text-[10px] text-[#78716C] uppercase tracking-wider">Duplicates</p>
                                     </div>
                                     <div className="skeuo-card p-3 sm:p-4 text-center">
                                         <FontAwesomeIcon icon={faTimesCircle} className="w-5 h-5 text-red-500 mb-1" />
@@ -778,22 +897,35 @@ export default function AdminDashboard() {
                                 {/* Success banner */}
                                 <div className="skeuo-card p-3 sm:p-4 border-emerald-200 bg-emerald-50/30">
                                     <p className="text-sm font-semibold text-[#1C1917]">
-                                        ✅ Trained from: <span className="text-[#0D9488]">{ingestResult.sourceName}</span>
+                                        Trained from: <span className="text-[#0D9488]">{ingestResult.sourceName}</span>
                                     </p>
                                     <div className="text-xs text-[#78716C] mt-1 space-y-0.5">
                                         <p>
-                                            📄 {ingestResult.totalChunks} text chunks processed
-                                            → {ingestResult.textSuccess} Q&amp;A pairs added
+                                            {ingestResult.totalChunks} text chunks processed -&gt; {ingestResult.textSuccess} Q&amp;A pairs added
                                         </p>
+                                        {!!ingestResult.propositionSuccess && (
+                                            <p>
+                                                {ingestResult.propositionSuccess} proposition fact(s) added for precise retrieval
+                                            </p>
+                                        )}
                                         {ingestResult.totalImages > 0 && (
                                             <p>
-                                                🖼️  {ingestResult.totalImages} technical image(s) extracted
-                                                → {ingestResult.imageSuccess} visual Q&amp;A pairs added
+                                                {ingestResult.totalImages} technical image(s) extracted -&gt; {ingestResult.imageSuccess} visual Q&amp;A pairs added
+                                            </p>
+                                        )}
+                                        {ingestResult.duplicateCount > 0 && (
+                                            <p className="text-[#78716C]">
+                                                {ingestResult.duplicateCount} duplicate item(s) were skipped.
+                                            </p>
+                                        )}
+                                        {ingestResult.skippedCount > 0 && (
+                                            <p className="text-[#78716C]">
+                                                {ingestResult.skippedCount} chunk(s) were skipped because they had no useful technical content.
                                             </p>
                                         )}
                                         {ingestResult.totalImages === 0 && ingestResult.inputType === 'pdf' && (
                                             <p className="text-[#A8A29E]">
-                                                🖼️  No technical images detected in this PDF
+                                                No technical images detected in this PDF.
                                             </p>
                                         )}
                                     </div>
@@ -808,11 +940,11 @@ export default function AdminDashboard() {
                                         </div>
                                     )}
                                     <p className="text-xs text-emerald-700 mt-2 font-medium">
-                                        The bot can now answer questions about this content — including technical diagrams.
+                                        The bot can now answer questions about this content, including technical diagrams.
                                     </p>
                                 </div>
 
-                                {/* Q&A pairs — separated by type */}
+                                {/* Q&A pairs - separated by type */}
                                 <div className="skeuo-card p-4 sm:p-5">
                                     <h3 className="text-xs sm:text-sm font-semibold text-[#1C1917] uppercase tracking-wider mb-3 flex items-center gap-2">
                                         <FontAwesomeIcon icon={faDatabase} className="w-3 h-3 text-[#0D9488]" />
@@ -831,12 +963,36 @@ export default function AdminDashboard() {
                                                     .filter(r => r.type === 'text')
                                                     .map((r, i) => (
                                                         <div key={i} className={`flex items-start gap-2.5 py-1.5 px-3 rounded-lg text-xs border shadow-[inset_0_1px_2px_rgba(0,0,0,0.04)] ${r.status === 'success' ? 'bg-emerald-50/50 border-emerald-200' :
-                                                            r.status === 'skipped' ? 'bg-[#F0EBE3] border-[#D6CFC4]' :
+                                                            r.status === 'skipped' || r.status === 'duplicate' ? 'bg-[#F0EBE3] border-[#D6CFC4]' :
                                                                 'bg-red-50/50 border-red-200'
                                                             }`}>
                                                             <FontAwesomeIcon
-                                                                icon={r.status === 'success' ? faCheckCircle : r.status === 'skipped' ? faMinusCircle : faTimesCircle}
-                                                                className={`w-3 h-3 mt-0.5 flex-shrink-0 ${r.status === 'success' ? 'text-emerald-600' : r.status === 'skipped' ? 'text-[#A8A29E]' : 'text-red-500'}`}
+                                                                icon={r.status === 'success' ? faCheckCircle : r.status === 'skipped' || r.status === 'duplicate' ? faMinusCircle : faTimesCircle}
+                                                                className={`w-3 h-3 mt-0.5 flex-shrink-0 ${r.status === 'success' ? 'text-emerald-600' : r.status === 'skipped' || r.status === 'duplicate' ? 'text-[#A8A29E]' : 'text-red-500'}`}
+                                                            />
+                                                            <span className={r.status === 'success' ? 'text-[#1C1917]' : 'text-[#78716C] italic'}>
+                                                                {r.question}
+                                                                {r.error && <span className="text-red-600 ml-2">({r.error})</span>}
+                                                            </span>
+                                                        </div>
+                                                    ))}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {ingestResult.results.filter(r => r.type === 'proposition').length > 0 && (
+                                        <div className="mb-4">
+                                            <p className="text-[10px] text-[#A8A29E] uppercase tracking-wider font-semibold mb-2">
+                                                Proposition Facts
+                                            </p>
+                                            <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
+                                                {ingestResult.results
+                                                    .filter(r => r.type === 'proposition')
+                                                    .map((r, i) => (
+                                                        <div key={i} className="flex items-start gap-2.5 py-1.5 px-3 rounded-lg text-xs border bg-emerald-50/40 border-emerald-200">
+                                                            <FontAwesomeIcon
+                                                                icon={r.status === 'success' ? faCheckCircle : r.status === 'duplicate' ? faMinusCircle : faTimesCircle}
+                                                                className={`w-3 h-3 mt-0.5 flex-shrink-0 ${r.status === 'success' ? 'text-emerald-600' : r.status === 'duplicate' ? 'text-[#A8A29E]' : 'text-red-500'}`}
                                                             />
                                                             <span className={r.status === 'success' ? 'text-[#1C1917]' : 'text-[#78716C] italic'}>
                                                                 {r.question}
@@ -852,7 +1008,7 @@ export default function AdminDashboard() {
                                     {ingestResult.results.filter(r => r.type === 'image').length > 0 && (
                                         <div>
                                             <p className="text-[10px] text-[#A8A29E] uppercase tracking-wider font-semibold mb-2 flex items-center gap-1.5">
-                                                <span className="text-sm">🖼️</span>
+                                                <span className="text-sm">Image</span>
                                                 Technical Images / Diagrams
                                             </p>
                                             <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
@@ -860,12 +1016,12 @@ export default function AdminDashboard() {
                                                     .filter(r => r.type === 'image')
                                                     .map((r, i) => (
                                                         <div key={i} className={`flex items-start gap-2.5 py-1.5 px-3 rounded-lg text-xs border ${r.status === 'success' ? 'bg-[#0D9488]/5 border-[#0D9488]/20' :
-                                                            r.status === 'skipped' ? 'bg-[#F0EBE3] border-[#D6CFC4]' :
+                                                            r.status === 'skipped' || r.status === 'duplicate' ? 'bg-[#F0EBE3] border-[#D6CFC4]' :
                                                                 'bg-red-50/50 border-red-200'
                                                             }`}>
                                                             <FontAwesomeIcon
-                                                                icon={r.status === 'success' ? faCheckCircle : r.status === 'skipped' ? faMinusCircle : faTimesCircle}
-                                                                className={`w-3 h-3 mt-0.5 flex-shrink-0 ${r.status === 'success' ? 'text-[#0D9488]' : r.status === 'skipped' ? 'text-[#A8A29E]' : 'text-red-500'}`}
+                                                                icon={r.status === 'success' ? faCheckCircle : r.status === 'skipped' || r.status === 'duplicate' ? faMinusCircle : faTimesCircle}
+                                                                className={`w-3 h-3 mt-0.5 flex-shrink-0 ${r.status === 'success' ? 'text-[#0D9488]' : r.status === 'skipped' || r.status === 'duplicate' ? 'text-[#A8A29E]' : 'text-red-500'}`}
                                                             />
                                                             <span className={r.status === 'success' ? 'text-[#0D9488]' : 'text-[#78716C] italic'}>
                                                                 {r.question}
@@ -904,7 +1060,7 @@ export default function AdminDashboard() {
 }
 
 function SkeuoStat({ label, value, icon, accent }: {
-    label: string; value: string | number; icon: any; accent?: string;
+    label: string; value: string | number; icon: IconDefinition; accent?: string;
 }) {
     return (
         <div className="skeuo-card p-4 sm:p-5 cursor-pointer group">

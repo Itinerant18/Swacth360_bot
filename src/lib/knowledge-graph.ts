@@ -237,11 +237,11 @@ export async function processEntryEntities(
     entryId: string,
     content: string
 ): Promise<void> {
+    void entryId;
     const entities = extractEntities(content);
 
-    // Add to knowledge graph with source
-    for (const entity of entities) {
-        await addEntities([entity]);
+    if (entities.length >= 2) {
+        await addEntities(entities);
     }
 }
 
@@ -303,7 +303,7 @@ export async function submitFeedback(
 }
 
 // Singleton for graph queries
-let _entityCache: Map<string, Relationship[]> = new Map();
+const _entityCache: Map<string, Relationship[]> = new Map();
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 const cacheTimestamps = new Map<string, number>();
 

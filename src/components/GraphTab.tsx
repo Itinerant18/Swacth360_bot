@@ -1,11 +1,13 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import type { IconDefinition } from '@fortawesome/fontawesome-svg-core';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
-    faDiagramProject, faSearch, faLightbulb, faPlus, faTrash,
-    faNetworkWired, faCode, faMicrochip, faPlug, faEthernet,
-    faCircle, faArrowsLeftRight, faBolt, faShield, faWrench
+    faDiagramProject, faSearch, faLightbulb, faPlus,
+    faNetworkWired, faMicrochip, faPlug, faEthernet,
+    faCircle, faArrowsLeftRight, faBolt, faShield, faWrench,
+    faArrowsRotate, faTriangleExclamation
 } from '@fortawesome/free-solid-svg-icons';
 
 type GraphStats = {
@@ -27,14 +29,7 @@ type Entity = {
     type: EntityType;
 };
 
-type Relationship = {
-    entity_a: string;
-    entity_b: string;
-    relationship: string;
-    confidence: number;
-};
-
-const ENTITY_TYPE_ICONS: Record<EntityType, any> = {
+const ENTITY_TYPE_ICONS: Record<EntityType, IconDefinition> = {
     error: faBolt,
     terminal: faPlug,
     device: faMicrochip,
@@ -59,51 +54,59 @@ export default function GraphTab() {
     const [activeTab, setActiveTab] = useState<'search' | 'manage' | 'insights'>('search');
     const [searchEntity, setSearchEntity] = useState('');
     const [related, setRelated] = useState<RelatedEntity[]>([]);
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState('');
-
-    // Entity management state
+    const [initialLoading, setInitialLoading] = useState(true);
+    const [busy, setBusy] = useState(false);
+    const [loadError, setLoadError] = useState('');
+    const [actionError, setActionError] = useState('');
     const [entities, setEntities] = useState<Entity[]>([]);
-    const [relationships, setRelationships] = useState<Relationship[]>([]);
     const [newEntity, setNewEntity] = useState({ name: '', type: 'device' as EntityType });
     const [newRelation, setNewRelation] = useState({ entityA: '', entityB: '', relationship: 'related_to' });
     const [filterType, setFilterType] = useState<EntityType | 'all'>('all');
 
     useEffect(() => {
-        fetchGraphStats();
-        fetchAllEntities();
+        void loadGraphData();
     }, []);
 
-    const fetchGraphStats = async () => {
-        try {
-            const res = await fetch('/api/admin/graph');
-            const data = await res.json();
-            setStats(data);
-        } catch (e) {
-            console.error('Failed to fetch graph stats:', e);
-        }
-    };
+    const loadGraphData = async () => {
+        setInitialLoading(true);
+        setLoadError('');
 
-    const fetchAllEntities = async () => {
         try {
-            const res = await fetch('/api/admin/graph', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ action: 'get_all', data: {} })
-            });
-            const data = await res.json();
-            if (data.entities) setEntities(data.entities);
-            if (data.relationships) setRelationships(data.relationships);
-        } catch (e) {
-            console.error('Failed to fetch entities:', e);
+            const [statsRes, allRes] = await Promise.all([
+                fetch('/api/admin/graph'),
+                fetch('/api/admin/graph', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'get_all', data: {} })
+                }),
+            ]);
+
+            const statsData = await statsRes.json();
+            const allData = await allRes.json();
+
+            if (!statsRes.ok) {
+                throw new Error(statsData.error || 'Failed to load graph stats');
+            }
+            if (!allRes.ok) {
+                throw new Error(allData.error || 'Failed to load graph entities');
+            }
+
+            setStats(statsData);
+            setEntities(allData.entities || []);
+        } catch (err: unknown) {
+            setStats(null);
+            setEntities([]);
+            setLoadError((err as Error).message || 'Failed to load graph data');
+        } finally {
+            setInitialLoading(false);
         }
     };
 
     const handleSearch = async () => {
         if (!searchEntity.trim()) return;
 
-        setLoading(true);
-        setError('');
+        setBusy(true);
+        setActionError('');
 
         try {
             const res = await fetch('/api/admin/graph', {
@@ -116,23 +119,24 @@ export default function GraphTab() {
             });
             const data = await res.json();
 
-            if (data.related) {
-                setRelated(data.related);
-            } else {
-                setRelated([]);
+            if (!res.ok) {
+                throw new Error(data.error || 'Failed to search entities');
             }
-        } catch (e) {
-            setError('Failed to search entities');
-            console.error(e);
+
+            setRelated(data.related || []);
+        } catch (err: unknown) {
+            setRelated([]);
+            setActionError((err as Error).message || 'Failed to search entities');
         } finally {
-            setLoading(false);
+            setBusy(false);
         }
     };
 
     const handleAddEntity = async () => {
         if (!newEntity.name.trim()) return;
 
-        setLoading(true);
+        setBusy(true);
+        setActionError('');
         try {
             const res = await fetch('/api/admin/graph', {
                 method: 'POST',
@@ -144,22 +148,24 @@ export default function GraphTab() {
             });
             const data = await res.json();
 
-            if (data.success) {
-                setNewEntity({ name: '', type: 'device' });
-                fetchGraphStats();
-                fetchAllEntities();
+            if (!res.ok || !data.success) {
+                throw new Error(data.error || 'Failed to add entity');
             }
-        } catch (e) {
-            setError('Failed to add entity');
+
+            setNewEntity({ name: '', type: 'device' });
+            await loadGraphData();
+        } catch (err: unknown) {
+            setActionError((err as Error).message || 'Failed to add entity');
         } finally {
-            setLoading(false);
+            setBusy(false);
         }
     };
 
     const handleAddRelationship = async () => {
         if (!newRelation.entityA || !newRelation.entityB) return;
 
-        setLoading(true);
+        setBusy(true);
+        setActionError('');
         try {
             const res = await fetch('/api/admin/graph', {
                 method: 'POST',
@@ -171,20 +177,22 @@ export default function GraphTab() {
             });
             const data = await res.json();
 
-            if (data.success) {
-                setNewRelation({ entityA: '', entityB: '', relationship: 'related_to' });
-                fetchGraphStats();
-                fetchAllEntities();
+            if (!res.ok || !data.success) {
+                throw new Error(data.error || 'Failed to add relationship');
             }
-        } catch (e) {
-            setError('Failed to add relationship');
+
+            setNewRelation({ entityA: '', entityB: '', relationship: 'related_to' });
+            await loadGraphData();
+        } catch (err: unknown) {
+            setActionError((err as Error).message || 'Failed to add relationship');
         } finally {
-            setLoading(false);
+            setBusy(false);
         }
     };
 
     const handleExtractFromText = async () => {
-        setLoading(true);
+        setBusy(true);
+        setActionError('');
         try {
             const res = await fetch('/api/admin/graph', {
                 method: 'POST',
@@ -196,22 +204,24 @@ export default function GraphTab() {
             });
             const data = await res.json();
 
-            if (data.entities && data.entities.length > 0) {
-                setEntities(prev => [...prev, ...data.entities]);
+            if (!res.ok || !data.success) {
+                throw new Error(data.error || 'Failed to extract sample entities');
             }
-        } catch (e) {
-            console.error('Extract failed:', e);
+
+            await loadGraphData();
+        } catch (err: unknown) {
+            setActionError((err as Error).message || 'Failed to extract sample entities');
         } finally {
-            setLoading(false);
+            setBusy(false);
         }
     };
 
     const filteredEntities = filterType === 'all'
         ? entities
-        : entities.filter(e => e.type === filterType);
+        : entities.filter(entity => entity.type === filterType);
 
-    const typeBreakdown = entities.reduce((acc, e) => {
-        acc[e.type] = (acc[e.type] || 0) + 1;
+    const typeBreakdown = entities.reduce((acc, entity) => {
+        acc[entity.type] = (acc[entity.type] || 0) + 1;
         return acc;
     }, {} as Record<string, number>);
 
@@ -228,309 +238,331 @@ export default function GraphTab() {
                     </span>
                 </div>
 
-                {/* Stats Overview */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
-                    <div className="bg-[#FAF7F2] rounded-lg p-3 text-center">
-                        <p className="text-xl font-bold text-[#0D9488]">{stats?.unique_entities || '-'}</p>
-                        <p className="text-[10px] text-[#78716C] uppercase">Entities</p>
-                    </div>
-                    <div className="bg-[#FAF7F2] rounded-lg p-3 text-center">
-                        <p className="text-xl font-bold text-[#0D9488]">{stats?.total_relationships || '-'}</p>
-                        <p className="text-[10px] text-[#78716C] uppercase">Relations</p>
-                    </div>
-                    <div className="bg-[#FAF7F2] rounded-lg p-3 text-center">
-                        <p className="text-xl font-bold text-[#0D9488]">{stats?.relationship_types?.length || '-'}</p>
-                        <p className="text-[10px] text-[#78716C] uppercase">Types</p>
-                    </div>
-                    <div className="bg-[#FAF7F2] rounded-lg p-3 text-center">
-                        <p className="text-lg font-bold text-emerald-600">🔮</p>
-                        <p className="text-[10px] text-[#78716C] uppercase">Active</p>
-                    </div>
-                </div>
-
-                {/* Sub-tabs */}
-                <div className="flex gap-1 mb-4 p-1 bg-[#F0EBE3] rounded-lg">
-                    {[
-                        { key: 'search', label: 'Search', icon: faSearch },
-                        { key: 'manage', label: 'Manage', icon: faNetworkWired },
-                        { key: 'insights', label: 'Insights', icon: faLightbulb },
-                    ].map(tab => (
-                        <button
-                            key={tab.key}
-                            onClick={() => setActiveTab(tab.key as any)}
-                            className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-md text-xs font-medium transition-all ${activeTab === tab.key
-                                    ? 'bg-white text-[#1C1917] shadow-sm'
-                                    : 'text-[#78716C] hover:text-[#44403C]'
-                                }`}
-                        >
-                            <FontAwesomeIcon icon={tab.icon} className="w-3 h-3" />
-                            {tab.label}
-                        </button>
-                    ))}
-                </div>
-
-                {/* Search Tab */}
-                {activeTab === 'search' && (
-                    <div className="space-y-4">
-                        <div className="flex gap-2">
-                            <input
-                                type="text"
-                                value={searchEntity}
-                                onChange={(e) => setSearchEntity(e.target.value)}
-                                onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-                                placeholder="Search entity (e.g., E001, TB1+, RS485)"
-                                className="flex-1 px-3 py-2 rounded-lg border border-[#D6CFC4] text-sm focus:outline-none focus:border-[#0D9488]"
-                            />
+                {loadError && (
+                    <div className="mb-4 p-3 bg-red-50 text-red-700 rounded-lg text-sm border border-red-200">
+                        <div className="flex items-start justify-between gap-3">
+                            <div className="flex items-start gap-2">
+                                <FontAwesomeIcon icon={faTriangleExclamation} className="w-4 h-4 mt-0.5" />
+                                <span>{loadError}</span>
+                            </div>
                             <button
-                                onClick={handleSearch}
-                                disabled={loading}
-                                className="px-4 py-2 bg-[#0D9488] text-white rounded-lg text-sm font-medium disabled:opacity-50"
+                                onClick={() => void loadGraphData()}
+                                disabled={initialLoading}
+                                className="skeuo-raised px-3 py-1.5 text-xs text-[#44403C] disabled:opacity-50"
                             >
-                                <FontAwesomeIcon icon={faSearch} className="w-3 h-3" />
+                                <span className="flex items-center gap-1.5">
+                                    <FontAwesomeIcon icon={faArrowsRotate} className="w-3 h-3" />
+                                    Retry
+                                </span>
                             </button>
                         </div>
+                    </div>
+                )}
 
-                        {error && (
-                            <div className="p-3 bg-red-50 text-red-700 rounded-lg text-sm">{error}</div>
+                {actionError && (
+                    <div className="mb-4 p-3 bg-red-50 text-red-700 rounded-lg text-sm border border-red-200">
+                        {actionError}
+                    </div>
+                )}
+
+                {initialLoading ? (
+                    <div className="flex justify-center py-12">
+                        <div className="flex gap-1.5">
+                            <div className="w-2 h-2 rounded-full bg-[#CA8A04] animate-bounce" style={{ animationDelay: '0ms' }} />
+                            <div className="w-2 h-2 rounded-full bg-[#D97706] animate-bounce" style={{ animationDelay: '150ms' }} />
+                            <div className="w-2 h-2 rounded-full bg-[#0D9488] animate-bounce" style={{ animationDelay: '300ms' }} />
+                        </div>
+                    </div>
+                ) : (
+                    <>
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+                            <div className="bg-[#FAF7F2] rounded-lg p-3 text-center">
+                                <p className="text-xl font-bold text-[#0D9488]">{stats?.unique_entities ?? '-'}</p>
+                                <p className="text-[10px] text-[#78716C] uppercase">Entities</p>
+                            </div>
+                            <div className="bg-[#FAF7F2] rounded-lg p-3 text-center">
+                                <p className="text-xl font-bold text-[#0D9488]">{stats?.total_relationships ?? '-'}</p>
+                                <p className="text-[10px] text-[#78716C] uppercase">Relations</p>
+                            </div>
+                            <div className="bg-[#FAF7F2] rounded-lg p-3 text-center">
+                                <p className="text-xl font-bold text-[#0D9488]">{stats?.relationship_types?.length ?? '-'}</p>
+                                <p className="text-[10px] text-[#78716C] uppercase">Types</p>
+                            </div>
+                            <div className="bg-[#FAF7F2] rounded-lg p-3 text-center">
+                                <p className="text-lg font-bold text-emerald-600">OK</p>
+                                <p className="text-[10px] text-[#78716C] uppercase">Status</p>
+                            </div>
+                        </div>
+
+                        <div className="flex gap-1 mb-4 p-1 bg-[#F0EBE3] rounded-lg">
+                            {[
+                                { key: 'search', label: 'Search', icon: faSearch },
+                                { key: 'manage', label: 'Manage', icon: faNetworkWired },
+                                { key: 'insights', label: 'Insights', icon: faLightbulb },
+                            ].map(tab => (
+                                <button
+                                    key={tab.key}
+                                    onClick={() => setActiveTab(tab.key as typeof activeTab)}
+                                    className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-md text-xs font-medium transition-all ${activeTab === tab.key
+                                        ? 'bg-white text-[#1C1917] shadow-sm'
+                                        : 'text-[#78716C] hover:text-[#44403C]'
+                                        }`}
+                                >
+                                    <FontAwesomeIcon icon={tab.icon} className="w-3 h-3" />
+                                    {tab.label}
+                                </button>
+                            ))}
+                        </div>
+
+                        {activeTab === 'search' && (
+                            <div className="space-y-4">
+                                <div className="flex gap-2">
+                                    <input
+                                        type="text"
+                                        value={searchEntity}
+                                        onChange={(e) => setSearchEntity(e.target.value)}
+                                        onKeyDown={(e) => e.key === 'Enter' && void handleSearch()}
+                                        placeholder="Search entity (for example E001, TB1+, RS485)"
+                                        className="flex-1 px-3 py-2 rounded-lg border border-[#D6CFC4] text-sm focus:outline-none focus:border-[#0D9488]"
+                                    />
+                                    <button
+                                        onClick={() => void handleSearch()}
+                                        disabled={busy}
+                                        className="px-4 py-2 bg-[#0D9488] text-white rounded-lg text-sm font-medium disabled:opacity-50"
+                                    >
+                                        <FontAwesomeIcon icon={faSearch} className="w-3 h-3" />
+                                    </button>
+                                </div>
+
+                                <div className="bg-[#FAF7F2] rounded-lg p-3 min-h-40">
+                                    {busy ? (
+                                        <div className="flex justify-center py-8">
+                                            <div className="flex gap-1">
+                                                <div className="w-2 h-2 bg-[#0D9488] rounded-full animate-bounce" />
+                                                <div className="w-2 h-2 bg-[#0D9488] rounded-full animate-bounce" style={{ animationDelay: '100ms' }} />
+                                                <div className="w-2 h-2 bg-[#0D9488] rounded-full animate-bounce" style={{ animationDelay: '200ms' }} />
+                                            </div>
+                                        </div>
+                                    ) : related.length > 0 ? (
+                                        <div className="space-y-2">
+                                            <p className="text-xs text-[#78716C] mb-3">
+                                                Found {related.length} related entities
+                                            </p>
+                                            {related.map((relatedEntity, index) => (
+                                                <div key={index} className="flex items-center justify-between py-2 px-3 bg-white rounded-lg border border-[#D6CFC4]">
+                                                    <div className="flex items-center gap-3">
+                                                        <FontAwesomeIcon icon={faCircle} className="w-2 h-2 text-[#0D9488]" />
+                                                        <span className="font-medium text-[#1C1917]">{relatedEntity.entity_b}</span>
+                                                    </div>
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="text-xs px-2 py-0.5 rounded bg-[#0D9488]/10 text-[#0D9488]">
+                                                            {relatedEntity.relationship}
+                                                        </span>
+                                                        <span className="text-xs font-medium text-[#0D9488]">
+                                                            {Math.round(relatedEntity.confidence * 100)}%
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <div className="text-center py-8">
+                                            <FontAwesomeIcon icon={faNetworkWired} className="w-8 h-8 text-[#A8A29E] mb-2" />
+                                            <p className="text-[#78716C] text-sm">
+                                                {searchEntity ? 'No related entities found.' : 'Enter an entity to find relationships.'}
+                                            </p>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
                         )}
 
-                        <div className="bg-[#FAF7F2] rounded-lg p-3 min-h-40">
-                            {loading ? (
-                                <div className="flex justify-center py-8">
-                                    <div className="flex gap-1">
-                                        <div className="w-2 h-2 bg-[#0D9488] rounded-full animate-bounce" />
-                                        <div className="w-2 h-2 bg-[#0D9488] rounded-full animate-bounce" style={{ animationDelay: '100ms' }} />
-                                        <div className="w-2 h-2 bg-[#0D9488] rounded-full animate-bounce" style={{ animationDelay: '200ms' }} />
-                                    </div>
-                                </div>
-                            ) : related.length > 0 ? (
-                                <div className="space-y-2">
-                                    <p className="text-xs text-[#78716C] mb-3">
-                                        Found {related.length} related entities
-                                    </p>
-                                    {related.map((r, i) => (
-                                        <div key={i} className="flex items-center justify-between py-2 px-3 bg-white rounded-lg border border-[#D6CFC4]">
-                                            <div className="flex items-center gap-3">
-                                                <FontAwesomeIcon icon={faCircle} className="w-2 h-2 text-[#0D9488]" />
-                                                <span className="font-medium text-[#1C1917]">{r.entity_b}</span>
-                                            </div>
-                                            <div className="flex items-center gap-2">
-                                                <span className="text-xs px-2 py-0.5 rounded bg-[#0D9488]/10 text-[#0D9488]">
-                                                    {r.relationship}
-                                                </span>
-                                                <span className="text-xs font-medium text-[#0D9488]">
-                                                    {Math.round(r.confidence * 100)}%
-                                                </span>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            ) : (
-                                <div className="text-center py-8">
-                                    <FontAwesomeIcon icon={faNetworkWired} className="w-8 h-8 text-[#A8A29E] mb-2" />
-                                    <p className="text-[#78716C] text-sm">
-                                        {searchEntity ? 'No related entities found' : 'Enter an entity to find relationships'}
-                                    </p>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                )}
-
-                {/* Manage Tab */}
-                {activeTab === 'manage' && (
-                    <div className="space-y-4">
-                        {/* Add Entity */}
-                        <div className="p-4 bg-[#FAF7F2] rounded-lg border border-[#D6CFC4]">
-                            <h4 className="text-sm font-semibold text-[#1C1917] mb-3 flex items-center gap-2">
-                                <FontAwesomeIcon icon={faPlus} className="w-3 h-3 text-[#0D9488]" />
-                                Add New Entity
-                            </h4>
-                            <div className="flex gap-2">
-                                <input
-                                    type="text"
-                                    value={newEntity.name}
-                                    onChange={(e) => setNewEntity({ ...newEntity, name: e.target.value })}
-                                    placeholder="Entity name (e.g., E015, COM1)"
-                                    className="flex-1 px-3 py-2 rounded-lg border border-[#D6CFC4] text-sm"
-                                />
-                                <select
-                                    value={newEntity.type}
-                                    onChange={(e) => setNewEntity({ ...newEntity, type: e.target.value as EntityType })}
-                                    className="px-3 py-2 rounded-lg border border-[#D6CFC4] text-sm"
-                                >
-                                    <option value="error">Error</option>
-                                    <option value="terminal">Terminal</option>
-                                    <option value="device">Device</option>
-                                    <option value="protocol">Protocol</option>
-                                    <option value="component">Component</option>
-                                    <option value="cause">Cause</option>
-                                    <option value="solution">Solution</option>
-                                </select>
-                                <button
-                                    onClick={handleAddEntity}
-                                    disabled={loading || !newEntity.name}
-                                    className="px-4 py-2 bg-[#0D9488] text-white rounded-lg text-sm font-medium disabled:opacity-50"
-                                >
-                                    Add
-                                </button>
-                            </div>
-                        </div>
-
-                        {/* Add Relationship */}
-                        <div className="p-4 bg-[#FAF7F2] rounded-lg border border-[#D6CFC4]">
-                            <h4 className="text-sm font-semibold text-[#1C1917] mb-3 flex items-center gap-2">
-                                <FontAwesomeIcon icon={faArrowsLeftRight} className="w-3 h-3 text-[#0D9488]" />
-                                Add Relationship
-                            </h4>
-                            <div className="flex gap-2 items-center">
-                                <input
-                                    type="text"
-                                    value={newRelation.entityA}
-                                    onChange={(e) => setNewRelation({ ...newRelation, entityA: e.target.value })}
-                                    placeholder="Entity A"
-                                    className="flex-1 px-3 py-2 rounded-lg border border-[#D6CFC4] text-sm"
-                                />
-                                <select
-                                    value={newRelation.relationship}
-                                    onChange={(e) => setNewRelation({ ...newRelation, relationship: e.target.value })}
-                                    className="px-3 py-2 rounded-lg border border-[#D6CFC4] text-sm"
-                                >
-                                    <option value="related_to">Related to</option>
-                                    <option value="part_of">Part of</option>
-                                    <option value="connected_to">Connected to</option>
-                                    <option value="caused_by">Caused by</option>
-                                    <option value="resolved_by">Resolved by</option>
-                                    <option value="compatible_with">Compatible with</option>
-                                </select>
-                                <input
-                                    type="text"
-                                    value={newRelation.entityB}
-                                    onChange={(e) => setNewRelation({ ...newRelation, entityB: e.target.value })}
-                                    placeholder="Entity B"
-                                    className="flex-1 px-3 py-2 rounded-lg border border-[#D6CFC4] text-sm"
-                                />
-                                <button
-                                    onClick={handleAddRelationship}
-                                    disabled={loading || !newRelation.entityA || !newRelation.entityB}
-                                    className="px-4 py-2 bg-[#0D9488] text-white rounded-lg text-sm font-medium disabled:opacity-50"
-                                >
-                                    Link
-                                </button>
-                            </div>
-                        </div>
-
-                        {/* Entity List with Filters */}
-                        <div>
-                            <div className="flex items-center justify-between mb-3">
-                                <h4 className="text-sm font-semibold text-[#1C1917]">All Entities</h4>
-                                <div className="flex gap-1">
-                                    <button
-                                        onClick={() => setFilterType('all')}
-                                        className={`px-2 py-1 text-xs rounded ${filterType === 'all' ? 'bg-[#0D9488] text-white' : 'bg-[#F0EBE3] text-[#78716C]'}`}
-                                    >
-                                        All
-                                    </button>
-                                    {Object.keys(ENTITY_TYPE_COLORS).map(type => (
-                                        <button
-                                            key={type}
-                                            onClick={() => setFilterType(type as EntityType)}
-                                            className={`px-2 py-1 text-xs rounded capitalize ${filterType === type ? 'bg-[#0D9488] text-white' : 'bg-[#F0EBE3] text-[#78716C]'}`}
+                        {activeTab === 'manage' && (
+                            <div className="space-y-4">
+                                <div className="p-4 bg-[#FAF7F2] rounded-lg border border-[#D6CFC4]">
+                                    <h4 className="text-sm font-semibold text-[#1C1917] mb-3 flex items-center gap-2">
+                                        <FontAwesomeIcon icon={faPlus} className="w-3 h-3 text-[#0D9488]" />
+                                        Add New Entity
+                                    </h4>
+                                    <div className="flex gap-2">
+                                        <input
+                                            type="text"
+                                            value={newEntity.name}
+                                            onChange={(e) => setNewEntity({ ...newEntity, name: e.target.value })}
+                                            placeholder="Entity name (for example E015, COM1)"
+                                            className="flex-1 px-3 py-2 rounded-lg border border-[#D6CFC4] text-sm"
+                                        />
+                                        <select
+                                            value={newEntity.type}
+                                            onChange={(e) => setNewEntity({ ...newEntity, type: e.target.value as EntityType })}
+                                            className="px-3 py-2 rounded-lg border border-[#D6CFC4] text-sm"
                                         >
-                                            {type}
+                                            <option value="error">Error</option>
+                                            <option value="terminal">Terminal</option>
+                                            <option value="device">Device</option>
+                                            <option value="protocol">Protocol</option>
+                                            <option value="component">Component</option>
+                                            <option value="cause">Cause</option>
+                                            <option value="solution">Solution</option>
+                                        </select>
+                                        <button
+                                            onClick={() => void handleAddEntity()}
+                                            disabled={busy || !newEntity.name.trim()}
+                                            className="px-4 py-2 bg-[#0D9488] text-white rounded-lg text-sm font-medium disabled:opacity-50"
+                                        >
+                                            Add
                                         </button>
-                                    ))}
+                                    </div>
+                                </div>
+
+                                <div className="p-4 bg-[#FAF7F2] rounded-lg border border-[#D6CFC4]">
+                                    <h4 className="text-sm font-semibold text-[#1C1917] mb-3 flex items-center gap-2">
+                                        <FontAwesomeIcon icon={faArrowsLeftRight} className="w-3 h-3 text-[#0D9488]" />
+                                        Add Relationship
+                                    </h4>
+                                    <div className="flex gap-2 items-center">
+                                        <input
+                                            type="text"
+                                            value={newRelation.entityA}
+                                            onChange={(e) => setNewRelation({ ...newRelation, entityA: e.target.value })}
+                                            placeholder="Entity A"
+                                            className="flex-1 px-3 py-2 rounded-lg border border-[#D6CFC4] text-sm"
+                                        />
+                                        <select
+                                            value={newRelation.relationship}
+                                            onChange={(e) => setNewRelation({ ...newRelation, relationship: e.target.value })}
+                                            className="px-3 py-2 rounded-lg border border-[#D6CFC4] text-sm"
+                                        >
+                                            <option value="related_to">Related to</option>
+                                            <option value="part_of">Part of</option>
+                                            <option value="connected_to">Connected to</option>
+                                            <option value="caused_by">Caused by</option>
+                                            <option value="resolved_by">Resolved by</option>
+                                            <option value="compatible_with">Compatible with</option>
+                                        </select>
+                                        <input
+                                            type="text"
+                                            value={newRelation.entityB}
+                                            onChange={(e) => setNewRelation({ ...newRelation, entityB: e.target.value })}
+                                            placeholder="Entity B"
+                                            className="flex-1 px-3 py-2 rounded-lg border border-[#D6CFC4] text-sm"
+                                        />
+                                        <button
+                                            onClick={() => void handleAddRelationship()}
+                                            disabled={busy || !newRelation.entityA || !newRelation.entityB}
+                                            className="px-4 py-2 bg-[#0D9488] text-white rounded-lg text-sm font-medium disabled:opacity-50"
+                                        >
+                                            Link
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <div className="flex items-center justify-between mb-3">
+                                        <h4 className="text-sm font-semibold text-[#1C1917]">All Entities</h4>
+                                        <div className="flex gap-1">
+                                            <button
+                                                onClick={() => setFilterType('all')}
+                                                className={`px-2 py-1 text-xs rounded ${filterType === 'all' ? 'bg-[#0D9488] text-white' : 'bg-[#F0EBE3] text-[#78716C]'}`}
+                                            >
+                                                All
+                                            </button>
+                                            {Object.keys(ENTITY_TYPE_COLORS).map(type => (
+                                                <button
+                                                    key={type}
+                                                    onClick={() => setFilterType(type as EntityType)}
+                                                    className={`px-2 py-1 text-xs rounded capitalize ${filterType === type ? 'bg-[#0D9488] text-white' : 'bg-[#F0EBE3] text-[#78716C]'}`}
+                                                >
+                                                    {type}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    <div className="max-h-64 overflow-y-auto space-y-2">
+                                        {filteredEntities.length > 0 ? (
+                                            filteredEntities.map((entity, index) => (
+                                                <div key={index} className="flex items-center justify-between p-2 px-3 bg-white rounded-lg border border-[#D6CFC4]">
+                                                    <div className="flex items-center gap-2">
+                                                        <FontAwesomeIcon
+                                                            icon={ENTITY_TYPE_ICONS[entity.type]}
+                                                            className={`w-3 h-3 ${entity.type === 'error' ? 'text-red-500'
+                                                                : entity.type === 'terminal' ? 'text-amber-500'
+                                                                    : entity.type === 'device' ? 'text-blue-500'
+                                                                        : entity.type === 'protocol' ? 'text-purple-500'
+                                                                            : 'text-green-500'
+                                                                }`}
+                                                        />
+                                                        <span className="text-sm font-medium text-[#1C1917]">{entity.name}</span>
+                                                    </div>
+                                                    <span className={`text-[10px] px-2 py-0.5 rounded-full border ${ENTITY_TYPE_COLORS[entity.type]}`}>
+                                                        {entity.type}
+                                                    </span>
+                                                </div>
+                                            ))
+                                        ) : (
+                                            <p className="text-center py-4 text-[#78716C] text-sm">No entities found.</p>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
+                        )}
 
-                            <div className="max-h-64 overflow-y-auto space-y-2">
-                                {filteredEntities.length > 0 ? (
-                                    filteredEntities.map((entity, i) => (
-                                        <div key={i} className="flex items-center justify-between p-2 px-3 bg-white rounded-lg border border-[#D6CFC4]">
-                                            <div className="flex items-center gap-2">
-                                                <FontAwesomeIcon
-                                                    icon={ENTITY_TYPE_ICONS[entity.type]}
-                                                    className={`w-3 h-3 ${entity.type === 'error' ? 'text-red-500' :
-                                                            entity.type === 'terminal' ? 'text-amber-500' :
-                                                                entity.type === 'device' ? 'text-blue-500' :
-                                                                    entity.type === 'protocol' ? 'text-purple-500' :
-                                                                        'text-green-500'
-                                                        }`}
-                                                />
-                                                <span className="text-sm font-medium text-[#1C1917]">{entity.name}</span>
+                        {activeTab === 'insights' && (
+                            <div className="space-y-4">
+                                <div className="p-4 bg-[#FAF7F2] rounded-lg">
+                                    <h4 className="text-sm font-semibold text-[#1C1917] mb-3">Entity Type Distribution</h4>
+                                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                                        {Object.entries(typeBreakdown).map(([type, count]) => (
+                                            <div key={type} className={`p-3 rounded-lg border ${ENTITY_TYPE_COLORS[type as EntityType]}`}>
+                                                <div className="flex items-center gap-2 mb-1">
+                                                    <FontAwesomeIcon icon={ENTITY_TYPE_ICONS[type as EntityType]} className="w-4 h-4" />
+                                                    <span className="text-xs font-medium capitalize">{type}</span>
+                                                </div>
+                                                <p className="text-xl font-bold">{count}</p>
                                             </div>
-                                            <span className={`text-[10px] px-2 py-0.5 rounded-full border ${ENTITY_TYPE_COLORS[entity.type]}`}>
-                                                {entity.type}
-                                            </span>
-                                        </div>
-                                    ))
-                                ) : (
-                                    <p className="text-center py-4 text-[#78716C] text-sm">No entities found</p>
-                                )}
+                                        ))}
+                                    </div>
+                                </div>
+
+                                <div className="p-4 bg-[#FAF7F2] rounded-lg">
+                                    <h4 className="text-sm font-semibold text-[#1C1917] mb-3">Relationship Types</h4>
+                                    <div className="space-y-2">
+                                        {[
+                                            { type: 'part_of', desc: 'Device to component' },
+                                            { type: 'connected_to', desc: 'Terminal to terminal' },
+                                            { type: 'caused_by', desc: 'Error to cause' },
+                                            { type: 'resolved_by', desc: 'Error to solution' },
+                                            { type: 'compatible_with', desc: 'Protocol to protocol' },
+                                            { type: 'related_to', desc: 'General relationship' },
+                                        ].map(rel => (
+                                            <div key={rel.type} className="flex items-center justify-between p-2 bg-white rounded-lg border border-[#D6CFC4]">
+                                                <span className="text-sm font-medium text-[#1C1917]">{rel.type.replace('_', ' ')}</span>
+                                                <span className="text-xs text-[#78716C]">{rel.desc}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                <button
+                                    onClick={() => void handleExtractFromText()}
+                                    disabled={busy}
+                                    className="w-full p-4 bg-gradient-to-r from-[#0D9488] to-[#0F766E] text-white rounded-lg text-sm font-medium flex items-center justify-center gap-2 disabled:opacity-50"
+                                >
+                                    <FontAwesomeIcon icon={faWrench} className="w-4 h-4" />
+                                    {busy ? 'Extracting...' : 'Auto-Extract Entities from Samples'}
+                                </button>
                             </div>
-                        </div>
-                    </div>
+                        )}
+                    </>
                 )}
 
-                {/* Insights Tab */}
-                {activeTab === 'insights' && (
-                    <div className="space-y-4">
-                        {/* Type Breakdown */}
-                        <div className="p-4 bg-[#FAF7F2] rounded-lg">
-                            <h4 className="text-sm font-semibold text-[#1C1917] mb-3">Entity Type Distribution</h4>
-                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                                {Object.entries(typeBreakdown).map(([type, count]) => (
-                                    <div key={type} className={`p-3 rounded-lg border ${ENTITY_TYPE_COLORS[type as EntityType]}`}>
-                                        <div className="flex items-center gap-2 mb-1">
-                                            <FontAwesomeIcon icon={ENTITY_TYPE_ICONS[type as EntityType]} className="w-4 h-4" />
-                                            <span className="text-xs font-medium capitalize">{type}</span>
-                                        </div>
-                                        <p className="text-xl font-bold">{count}</p>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-
-                        {/* Relationship Types */}
-                        <div className="p-4 bg-[#FAF7F2] rounded-lg">
-                            <h4 className="text-sm font-semibold text-[#1C1917] mb-3">Relationship Types</h4>
-                            <div className="space-y-2">
-                                {[
-                                    { type: 'part_of', desc: 'Device → Component' },
-                                    { type: 'connected_to', desc: 'Terminal ↔ Terminal' },
-                                    { type: 'caused_by', desc: 'Error ← Cause' },
-                                    { type: 'resolved_by', desc: 'Error ← Solution' },
-                                    { type: 'compatible_with', desc: 'Protocol ↔ Protocol' },
-                                    { type: 'related_to', desc: 'General relationship' },
-                                ].map(rel => (
-                                    <div key={rel.type} className="flex items-center justify-between p-2 bg-white rounded-lg border border-[#D6CFC4]">
-                                        <span className="text-sm font-medium text-[#1C1917]">{rel.type.replace('_', ' ')}</span>
-                                        <span className="text-xs text-[#78716C]">{rel.desc}</span>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-
-                        {/* Auto Extract */}
-                        <button
-                            onClick={handleExtractFromText}
-                            disabled={loading}
-                            className="w-full p-4 bg-gradient-to-r from-[#0D9488] to-[#0F766E] text-white rounded-lg text-sm font-medium flex items-center justify-center gap-2"
-                        >
-                            <FontAwesomeIcon icon={faWrench} className="w-4 h-4" />
-                            {loading ? 'Extracting...' : 'Auto-Extract Entities from Samples'}
-                        </button>
-                    </div>
-                )}
-
-                {/* Info */}
                 <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
                     <div className="flex items-start gap-2">
                         <FontAwesomeIcon icon={faLightbulb} className="w-4 h-4 text-blue-600 mt-0.5" />
                         <p className="text-xs text-blue-800">
-                            <strong>💡 Tip:</strong> Entities like error codes (E001), terminals (TB1+),
-                            and protocols (RS485) are automatically extracted during PDF ingestion.
-                            The knowledge graph boosts retrieval for related entities.
+                            <strong>Tip:</strong> Entities like error codes (E001), terminals (TB1+), and protocols (RS485)
+                            are automatically extracted during PDF ingestion. The graph can then boost related retrieval.
                         </p>
                     </div>
                 </div>

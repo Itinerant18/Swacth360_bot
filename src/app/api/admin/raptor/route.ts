@@ -21,10 +21,12 @@ function isAuthorized(request: NextRequest): boolean {
 
 export async function POST(req: NextRequest) {
     if (!isAuthorized(req)) {
+        console.warn('[admin.raptor.post] unauthorized');
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     try {
+        console.info('[admin.raptor.post] request');
         const supabase = getSupabase();
         const { data: runningBuild } = await supabase
             .from('raptor_build_log')
@@ -34,6 +36,7 @@ export async function POST(req: NextRequest) {
             .limit(1)
             .maybeSingle();
         if (runningBuild) {
+            console.warn('[admin.raptor.post] running_build', runningBuild);
             return NextResponse.json(
                 {
                     success: false,
@@ -55,20 +58,28 @@ export async function POST(req: NextRequest) {
         // This route remains synchronous so callers get final build stats.
         const start = Date.now();
         const stats = await buildRaptorTree(llm);
+        const latencyMs = Date.now() - start;
+
+        console.info('[admin.raptor.post] success', {
+            latencyMs,
+            ...stats,
+        });
 
         return NextResponse.json({
             success: true,
             message: 'RAPTOR tree built successfully',
             stats,
-            latencyMs: Date.now() - start,
+            latencyMs,
         });
     } catch (err: unknown) {
         if (err instanceof RaptorBuildInProgressError) {
+            console.warn('[admin.raptor.post] build_in_progress', { message: err.message });
             return NextResponse.json(
                 { success: false, error: err.message },
                 { status: 409 }
             );
         }
+        console.error('[admin.raptor.post] error', err);
         return NextResponse.json(
             { success: false, error: (err as Error).message },
             { status: 500 }
@@ -78,10 +89,12 @@ export async function POST(req: NextRequest) {
 
 export async function GET(req: NextRequest) {
     if (!isAuthorized(req)) {
+        console.warn('[admin.raptor.get] unauthorized');
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     try {
+        console.info('[admin.raptor.get] request');
         const supabase = getSupabase();
 
         const [healthRes, gapsRes, logRes] = await Promise.all([
@@ -90,12 +103,19 @@ export async function GET(req: NextRequest) {
             supabase.from('raptor_build_log').select('*').order('started_at', { ascending: false }).limit(5),
         ]);
 
+        console.info('[admin.raptor.get] success', {
+            healthCount: healthRes.data?.length ?? 0,
+            gapCount: gapsRes.data?.length ?? 0,
+            buildLogCount: logRes.data?.length ?? 0,
+        });
+
         return NextResponse.json({
             health: healthRes.data ?? [],
             gaps: gapsRes.data ?? [],
             buildLog: logRes.data ?? [],
         });
     } catch (err: unknown) {
+        console.error('[admin.raptor.get] error', err);
         return NextResponse.json(
             { success: false, error: (err as Error).message },
             { status: 500 }

@@ -12,6 +12,7 @@ import { logicalRoute, formatRelationalAnswer } from '@/lib/logical-router';
 import { buildDecomposedPromptPrefix, decomposeQuery, mergeSubQueryResults, type SubQuery } from '@/lib/query-decomposer';
 import { logRoute, selectRoute } from '@/lib/router';
 import { classifyQuery, retrieve, type QueryType, type RAGResult, type RankedMatch } from '@/lib/rag-engine';
+import { parseRAGSettings } from '@/lib/rag-settings';
 import { getSupabase } from '@/lib/supabase';
 import { createServerSupabaseClient } from '@/lib/auth-server';
 
@@ -98,6 +99,20 @@ function textStreamResponse(text: string): Response {
 
 function elapsed(start: number): string {
     return `${((performance.now() - start) / 1000).toFixed(2)}s`;
+}
+
+function shouldUseHybridRetrieval(
+    analysis: ReturnType<typeof classifyQuery>,
+    logicalRouteType: 'vector' | 'relational' | 'hybrid',
+    requested: boolean | undefined
+): boolean {
+    if (typeof requested === 'boolean') {
+        return requested;
+    }
+
+    return logicalRouteType === 'hybrid'
+        || analysis.type === 'comparative'
+        || analysis.complexity === 'complex';
 }
 
 type StoredConversationMessage = {
@@ -221,9 +236,17 @@ export async function POST(req: Request) {
     const requestStart = performance.now();
 
     try {
-        const { messages, userId, language = 'en', searchMode = 'standard', conversationId: reqConversationId } = await req.json();
+        const {
+            messages,
+            userId,
+            language = 'en',
+            searchMode = 'standard',
+            conversationId: reqConversationId,
+            ragSettings,
+        } = await req.json();
         const languageNames = { en: 'English', bn: 'Bengali', hi: 'Hindi' } as const;
         const langName = languageNames[language as keyof typeof languageNames] || 'English';
+        const parsedRagSettings = parseRAGSettings(ragSettings);
 
         const latestMessage = messages[messages.length - 1].content;
 
@@ -350,14 +373,25 @@ export async function POST(req: Request) {
 
         const decomposed = await decomposeQuery(englishQuestion, baseAnalysis, sarvamLlm);
         const decomposedPrefix = buildDecomposedPromptPrefix(decomposed);
+        const useHybridSearch = shouldUseHybridRetrieval(
+            baseAnalysis,
+            decision.route,
+            parsedRagSettings?.useHybridSearch
+        );
         const retrieveOptions = {
             useHYDE: routedPrompt.route.retrieval.useHYDE,
-            topK: routedPrompt.route.retrieval.topK,
+            topK: parsedRagSettings?.topK ?? routedPrompt.route.retrieval.topK,
             useMMR: searchMode === 'mmr',
             useWeighted: searchMode === 'weighted',
-            mmrLambda: searchMode === 'mmr' ? 0.5 : undefined,
-            timeBoostDays: searchMode === 'mmr' ? 30 : undefined,
-            useGraphBoost: routedPrompt.route.retrieval.boostEntities,
+            mmrLambda: searchMode === 'mmr' ? (parsedRagSettings?.mmrLambda ?? 0.5) : undefined,
+            recencyBoost: searchMode === 'mmr' ? 0.10 : undefined,
+            useGraphBoost: parsedRagSettings?.useGraphBoost ?? routedPrompt.route.retrieval.boostEntities,
+            useHybridSearch,
+            useQueryExpansion: parsedRagSettings?.useQueryExpansion ?? useHybridSearch,
+            useReranker: parsedRagSettings?.useReranker,
+            alpha: parsedRagSettings?.alpha,
+            similarityThreshold: routedPrompt.route.retrieval.threshold,
+            preferredChunkType: routedPrompt.route.retrieval.preferChunkType,
         };
 
         const ragStart = performance.now();
