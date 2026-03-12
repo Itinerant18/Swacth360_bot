@@ -14,7 +14,7 @@ import {
 } from '@fortawesome/free-solid-svg-icons';
 import LanguageSelector from '../components/LanguageSelector';
 import DiagramCard from '../components/DiagramCard';
-import { getSession, signOut, isAdminEmail } from '@/lib/auth';
+import { getSession, signOut, isAdminEmail, getSupabaseAuth } from '@/lib/auth';
 
 interface Conversation {
     id: string;
@@ -232,6 +232,7 @@ export default function Chat() {
     useEffect(() => {
         let isMounted = true;
 
+        // 1. Fetch initial session immediately
         void getSession().then(session => {
             if (!isMounted) return;
 
@@ -245,21 +246,43 @@ export default function Chat() {
                 setIsAuthenticated(true);
                 setUserId(session.user.id);
                 setUserName(session.user.user_metadata?.full_name || email.split('@')[0] || 'User');
-                return;
+            } else {
+                setIsAuthenticated(false);
+                setUserId(null);
+                setUserName('');
+                setSidebarOpen(false);
             }
-
-            setIsAuthenticated(false);
-            setUserId(null);
-            setUserName('');
-            setSidebarOpen(false);
         }).finally(() => {
             if (isMounted) {
                 setIsSessionLoading(false);
             }
         });
 
+        // 2. Subscribe to ongoing auth state changes (e.g., cross-tab login/logout)
+        const supabase = getSupabaseAuth();
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+            if (!isMounted) return;
+
+            if (session) {
+                const email = session.user.email ?? '';
+                if (isAdminEmail(email)) {
+                    window.location.href = '/admin';
+                    return;
+                }
+                setIsAuthenticated(true);
+                setUserId(session.user.id);
+                setUserName(session.user.user_metadata?.full_name || email.split('@')[0] || 'User');
+            } else {
+                setIsAuthenticated(false);
+                setUserId(null);
+                setUserName('');
+                setSidebarOpen(false);
+            }
+        });
+
         return () => {
             isMounted = false;
+            subscription.unsubscribe();
             historyAbortControllerRef.current?.abort();
             if (sidebarRefreshTimeoutRef.current !== null) {
                 window.clearTimeout(sidebarRefreshTimeoutRef.current);
@@ -640,13 +663,14 @@ export default function Chat() {
                 <div className="fixed inset-0 bg-black/40 z-30 lg:hidden" onClick={() => setSidebarOpen(false)} />
             )}
 
-            {/* Floating sidebar toggle — visible when sidebar is closed */}
+            {/* Floating sidebar toggle — visible when sidebar is closed, authenticated */}
             {isAuthenticated && !sidebarOpen && (
                 <div className="fixed top-3 left-3 z-50 flex items-center gap-2">
                     <button
                         onClick={() => setSidebarOpen(true)}
                         className="flex items-center justify-center w-10 h-10 rounded-lg text-[#78716C] hover:text-[#1C1917] hover:bg-black/5 transition-all duration-200"
-                        title="Open sidebar"
+                        title="Open History Sidebar"
+                        aria-label="Open History Sidebar"
                     >
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                             <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
@@ -781,27 +805,33 @@ export default function Chat() {
             <div className="flex flex-col flex-1 min-w-0 transition-all duration-300">
                 {/* ─── Brushed Metal Header ─── */}
                 <header className="sticky top-0 z-20 skeuo-metal flex-shrink-0">
-                    <div className="max-w-3xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between">
-                        <div className="flex items-center gap-3">
+                    <div className="max-w-3xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
 
-                            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl skeuo-leather flex items-center justify-center shadow-md">
+                            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl skeuo-leather flex items-center justify-center shadow-md flex-shrink-0">
                                 <FontAwesomeIcon icon={faSignal} className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[#CA8A04]" />
                             </div>
-                            <div>
-                                <h1 className="text-base sm:text-lg font-semibold tracking-tight text-[#1C1917] leading-tight">
-                                    Dexter Tech Support <span className="text-[#CA8A04]">AI</span>
+                            <div className="min-w-0">
+                                <h1 className="text-base sm:text-lg font-semibold tracking-tight text-[#1C1917] leading-tight truncate">
+                                    <span className="hidden sm:inline">Dexter Tech Support </span>
+                                    <span className="sm:hidden">Dexter </span>
+                                    <span className="text-[#CA8A04]">AI</span>
                                 </h1>
-                                <p className="text-[10px] sm:text-[11px] text-[#78716C] font-medium">
+                                <p className="text-[10px] sm:text-[11px] text-[#78716C] font-medium truncate">
                                     {isAuthenticated ? `Hi, ${userName}` : 'Guest session'}
                                 </p>
                             </div>
                         </div>
-                        <div className="flex items-center gap-2 sm:gap-3">
+                        <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
                             <LanguageSelector language={language} setLanguage={setLanguage} />
-                            {isAuthenticated && (
-                                <button onClick={handleSignOut} className="skeuo-raised flex items-center gap-1.5 text-xs text-[#44403C] px-2.5 py-1.5 sm:px-3 sm:py-2 transition-all hover:bg-red-50 hover:text-red-700">
-                                    <FontAwesomeIcon icon={faSignOutAlt} className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+                            {isAuthenticated ? (
+                                <button onClick={handleSignOut} className="skeuo-raised flex items-center gap-1.5 text-xs text-[#44403C] px-2.5 py-1.5 sm:px-3 sm:py-2 transition-all hover:bg-red-50 hover:text-red-700 flex-shrink-0" title="Sign Out">
+                                    <FontAwesomeIcon icon={faSignOutAlt} className="w-3.5 h-3.5" />
                                     <span className="hidden sm:inline">Sign Out</span>
+                                </button>
+                            ) : (
+                                <button onClick={() => window.location.href = '/login'} className="skeuo-brass flex items-center gap-1.5 text-xs px-3 py-1.5 sm:px-4 sm:py-2 flex-shrink-0">
+                                    <span>Sign In</span>
                                 </button>
                             )}
                         </div>
