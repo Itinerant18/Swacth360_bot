@@ -1,20 +1,23 @@
 /**
  * middleware.ts  (root of project, next to package.json)
  *
- * Protects the chat page (/) from unauthenticated access.
- * Redirects to /login if no valid session cookie is found.
- * /admin is intentionally left unprotected.
+ * Refreshes Supabase session cookies on every request.
+ * Route protection is handled at the component level, NOT here.
+ *
+ * The root `/` is intentionally PUBLIC — it shows a guest chat experience
+ * with a "Sign In" button. Users can use the chat as a guest.
  */
 
 import { NextResponse, type NextRequest } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 
-// Routes that do NOT need auth
+// Routes that are accessible without auth (do not redirect)
 const PUBLIC_PATHS = [
+  '/',              // Guest chat — intentionally public
   '/login',
   '/auth/callback',
   '/reset-password',
-  '/api/',          // all API routes stay open (chat API needs to work)
+  '/api/',          // All API routes stay open (chat API needs to work)
   '/_next/',
   '/favicon.ico',
 ];

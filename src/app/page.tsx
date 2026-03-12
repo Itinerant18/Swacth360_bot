@@ -14,7 +14,7 @@ import {
 } from '@fortawesome/free-solid-svg-icons';
 import LanguageSelector from '../components/LanguageSelector';
 import DiagramCard from '../components/DiagramCard';
-import { getSession, signOut, isAdminEmail, getSupabaseAuth } from '@/lib/auth';
+import { signOut, isAdminEmail, getSupabaseAuth } from '@/lib/auth';
 
 interface Conversation {
     id: string;
@@ -232,35 +232,11 @@ export default function Chat() {
     useEffect(() => {
         let isMounted = true;
 
-        // 1. Fetch initial session immediately
-        void getSession().then(session => {
-            if (!isMounted) return;
-
-            if (session) {
-                const email = session.user.email ?? '';
-                if (isAdminEmail(email)) {
-                    window.location.href = '/admin';
-                    return;
-                }
-
-                setIsAuthenticated(true);
-                setUserId(session.user.id);
-                setUserName(session.user.user_metadata?.full_name || email.split('@')[0] || 'User');
-            } else {
-                setIsAuthenticated(false);
-                setUserId(null);
-                setUserName('');
-                setSidebarOpen(false);
-            }
-        }).finally(() => {
-            if (isMounted) {
-                setIsSessionLoading(false);
-            }
-        });
-
-        // 2. Subscribe to ongoing auth state changes (e.g., cross-tab login/logout)
+        // Single source of truth: onAuthStateChange fires INITIAL_SESSION on mount,
+        // which replaces the separate getSession() call. This eliminates race conditions
+        // and the double-fetch pattern that was causing the intermittent auth flash.
         const supabase = getSupabaseAuth();
-        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
             if (!isMounted) return;
 
             if (session) {
@@ -277,6 +253,12 @@ export default function Chat() {
                 setUserId(null);
                 setUserName('');
                 setSidebarOpen(false);
+            }
+
+            // INITIAL_SESSION is the first event fired on page load — it tells us
+            // if there is (or isn't) an existing session. Only stop loading after this.
+            if (event === 'INITIAL_SESSION') {
+                setIsSessionLoading(false);
             }
         });
 
@@ -289,6 +271,7 @@ export default function Chat() {
             }
         };
     }, []);
+
 
     const handleSignOut = async () => {
         await signOut();
