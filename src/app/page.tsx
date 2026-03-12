@@ -648,7 +648,7 @@ export default function Chat() {
 
             {/* Floating sidebar toggle — visible when sidebar is closed, authenticated */}
             {isAuthenticated && !sidebarOpen && (
-                <div className="fixed top-3 left-3 z-50 flex items-center gap-2">
+                <div className="fixed top-0 left-0 z-50 h-16 flex items-center px-3">
                     <button
                         onClick={() => setSidebarOpen(true)}
                         className="flex items-center justify-center w-10 h-10 rounded-lg text-[#78716C] hover:text-[#1C1917] hover:bg-black/5 transition-all duration-200"
@@ -667,15 +667,15 @@ export default function Chat() {
                 <aside className={`fixed lg:relative z-40 lg:z-auto top-0 left-0 h-full bg-[#E8E0D4] border-r border-[#C4BCB0] flex flex-col transition-all duration-300 ease-in-out overflow-hidden flex-shrink-0 shadow-[10px_0_24px_rgba(28,25,23,0.12)] ${sidebarOpen ? 'w-72 translate-x-0' : 'w-0 -translate-x-full lg:translate-x-0 lg:w-0'
                     }`}>
                     <div className="w-72 h-full flex flex-col min-w-[18rem]">
-                        <div className="px-3 pt-3 pb-3 border-b border-[#D6CFC4]">
-                            <div className="flex items-center justify-between">
+                        <div className="px-3 border-b border-[#D6CFC4]">
+                            <div className="flex items-center justify-between h-16">
                                 <div className="flex items-center gap-2">
                                     <button
                                         onClick={() => setSidebarOpen(false)}
-                                        className="flex items-center justify-center w-8 h-8 rounded-lg text-[#78716C] hover:text-[#1C1917] hover:bg-black/5 transition-colors"
+                                        className="flex items-center justify-center w-10 h-10 rounded-lg text-[#78716C] hover:text-[#1C1917] hover:bg-black/5 transition-colors"
                                         title="Close sidebar"
                                     >
-                                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                             <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
                                             <line x1="9" y1="3" x2="9" y2="21"></line>
                                         </svg>
@@ -691,6 +691,7 @@ export default function Chat() {
                                 </button>
                             </div>
                         </div>
+
 
                         <div className="flex-1 overflow-y-auto px-3 py-3 space-y-4 bg-[linear-gradient(180deg,rgba(255,255,255,0.18),rgba(255,255,255,0))]">
                             {conversations.length === 0 ? (

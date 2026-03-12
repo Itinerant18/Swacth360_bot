@@ -507,14 +507,26 @@ export async function POST(req: Request) {
                     .single();
 
                 if (conv && conv.title === 'New Conversation') {
-                    const titlePrompt = `Generate a concise 4-6 word title for this conversation. Output ONLY the title, no quotes.\nUser: ${latestMessage}\nAssistant: ${answer.slice(0, 200)}\nTitle:`;
-                    sarvamLlm.invoke(titlePrompt).then(async (titleResult) => {
-                        const title = String(titleResult.content).trim().replace(/^["']|["']$/g, '').slice(0, 80);
-                        if (title) {
-                            const as = await createServerSupabaseClient();
-                            void as.from('conversations').update({ title }).eq('id', activeConversationId);
+                    const titlePrompt = `Generate a concise 4-6 word title summarizing this conversation topic. Output ONLY the title text, no quotes, no trailing punctuation.\nUser question: ${latestMessage}\nAssistant answer: ${answer.slice(0, 200)}\nTitle:`;
+                    console.log('[Auto-title] Generating title via LLM...');
+                    const titleResult = await sarvamLlm.invoke(titlePrompt);
+                    const title = String(titleResult.content).trim().replace(/^["']|["']$/g, '').replace(/\.+$/, '').slice(0, 80);
+                    console.log(`[Auto-title] LLM returned: "${title}"`);
+
+                    if (title && title.length > 1) {
+                        const { error: updateError } = await authSupabase
+                            .from('conversations')
+                            .update({ title })
+                            .eq('id', activeConversationId);
+
+                        if (updateError) {
+                            console.error(`[Auto-title] DB update FAILED:`, updateError.message);
+                        } else {
+                            console.log(`[Auto-title] ✅ Title updated to: "${title}"`);
                         }
-                    }).catch(() => { /* title generation is non-critical */ });
+                    } else {
+                        console.warn('[Auto-title] Generated title was empty or too short');
+                    }
                 }
             } catch { /* persistence is non-critical */ }
         }
