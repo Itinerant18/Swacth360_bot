@@ -83,6 +83,23 @@ interface ExtractedImage {
     relevantFor: string;
 }
 
+type KnowledgeRecord = {
+    id: string;
+    question: string;
+    answer: string;
+    category: string;
+    subcategory: string;
+    product: string;
+    tags: string[];
+    content: string;
+    embedding: number[];
+    source?: string;
+    source_name?: string;
+    parent_content?: string;
+    entities?: string[];
+    chunk_type?: 'chunk' | 'proposition' | 'image' | 'qa';
+};
+
 // ─── Valid categories ─────────────────────────────────────────
 const VALID_CATEGORIES = [
     'General Knowledge', 'Installation & Commissioning',
@@ -343,6 +360,81 @@ Respond with ONLY valid JSON:
  * This prevents knowledge drift from repeated re-uploads of the same manual
  * and keeps retrieval precise (no duplicate hits).
  */
+export function buildFallbackQAPair(
+    chunk: string,
+    sourceName: string,
+    section: string,
+    entities: string[],
+    isImageContent = false
+): QAPair | null {
+    const normalized = chunk
+        .replace(/\s+/g, ' ')
+        .replace(/\s+([,.;:])/g, '$1')
+        .trim();
+
+    if (normalized.length < MIN_CHUNK_LEN) return null;
+
+    const firstSentence = normalized.split(/(?<=[.!?])\s+/)[0] || normalized;
+    const focusText = entities[0]
+        ? `${entities[0]} in ${section}`
+        : firstSentence.split(/\s+/).slice(0, 10).join(' ');
+    const focus = focusText.replace(/[^\w\s./:+-]/g, '').trim().slice(0, 120) || section;
+
+    const tags = [
+        ...section.toLowerCase().split(/[^a-z0-9]+/).filter(token => token.length > 2),
+        ...entities.map(entity => entity.toLowerCase()),
+    ].filter((value, index, values) => values.indexOf(value) === index).slice(0, 6);
+
+    return {
+        question: isImageContent
+            ? `What technical information is shown in ${sourceName} about ${focus}?`
+            : `What does ${sourceName} say about ${focus}?`,
+        answer: normalized.slice(0, 700),
+        category: 'General Knowledge',
+        tags,
+    };
+}
+
+function isMissingColumnError(error: { code?: string; message?: string; details?: string } | null): boolean {
+    if (!error) return false;
+    const combined = `${error.code ?? ''} ${error.message ?? ''} ${error.details ?? ''}`.toLowerCase();
+    return combined.includes('schema cache')
+        || combined.includes('could not find the')
+        || combined.includes('column')
+        || combined.includes('pgrst204');
+}
+
+function stripKeys(record: KnowledgeRecord, keys: Array<keyof KnowledgeRecord>): KnowledgeRecord {
+    const clone: Partial<KnowledgeRecord> = { ...record };
+    for (const key of keys) delete clone[key];
+    return clone as KnowledgeRecord;
+}
+
+async function upsertKnowledgeRecord(
+    supabase: ReturnType<typeof getSupabase>,
+    record: KnowledgeRecord
+) {
+    const attempts: KnowledgeRecord[] = [
+        record,
+        stripKeys(record, ['parent_content', 'entities', 'chunk_type']),
+        stripKeys(record, ['parent_content', 'entities', 'chunk_type', 'source', 'source_name']),
+    ];
+
+    let lastError: { code?: string; message?: string; details?: string } | null = null;
+
+    for (let index = 0; index < attempts.length; index++) {
+        const { error } = await supabase
+            .from('hms_knowledge')
+            .upsert(attempts[index], { onConflict: 'id' });
+
+        if (!error) return { error: null, compatibilityFallbackUsed: index > 0 };
+        lastError = error;
+        if (!isMissingColumnError(error)) break;
+    }
+
+    return { error: lastError, compatibilityFallbackUsed: false };
+}
+
 async function isSemanticDuplicate(
     embeddingVector: number[],
     supabase: ReturnType<typeof getSupabase>
@@ -517,7 +609,7 @@ export async function POST(req: NextRequest) {
 
     // Image extraction
     let extractedImages: ExtractedImage[] = [];
-    if (inputType === 'pdf' && pdfBuffer && geminiKey) {
+    if (inputType === 'pdf' && pdfBuffer && geminiKey && isImageOnly) {
         console.log('🖼️  Extracting images via Gemini...');
         extractedImages = await extractImagesFromPdf(pdfBuffer, sourceName, geminiKey);
         console.log(`🖼️  Found ${extractedImages.length} image(s)`);
@@ -553,10 +645,11 @@ export async function POST(req: NextRequest) {
             const entities = extractHMSEntities(child);
 
             // Run Q&A generation and proposition extraction in parallel
-            const [qa, propositions] = await Promise.all([
+            const [generatedQa, propositions] = await Promise.all([
                 generateQAPair(child, sourceName, sarvamLlm, false),
                 extractPropositions(child, sourceName, sarvamLlm),
             ]);
+            const qa = generatedQa ?? buildFallbackQAPair(child, sourceName, section, entities);
 
             if (!qa) {
                 results.push({ id, question: '(skipped — no useful content)', status: 'skipped', type: 'text' });
@@ -564,8 +657,8 @@ export async function POST(req: NextRequest) {
                 continue;
             }
 
-            // Build entity-enriched embedding text
-            // KEY DIFFERENCE: we embed the PARENT (full context) but retrieve by CHILD (precise)
+            // Embed the child chunk so adjacent siblings under the same parent
+            // don't collapse into a single semantic duplicate.
             const embeddingText = buildEnrichedEmbeddingText({
                 question: qa.question,
                 answer: qa.answer,         // answer from Q&A
@@ -576,7 +669,15 @@ export async function POST(req: NextRequest) {
                 rawContent: parent,        // ← parent chunk for full context
             });
 
-            const vector = await embedText(embeddingText);
+            const vector = await embedText(buildEnrichedEmbeddingText({
+                question: qa.question,
+                answer: qa.answer,
+                category: qa.category,
+                tags: qa.tags,
+                entities,
+                sourceName,
+                rawContent: child,
+            }));
 
             // Semantic deduplication check
             const isDuplicate = await isSemanticDuplicate(vector, supabase);
@@ -588,7 +689,7 @@ export async function POST(req: NextRequest) {
             }
 
             // Store main Q&A entry
-            const { error: dbErr } = await supabase.from('hms_knowledge').upsert({
+            const { error: dbErr, compatibilityFallbackUsed } = await upsertKnowledgeRecord(supabase, {
                 id,
                 question: qa.question,
                 answer: qa.answer,
@@ -596,7 +697,15 @@ export async function POST(req: NextRequest) {
                 subcategory: section,
                 product: 'HMS Panel',
                 tags: [...qa.tags, ...entities.slice(0, 3)],
-                content: embeddingText,
+                content: buildEnrichedEmbeddingText({
+                    question: qa.question,
+                    answer: qa.answer,
+                    category: qa.category,
+                    tags: qa.tags,
+                    entities,
+                    sourceName,
+                    rawContent: child,
+                }),
                 parent_content: parent,
                 entities,
                 embedding: vector,
@@ -609,6 +718,9 @@ export async function POST(req: NextRequest) {
                 results.push({ id, question: qa.question, status: 'error', type: 'text', error: dbErr.message });
                 errorCount++;
             } else {
+                if (compatibilityFallbackUsed) {
+                    console.warn('[admin.ingest] compatibility_fallback', { id, sourceName, type: 'text' });
+                }
                 results.push({ id, question: qa.question, status: 'success', type: 'text' });
                 successCount++;
 
@@ -634,8 +746,13 @@ export async function POST(req: NextRequest) {
 
                     // Only store if not a duplicate
                     const isPropDuplicate = await isSemanticDuplicate(propVector, supabase);
-                    if (!isPropDuplicate) {
-                        await supabase.from('hms_knowledge').upsert({
+                    if (isPropDuplicate) {
+                        results.push({ id: propId, question: `[Fact] ${prop.fact.slice(0, 80)}`, status: 'duplicate', type: 'proposition' });
+                        duplicateCount++;
+                        continue;
+                    }
+
+                    const { error: propErr, compatibilityFallbackUsed: propFallbackUsed } = await upsertKnowledgeRecord(supabase, {
                             id: propId,
                             question: `What is the specification: ${prop.fact.slice(0, 80)}?`,
                             answer: prop.fact,
@@ -652,6 +769,19 @@ export async function POST(req: NextRequest) {
                             chunk_type: 'proposition',
                         });
 
+                    if (propErr) {
+                        results.push({
+                            id: propId,
+                            question: `[Fact] ${prop.fact.slice(0, 80)}`,
+                            status: 'error',
+                            type: 'proposition',
+                            error: propErr.message,
+                        });
+                        errorCount++;
+                    } else {
+                        if (propFallbackUsed) {
+                            console.warn('[admin.ingest] compatibility_fallback', { id: propId, sourceName, type: 'proposition' });
+                        }
                         results.push({ id: propId, question: `[Fact] ${prop.fact.slice(0, 80)}`, status: 'success', type: 'proposition' });
                         successCount++;
                     }
@@ -684,7 +814,14 @@ export async function POST(req: NextRequest) {
 
             try {
                 const entities = extractHMSEntities(imageContent);
-                const qa = await generateQAPair(imageContent, sourceName, sarvamLlm, true);
+                const generatedQa = await generateQAPair(imageContent, sourceName, sarvamLlm, true);
+                const qa = generatedQa ?? buildFallbackQAPair(
+                    imageContent,
+                    sourceName,
+                    img.imageType || 'technical diagram',
+                    entities,
+                    true
+                );
 
                 if (!qa) {
                     results.push({ id, question: `[Image] ${img.title} (skipped)`, status: 'skipped', type: 'image' });
@@ -716,7 +853,7 @@ export async function POST(req: NextRequest) {
                     continue;
                 }
 
-                const { error: dbErr } = await supabase.from('hms_knowledge').upsert({
+                const { error: dbErr, compatibilityFallbackUsed } = await upsertKnowledgeRecord(supabase, {
                     id,
                     question: qa.question,
                     answer: qa.answer,
@@ -737,6 +874,9 @@ export async function POST(req: NextRequest) {
                     results.push({ id, question: `[Image] ${img.title}`, status: 'error', type: 'image', error: dbErr.message });
                     errorCount++;
                 } else {
+                    if (compatibilityFallbackUsed) {
+                        console.warn('[admin.ingest] compatibility_fallback', { id, sourceName, type: 'image' });
+                    }
                     results.push({ id, question: `[Image] ${img.title}: ${qa.question}`, status: 'success', type: 'image' });
                     successCount++;
                 }
