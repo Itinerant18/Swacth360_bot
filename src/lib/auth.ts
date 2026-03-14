@@ -1,7 +1,7 @@
 /**
  * src/lib/auth.ts
  *
- * Supabase Auth helper — Email + Password flow.
+ * Supabase Auth helper - Email + Password flow.
  * Open registration (any valid email).
  * Admin email: aniket.karmakar@seple.in
  */
@@ -10,21 +10,59 @@ import { createBrowserClient } from '@supabase/ssr';
 
 export const ADMIN_EMAIL = 'aniket.karmakar@seple.in';
 
-// ─── Supabase browser client ──────────────────────────────────────────────────
+let _supabaseAuth: ReturnType<typeof createBrowserClient> | null = null;
+
+// Supabase browser client
 export function getSupabaseAuth() {
-    return createBrowserClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-    );
+    if (!_supabaseAuth) {
+        _supabaseAuth = createBrowserClient(
+            process.env.NEXT_PUBLIC_SUPABASE_URL!,
+            process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+        );
+    }
+
+    return _supabaseAuth;
 }
 
+function isInvalidRefreshTokenMessage(message: string): boolean {
+    const normalized = message.toLowerCase();
+    return normalized.includes('invalid refresh token')
+        || normalized.includes('refresh token not found');
+}
 
-// ─── Admin check ─────────────────────────────────────────────────────────────
+async function clearLocalSession(): Promise<void> {
+    const supabase = getSupabaseAuth();
+    try {
+        await supabase.auth.signOut({ scope: 'local' });
+    } catch {
+        // best-effort cleanup
+    }
+}
+
+/**
+ * Clears stale local auth state when a refresh token is no longer valid.
+ */
+export async function sanitizeAuthSession(): Promise<void> {
+    const supabase = getSupabaseAuth();
+
+    try {
+        const { error } = await supabase.auth.getSession();
+        if (error && isInvalidRefreshTokenMessage(error.message)) {
+            await clearLocalSession();
+        }
+    } catch (err: unknown) {
+        if (isInvalidRefreshTokenMessage((err as Error).message || '')) {
+            await clearLocalSession();
+        }
+    }
+}
+
+// Admin check
 export function isAdminEmail(email: string): boolean {
     return email.trim().toLowerCase() === ADMIN_EMAIL.toLowerCase();
 }
 
-// ─── Friendly error mapper ────────────────────────────────────────────────────
+// Friendly error mapper
 function mapAuthError(raw: string): { message: string; needsConfirmation: boolean } {
     const msg = raw.toLowerCase();
     if (msg.includes('email not confirmed') || msg.includes('not confirmed')) {
@@ -48,7 +86,7 @@ function mapAuthError(raw: string): { message: string; needsConfirmation: boolea
     return { message: 'Authentication failed. Please try again.', needsConfirmation: false };
 }
 
-// ─── Register (email + password + name + phone) ───────────────────────────────
+// Register (email + password + name + phone)
 export async function register(
     email: string,
     password: string,
@@ -78,7 +116,7 @@ export async function register(
     return { error: null };
 }
 
-// ─── Login (email + password) ─────────────────────────────────────────────────
+// Login (email + password)
 export async function login(
     email: string,
     password: string,
@@ -100,7 +138,7 @@ export async function login(
     return { error: null, redirectTo };
 }
 
-// ─── Resend confirmation email ────────────────────────────────────────────────
+// Resend confirmation email
 export async function resendConfirmation(
     email: string,
 ): Promise<{ error: string | null }> {
@@ -117,7 +155,7 @@ export async function resendConfirmation(
     return { error: null };
 }
 
-// ─── Reset password ──────────────────────────────────────────────────────────
+// Reset password
 export async function resetPassword(
     email: string,
 ): Promise<{ error: string | null }> {
@@ -130,15 +168,26 @@ export async function resetPassword(
     return { error: null };
 }
 
-// ─── Sign out ─────────────────────────────────────────────────────────────────
+// Sign out
 export async function signOut(): Promise<void> {
     const supabase = getSupabaseAuth();
-    await supabase.auth.signOut();
+    await supabase.auth.signOut({ scope: 'local' });
 }
 
-// ─── Get current session ──────────────────────────────────────────────────────
+// Get current session
 export async function getSession() {
     const supabase = getSupabaseAuth();
-    const { data: { session } } = await supabase.auth.getSession();
-    return session;
+    try {
+        const { data: { session }, error } = await supabase.auth.getSession();
+        if (error && isInvalidRefreshTokenMessage(error.message)) {
+            await clearLocalSession();
+            return null;
+        }
+        return session;
+    } catch (err: unknown) {
+        if (isInvalidRefreshTokenMessage((err as Error).message || '')) {
+            await clearLocalSession();
+        }
+        return null;
+    }
 }

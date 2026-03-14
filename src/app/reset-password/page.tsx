@@ -9,7 +9,7 @@
 
 import { useState, useEffect, Suspense } from 'react';
 import { useRouter } from 'next/navigation';
-import { getSupabaseAuth } from '@/lib/auth';
+import { getSupabaseAuth, sanitizeAuthSession } from '@/lib/auth';
 
 function ResetPasswordContent() {
   const router = useRouter();
@@ -20,12 +20,30 @@ function ResetPasswordContent() {
 
   // Verify we have a valid session (user came from email link)
   useEffect(() => {
+    let isMounted = true;
     const supabase = getSupabaseAuth();
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (!user) {
-        router.replace('/login?error=auth_failed');
+
+    const verify = async () => {
+      await sanitizeAuthSession();
+
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (isMounted && !user) {
+          router.replace('/login?error=auth_failed');
+        }
+      } catch {
+        await supabase.auth.signOut({ scope: 'local' }).catch(() => undefined);
+        if (isMounted) {
+          router.replace('/login?error=auth_failed');
+        }
       }
-    });
+    };
+
+    void verify();
+
+    return () => {
+      isMounted = false;
+    };
   }, [router]);
 
   async function handleSubmit(e: React.FormEvent) {

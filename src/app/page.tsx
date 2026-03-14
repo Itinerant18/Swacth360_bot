@@ -3,6 +3,7 @@
 import { useChat, type Message } from 'ai/react';
 import { useRef, useEffect, useState, useCallback, useMemo, type ComponentPropsWithoutRef, type JSX as ReactJSX } from 'react';
 import dynamic from 'next/dynamic';
+import type { AuthChangeEvent, Session } from '@supabase/supabase-js';
 
 import remarkGfm from 'remark-gfm';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
@@ -14,7 +15,7 @@ import {
 } from '@fortawesome/free-solid-svg-icons';
 import LanguageSelector from '../components/LanguageSelector';
 import DiagramCard from '../components/DiagramCard';
-import { signOut, isAdminEmail, getSupabaseAuth } from '@/lib/auth';
+import { signOut, isAdminEmail, getSupabaseAuth, sanitizeAuthSession } from '@/lib/auth';
 import { loadStoredRAGSettings, type RAGSettings } from '@/lib/rag-settings';
 
 interface Conversation {
@@ -237,7 +238,8 @@ export default function Chat() {
         // which replaces the separate getSession() call. This eliminates race conditions
         // and the double-fetch pattern that was causing the intermittent auth flash.
         const supabase = getSupabaseAuth();
-        const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+        void sanitizeAuthSession();
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((event: AuthChangeEvent, session: Session | null) => {
             if (!isMounted) return;
 
             if (session) {

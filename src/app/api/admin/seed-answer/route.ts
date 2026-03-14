@@ -1,5 +1,6 @@
 import { getSupabase } from '@/lib/supabase';
 import { embedText } from '@/lib/embeddings';
+import { invalidateCache } from '@/lib/cache';
 import { NextRequest, NextResponse } from 'next/server';
 
 export async function POST(req: NextRequest) {
@@ -83,6 +84,10 @@ export async function POST(req: NextRequest) {
         }
 
         console.info('[admin.seed_answer] success', { questionId, knowledgeId });
+
+        // Evict any cached answer for this question so users immediately get the new answer
+        void invalidateCache(trimmedQuestion);
+
         return NextResponse.json({
             success: true,
             knowledgeId,

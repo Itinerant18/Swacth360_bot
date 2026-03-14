@@ -15,6 +15,8 @@ import { classifyQuery, retrieve, type QueryType, type RAGResult, type RankedMat
 import { parseRAGSettings } from '@/lib/rag-settings';
 import { getSupabase } from '@/lib/supabase';
 import { createServerSupabaseClient } from '@/lib/auth-server';
+import { checkCache, storeCache, invalidateCache as _invalidateCache } from '@/lib/cache';
+import { embedText } from '@/lib/embeddings';
 
 dns.setDefaultResultOrder('ipv4first');
 
@@ -360,11 +362,63 @@ export async function POST(req: Request) {
             console.log(`Translation [${language}->EN]: "${englishQuestion}"`);
         }
 
+        // Tier 1 Cache Check (exact match, no embedding needed)
+        const tier1CacheResult = await checkCache(englishQuestion, null);
+        if (tier1CacheResult.hit) {
+            console.log('[chat] Cache Tier 1 hit - skipping full RAG pipeline');
+
+            // Persist assistant message to conversation if user is logged in
+            if (authUserId && activeConversationId) {
+                try {
+                    const authSupabase = await createServerSupabaseClient();
+                    await authSupabase.from('messages').insert({
+                        conversation_id: activeConversationId,
+                        role: 'assistant',
+                        content: tier1CacheResult.answer,
+                    });
+                } catch { /* persistence is non-critical */ }
+            }
+
+            const cachedResponse = textStreamResponse(tier1CacheResult.answer);
+            if (activeConversationId) {
+                cachedResponse.headers.set('x-conversation-id', activeConversationId);
+            }
+            cachedResponse.headers.set('x-cache', 'HIT:tier1');
+            return cachedResponse;
+        }
+
         const notFoundMsg = NOT_FOUND_MESSAGES[language] || NOT_FOUND_MESSAGES.en;
         const { decision, relationalResult } = await logicalRoute(englishQuestion);
         if (decision.route === 'relational' && relationalResult) {
             const relationalAnswer = formatRelationalAnswer(relationalResult, langName);
             return textStreamResponse(relationalAnswer);
+        }
+
+        // Embed query (reused for Tier 2 cache + RAG retrieval)
+        const cachedQueryEmbedding = await embedText(englishQuestion);
+
+        // Tier 2 Cache Check (semantic match)
+        const tier2CacheResult = await checkCache(englishQuestion, cachedQueryEmbedding);
+        if (tier2CacheResult.hit) {
+            console.log(`[chat] Cache Tier 2 hit (sim=${tier2CacheResult.similarity?.toFixed(3)}) - skipping full RAG pipeline`);
+
+            if (authUserId && activeConversationId) {
+                try {
+                    const authSupabase = await createServerSupabaseClient();
+                    await authSupabase.from('messages').insert({
+                        conversation_id: activeConversationId,
+                        role: 'assistant',
+                        content: tier2CacheResult.answer,
+                    });
+                } catch { /* non-critical */ }
+            }
+
+            const cachedResponse = textStreamResponse(tier2CacheResult.answer);
+            if (activeConversationId) {
+                cachedResponse.headers.set('x-conversation-id', activeConversationId);
+            }
+            cachedResponse.headers.set('x-cache', `HIT:tier2:${tier2CacheResult.similarity?.toFixed(3)}`);
+            return cachedResponse;
         }
 
         const baseAnalysis = classifyQuery(englishQuestion);
@@ -516,6 +570,15 @@ export async function POST(req: Request) {
             bot_answer: answer,
             user_id: authUserId || userId || null,
             conversation_id: activeConversationId || null,
+        });
+
+        // Store answer in both cache tiers (fire-and-forget)
+        void storeCache({
+            query: englishQuestion,
+            queryVector: cachedQueryEmbedding,
+            answer,
+            answerMode: dbAnswerMode,
+            language,
         });
 
         // ── Save assistant message + auto-title ──

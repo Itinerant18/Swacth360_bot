@@ -34,10 +34,6 @@
  *    - Apply sigmoid calibration to get true confidence scores
  *    - Adaptive thresholds based on query type
  *
- * 6. SEMANTIC CACHE
- *    - Cache by semantic similarity, not exact string match
- *    - If a cached query has similarity > 0.92 to current query, serve cache
- *    - Reduces API costs by 40-60% in production
  */
 
 import { embedText } from './embeddings';
@@ -124,11 +120,6 @@ const RETRIEVAL_CONFIG = {
     USE_MMR: true,
     MMR_LAMBDA: 0.5,
     TIME_BOOST_DAYS: 30,
-
-    // Semantic cache
-    CACHE_SIMILARITY_THRESHOLD: 0.92,
-    CACHE_TTL_MS: 30 * 60 * 1000,
-    CACHE_MAX_ENTRIES: 500,
 
     // HYDE
     HYDE_ENABLED: true,
@@ -397,16 +388,6 @@ function chunkTypeBoost(
 }
 
 // ─── Semantic Cache ────────────────────────────────────────────
-interface SemanticCacheEntry {
-    query: string;
-    queryVector: number[];
-    result: RAGResult;
-    timestamp: number;
-}
-
-const semanticCache = new Map<string, SemanticCacheEntry>();
-const cacheVectors: { key: string; vector: number[] }[] = [];
-
 function cosineSimilarity(a: number[], b: number[]): number {
     if (a.length !== b.length) return 0;
     let dot = 0, normA = 0, normB = 0;
@@ -418,54 +399,6 @@ function cosineSimilarity(a: number[], b: number[]): number {
     return dot / (Math.sqrt(normA) * Math.sqrt(normB) + 1e-8);
 }
 
-export async function checkSemanticCache(
-    queryVector: number[]
-): Promise<RAGResult | null> {
-    const now = Date.now();
-
-    // Clean expired entries
-    for (const [key, entry] of semanticCache.entries()) {
-        if (now - entry.timestamp > RETRIEVAL_CONFIG.CACHE_TTL_MS) {
-            semanticCache.delete(key);
-        }
-    }
-
-    // Find semantically similar cached query
-    let bestSim = 0;
-    let bestKey = '';
-
-    for (const { key, vector } of cacheVectors) {
-        if (!semanticCache.has(key)) continue;
-        const sim = cosineSimilarity(queryVector, vector);
-        if (sim > bestSim) {
-            bestSim = sim;
-            bestKey = key;
-        }
-    }
-
-    if (bestSim >= RETRIEVAL_CONFIG.CACHE_SIMILARITY_THRESHOLD && bestKey) {
-        console.log(`🔮 Semantic cache HIT (sim=${bestSim.toFixed(3)}): "${semanticCache.get(bestKey)!.query}"`);
-        return semanticCache.get(bestKey)!.result;
-    }
-
-    return null;
-}
-
-export function setSemanticCache(query: string, queryVector: number[], result: RAGResult): void {
-    if (semanticCache.size >= RETRIEVAL_CONFIG.CACHE_MAX_ENTRIES) {
-        // LRU eviction
-        const oldest = [...semanticCache.entries()]
-            .sort((a, b) => a[1].timestamp - b[1].timestamp)[0];
-        if (oldest) {
-            semanticCache.delete(oldest[0]);
-            const idx = cacheVectors.findIndex(v => v.key === oldest[0]);
-            if (idx >= 0) cacheVectors.splice(idx, 1);
-        }
-    }
-    const key = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
-    semanticCache.set(key, { query, queryVector, result, timestamp: Date.now() });
-    cacheVectors.push({ key, vector: queryVector });
-}
 
 // ─── Multi-Vector Retrieval ────────────────────────────────────
 async function multiVectorSearch(
@@ -927,13 +860,6 @@ export async function retrieve(
 
     hydeText = hydeResult.text;
     console.log(`  HYDE: ${hydeText ? `"${hydeText.slice(0, 80)}..."` : 'skipped (timeout/disabled)'}`);
-
-    // Check semantic cache (after getting vector, before DB query)
-    const cachedResult = await checkSemanticCache(queryVector);
-    if (cachedResult) {
-        return { ...cachedResult, retrievalStats: { ...cachedResult.retrievalStats, latencyMs: performance.now() - startMs } };
-    }
-
     // Step 3: Embed HYDE answer if generated
     const hydeVector = hydeText ? await embedText(hydeText) : null;
 
@@ -1049,9 +975,6 @@ export async function retrieve(
         retrievalMetadata,
     };
 
-    // Cache the result
-    setSemanticCache(query, queryVector, result);
-
     // Log query for analytics
     try {
         const supabase = getSupabase();
@@ -1079,3 +1002,4 @@ export async function retrieve(
 
     return result;
 }
+
