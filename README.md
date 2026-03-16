@@ -564,19 +564,21 @@ User-controllable RAG pipeline configuration:
 │       RAG Configuration Settings            │
 ├─────────────────────────────────────────────┤
 │                                             │
-│  ☑ Hybrid Search (Vector + BM25)           │
-│    └─ Alpha: ▓░░░░░░░░░░░░░░░░░░░░ 0.50   │
+│  ☑ Hybrid Search (Vector + BM25)            │
+│    └─ Alpha: ▓░░░░░░░░░░░░░░░░░░░░ 0.50     │
 │       (0 = BM25 only, 1 = Vector only)      │
 │                                             │
-│  ☑ BGE Reranker (Cross-Encoder)            │
-│  ☑ Query Expansion (HYDE)                  │
-│  ☑ Knowledge Graph Boost                   │
+│  ☑ BGE Reranker (Cross-Encoder)             │
 │                                             │
-│  Top-K Results: ▓░░░░░░░░░░░░░░░░░░░░ 5   │
-│  MMR Lambda:    ▓░░░░░░░░░░░░░░░░░░░░ 0.7 │
-│    (0 = pure relevance, 1 = pure diversity)│
+│  ☑ Query Expansion (HYDE)                   │
 │                                             │
-│  [Reset to Defaults]  [Save Settings]      │
+│  ☑ Knowledge Graph Boost                    │
+│                                             │
+│  Top-K Results: ▓░░░░░░░░░░░░░░░░░░░░ 5     │
+│  MMR Lambda:    ▓░░░░░░░░░░░░░░░░░░░░ 0.7   │
+│    (0 = pure relevance, 1 = pure diversity) │
+│                                             │
+│  [Reset to Defaults]  [Save Settings]       │
 └─────────────────────────────────────────────┘
 ```
 
@@ -1487,6 +1489,22 @@ npx tsx scripts/clear.ts
 
 # Check embeddings dimension
 npx tsx scripts/migrate-embeddings.ts
+
+# One at a time
+npx tsx scripts/ingest-diagram.ts --file="data/diagrams/whisper-g-block.md" --name="Whisper G Auto-Dialer" --type="block"
+npx tsx scripts/ingest-diagram.ts --file="data/diagrams/hms-architecture.md" --name="HMS Architecture" --type="panel"
+npx tsx scripts/ingest-diagram.ts --file="data/diagrams/pinnacle-fire-alarm.md" --name="Pinnacle Fire Alarm" --type="alarm"
+npx tsx scripts/ingest-diagram.ts --file="data/diagrams/dhwani-pa-console.md" --name="Dhwani PA Console" --type="block"
+npx tsx scripts/ingest-diagram.ts --file="data/diagrams/i2c-protocol-timing.md" --name="I2C Protocol" --type="communication"
+npx tsx scripts/ingest-diagram.ts --file="data/diagrams/uart-rs232-bitstream.md" --name="UART RS232" --type="communication"
+.
+.
+.
+# Or ingest ALL files in the directory at once
+npx tsx scripts/ingest-diagram.ts --dir="data/diagrams/" --type="block"
+npx tsx scripts/ingest-diagram.ts --dir="data/diagrams" --type="wiring"
+
+
 ```
 
 ### **Git Commands**

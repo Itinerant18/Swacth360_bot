@@ -231,31 +231,30 @@ Generate a COMPLETE, PROFESSIONAL power supply wiring document for: {panelType}
 - Do not exceed \`30V DC\` on panel power terminals under any circumstances`,
 
   network: `You are a senior technical writer for HMS industrial panels at SEPLe.
-Generate a COMPLETE, PROFESSIONAL network topology document for: {panelType}
+Generate a COMPLETE, PROFESSIONAL network topology diagram for: {panelType}
 
 {kbSection}
 
 ## 🌐 Network / Bus Topology — {panelType}
 
 ### Bus Architecture
+\`\`\`mermaid
+flowchart LR
+    subgraph Master["HMS Panel / Master"]
+        M["🖥️ {panelType}<br/>Modbus RTU Master"]
+    end
+    subgraph Bus["RS-485 Bus (Shielded Twisted Pair)<br/>Max 1200m @ 9600 bps"]
+        M -->|"A+ / B−"| N1["📟 Node 01<br/>Addr: 1"]
+        M -->|"A+ / B−"| N2["📟 Node 02<br/>Addr: 2"]
+        M -->|"A+ / B−"| N3["📟 Node 03<br/>Addr: 3"]
+        M -->|"A+ / B−"| NN["📟 Node N<br/>Addr: N"]
+    end
+    T1["120Ω Terminator"] -.-> N1
+    T2["120Ω Terminator"] -.-> NN
+    PC["💻 Config PC<br/>RS-232 / USB"] -->|"Setup"| M
 \`\`\`
-  Master Device (PLC / HMS Panel)
-  ┌─────────────────────┐
-  │  {panelType}        │  ◄── Configuration PC (RS-232 or USB during setup)
-  │  Modbus RTU Master  │
-  └────────┬────────────┘
-           │  RS-485 Bus (Shielded Twisted Pair)
-           │  Max length: 1200m @ 9600 bps
-           │
-     ┌─────┴──────────────────────────────────────────┐
-     │                                                │
-  ┌──┴──────┐     ┌──────────┐     ┌──────────┐    ┌─┴────────┐
-  │ Node 01 │     │ Node 02  │     │ Node 03  │    │  Node N  │
-  │ Addr: 1 │     │ Addr: 2  │     │ Addr: 3  │    │ Addr: N  │
-  └─────────┘     └──────────┘     └──────────┘    └──────────┘
-  120Ω ◄──────────────────────────────────────────────────► 120Ω
-  (Near end)                                         (Far end)
-\`\`\`
+
+Update the node names, addresses, and device types using actual KB data for {panelType}. Add all relevant devices as nodes.
 
 ### Network Parameters
 | Parameter | Value | Notes |
@@ -268,15 +267,6 @@ Generate a COMPLETE, PROFESSIONAL network topology document for: {panelType}
 | Max nodes | \`32\` (standard RS-485) | Up to 128 with repeaters |
 | Max cable | \`1200m @ 9600 bps\` | \`600m @ 19200 bps\` |
 | Termination | \`120Ω\` | Both ends of bus only |
-| Cable type | Shielded twisted pair | \`0.5mm²\` minimum |
-
-### Node Address Table
-| Node | Device Type | Address | Baud Rate | Notes |
-|------|------------|---------|-----------|-------|
-| 1 | HMS Panel (Master) | — | \`9600\` | Master device |
-| 2 | I/O Module | \`1\` | \`9600\` | First slave |
-| 3 | Sensor Gateway | \`2\` | \`9600\` | Second slave |
-(Update with actual device addresses for {panelType})
 
 ### ⚠️ Common Network Faults
 | Symptom | Likely Cause | Fix |
@@ -346,23 +336,34 @@ Generate a COMPLETE, PROFESSIONAL system block diagram for: {panelType}
 ## 🔷 System Block Diagram — {panelType}
 
 ### System Architecture
+\`\`\`mermaid
+flowchart TD
+    subgraph Field["🏭 Field Devices"]
+        S["📡 Sensors / Detectors"]
+        A["⚙️ Actuators / Relays"]
+    end
+    subgraph Panel["📋 {panelType}"]
+        CPU["🖥️ CPU / Logic<br/>Processing"]
+        IO["🔌 I/O Module<br/>DI1-DI8 / DO1-DO4"]
+        COM["📶 RS-485 Bus<br/>Modbus RTU"]
+        CPU --> IO
+        CPU --> COM
+    end
+    subgraph Power["⚡ Power Supply"]
+        PSU["🔋 24V DC / 5A<br/>DIN Rail PSU"]
+    end
+    subgraph Supervisory["🖥️ Supervisory"]
+        SCADA["📊 SCADA / HMI"]
+        CFG["💻 Config PC<br/>USB / RS-232"]
+    end
+    S -->|"24V DC Signals"| IO
+    IO -->|"Relay Contacts"| A
+    PSU -->|"TB1+ / TB1−"| Panel
+    COM -->|"RS-485 A+ B−"| SCADA
+    CFG -->|"USB / RS-232"| CPU
 \`\`\`
-  ┌────────────────┐     ┌───────────────────────┐     ┌────────────────┐
-  │  FIELD DEVICES │     │    {panelType}         │     │  SUPERVISORY   │
-  │                │     │                       │     │                │
-  │ • Sensors      │────►│  ┌─────────────────┐  │────►│ • SCADA        │
-  │ • Actuators    │     │  │   CPU / Logic   │  │     │ • HMI          │
-  │ • Drives       │◄────│  │   Processing    │  │◄────│ • Historian    │
-  │ • PLCs         │     │  └────────┬────────┘  │     │ • Alarms       │
-  └────────────────┘     │           │            │     └────────────────┘
-                         │  ┌────────┴────────┐  │
-  ┌────────────────┐     │  │  I/O & Comms    │  │     ┌────────────────┐
-  │  POWER SUPPLY  │     │  │  • Digital I/O  │  │     │  CONFIGURATION │
-  │                │     │  │  • RS-485 Bus   │  │     │                │
-  │  24V DC / 5A  │────►│  │  • Modbus RTU  │  │◄────│ • Config PC    │
-  │  DIN Rail PSU  │     │  └─────────────────┘  │     │ • USB / RS-232 │
-  └────────────────┘     └───────────────────────┘     └────────────────┘
-\`\`\`
+
+Update all node names, signals, and module names using actual KB data for {panelType}.
 
 ### Signal Flow
 | Signal Direction | From | Protocol | To | Data |
@@ -472,26 +473,43 @@ Generate a COMPLETE, PROFESSIONAL LED status reference for: {panelType}
 | ⚫ | ⚫ | ⚫ | ⚫ | No power | Check PSU, MCB, and \`TB1+\` fuse |`,
 
   alarm: `You are a senior technical writer for HMS industrial panels at SEPLe.
-Generate a COMPLETE, PROFESSIONAL alarm system wiring document for: {panelType}
+Generate a COMPLETE, PROFESSIONAL alarm system diagram for: {panelType}
 
 {kbSection}
 
-## 🚨 Alarm System Wiring — {panelType}
+## 🚨 Alarm System Architecture — {panelType}
 
 ### Alarm Zone Architecture
+\`\`\`mermaid
+flowchart TD
+    subgraph Zones["🔍 Alarm Input Zones"]
+        Z1["Zone 1<br/>PIR Motion → DI1"]
+        Z2["Zone 2<br/>Magnetic Contact → DI2"]
+        Z3["Zone 3<br/>Manual Call Point → DI3"]
+        Z4["Zone 4<br/>Smoke Detector → DI4"]
+        Z5["Tamper<br/>Panel Tamper → DI5"]
+    end
+    subgraph Panel["📋 {panelType}<br/>HMS Alarm Panel"]
+        PROC["⚙️ Alarm Processing<br/>Zone Logic / EOL Check"]
+    end
+    subgraph Outputs["🔔 Alarm Outputs"]
+        DO1["🔔 DO1 → Siren 24V"]
+        DO2["💡 DO2 → Strobe Light"]
+        DO3["📡 DO3 → Auto-Dialer"]
+        DO4["🔑 DO4 → Access Relay"]
+    end
+    Z1 -->|"Closed Loop + 4k7Ω EOL"| PROC
+    Z2 -->|"Closed Loop + 4k7Ω EOL"| PROC
+    Z3 -->|"Closed Loop + 4k7Ω EOL"| PROC
+    Z4 -->|"Closed Loop + 4k7Ω EOL"| PROC
+    Z5 -->|"Tamper Loop"| PROC
+    PROC -->|"On Alarm"| DO1
+    PROC -->|"On Alarm"| DO2
+    PROC -->|"On Alarm"| DO3
+    PROC -->|"On Alarm"| DO4
 \`\`\`
-  HMS Panel ({panelType})
-  ┌────────────────────────────────────────┐
-  │  ALARM INPUTS          ALARM OUTPUTS   │
-  │                                        │
-  │  Zone 1 ──[PIR]──► DI1    DO1 ──► 🔔 Siren (24V)   │
-  │  Zone 2 ──[MAG]──► DI2    DO2 ──► 💡 Strobe         │
-  │  Zone 3 ──[MCP]──► DI3    DO3 ──► 📡 Dialer         │
-  │  Zone 4 ──[SMK]──► DI4    DO4 ──► 🔑 Access relay   │
-  │  Tamper  ──────────► DI5                             │
-  │  24V DC ────────────────────────────────────────►    │
-  └────────────────────────────────────────┘
-\`\`\`
+
+Update zone names, detector types, and outputs using actual KB data for {panelType}.
 
 ### Zone Wiring Table
 | Zone | Detector Type | Terminal | EOL Resistor | Wire | Normal State |
@@ -553,11 +571,12 @@ Your output standards:
 2. PROFESSIONALISM — Every diagram must look like it came from an official technical manual.
 3. COMPLETENESS — Fill ALL table cells. Use standard HMS reference values when KB data is unavailable.
 4. STRUCTURE — Follow the exact section order from the template. Do not add extra sections.
-5. ASCII ART — Use Unicode box-drawing characters (┌┐└┘├┤┬┴┼─│►◄) consistently. Align all boxes.
-6. FORMATTING — Terminal names, voltages, error codes, and measurements must be in backtick \`inline code\`.
-7. WIRE COLOURS — Use emoji circles: 🔴 Red, ⚫ Black, 🔵 Blue, ⚪ White, 🟡 Yellow, 🟢 Green, 🟠 Orange, 🟤 Brown.
-8. ACTIONABLE — Every diagram must include numbered installation/verification steps.
-9. NO THINKING — Do NOT use <think> tags. Output ONLY the markdown diagram document directly. No preamble, no reasoning, no closing remarks.
+5. DIAGRAM FORMAT — If the template uses \`\`\`mermaid, generate valid Mermaid flowchart/sequence syntax. If the template uses plain \`\`\`, generate ASCII art with Unicode box-drawing characters (┌┐└┘├┤─│►◄). Do NOT mix the two formats.
+6. MERMAID RULES — When generating Mermaid: use quoted labels for special chars, use <br/> for line breaks in nodes, keep node IDs simple (A, B, C...), use subgraph for grouping.
+7. FORMATTING — Terminal names, voltages, error codes, and measurements must be in backtick \`inline code\`.
+8. WIRE COLOURS — Use emoji circles: 🔴 Red, ⚫ Black, 🔵 Blue, ⚪ White, 🟡 Yellow, 🟢 Green, 🟠 Orange, 🟤 Brown.
+9. ACTIONABLE — Every diagram must include numbered installation/verification steps.
+10. NO THINKING — Do NOT use <think> tags. Output ONLY the markdown diagram document directly. No preamble, no reasoning, no closing remarks.
 
 Output valid markdown that renders correctly. Start immediately with the diagram content.`;
 

@@ -13,6 +13,9 @@
 import React, { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import dynamic from 'next/dynamic';
+
+const MermaidBlock = dynamic(() => import('./MermaidBlock'), { ssr: false });
 
 interface DiagramCardProps {
     markdown: string;
@@ -99,14 +102,30 @@ export default function DiagramCard({
                 </button>
             </div>
 
-            {/* â”€â”€ Markdown body â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+            {/* ── Markdown body ────────────────────────────────── */}
             <div style={{ padding: '18px 20px', overflowX: 'auto' }}>
                 <ReactMarkdown
                     remarkPlugins={[remarkGfm]}
                     components={{
 
-                        // â”€â”€ Code blocks = ASCII art diagrams (react-markdown v10) â”€â”€
+                        // ── Code blocks: Mermaid → SVG, others → ASCII art ──
                         pre({ children }: React.HTMLAttributes<HTMLPreElement>) {
+                            // Check if the child is a <code> with mermaid class
+                            const child = React.Children.toArray(children)[0];
+                            if (
+                                React.isValidElement(child) &&
+                                typeof child.props === 'object' &&
+                                child.props !== null &&
+                                'className' in child.props
+                            ) {
+                                const className = String((child.props as { className?: string }).className || '');
+                                if (className.includes('language-mermaid')) {
+                                    const mermaidCode = String(
+                                        (child.props as { children?: React.ReactNode }).children || ''
+                                    ).trim();
+                                    return <MermaidBlock code={mermaidCode} />;
+                                }
+                            }
                             return (
                                 <pre style={{
                                     background: '#161b22',
@@ -135,7 +154,7 @@ export default function DiagramCard({
                             );
                         },
 
-                        // â”€â”€ Tables â”€â”€
+                        // ── Tables ──
                         table({ children }: React.TableHTMLAttributes<HTMLTableElement>) {
                             return (
                                 <div style={{ overflowX: 'auto', margin: '12px 0' }}>

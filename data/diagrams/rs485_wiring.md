@@ -50,3 +50,168 @@
 
 ---
 > 📚 **Source:** SEPLe standard HMS/Dexter wiring reference (IEC 60757, EIA-485).
+
+# HMS Panel RS-485 Communication Bus
+
+This document describes the **RS-485 wiring architecture for the HMS panel communication network** used in Dexter / SEPLe monitoring systems.
+
+The network uses:
+
+• **Half-duplex differential communication (EIA-485)**  
+• **24V DC distributed power**  
+• **Shielded twisted pair cabling**
+
+---
+
+# 1. RS-485 System Architecture
+
+```mermaid
+flowchart LR
+
+subgraph PANEL["HMS MASTER PANEL"]
+PWR1[TB1+ 24V DC]
+PWR2[TB1- GND]
+A[A+ RS485]
+B[B- RS485]
+SH[GND Shield]
+end
+
+
+subgraph BUS["RS-485 BUS CABLE"]
+T1[120Ω Termination]
+LINE[Shielded Twisted Pair]
+T2[120Ω Termination]
+end
+
+
+subgraph SLAVE1["Slave Device 1"]
+SA[A+]
+SB[B-]
+SP[24V DC]
+SG[GND]
+end
+
+
+subgraph SLAVE2["Slave Device 2"]
+SA2[A+]
+SB2[B-]
+SP2[24V DC]
+SG2[GND]
+end
+
+
+subgraph SLAVE3["Slave Device 3"]
+SA3[A+]
+SB3[B-]
+SP3[24V DC]
+SG3[GND]
+end
+
+
+PWR1 --> SP
+PWR1 --> SP2
+PWR1 --> SP3
+
+PWR2 --> SG
+PWR2 --> SG2
+PWR2 --> SG3
+
+A --> T1
+B --> T1
+
+T1 --> LINE
+
+LINE --> SA
+LINE --> SB
+
+LINE --> SA2
+LINE --> SB2
+
+LINE --> SA3
+LINE --> SB3
+
+LINE --> T2
+
+```
+### RS-485 Bus Topology
+* RS-485 requires a daisy-chain topology.
+flowchart LR
+
+MASTER[HMS Panel]
+
+NODE1[Slave Node 1]
+
+NODE2[Slave Node 2]
+
+NODE3[Slave Node 3]
+
+END[Bus End Termination]
+
+MASTER --> NODE1 --> NODE2 --> NODE3 --> END
+
+
+### Terminal Connection Table
+| Panel Terminal | Signal        | Wire Colour | Destination  |
+| -------------- | ------------- | ----------- | ------------ |
+| TB1+           | 24V DC        | 🔴 Red      | Device Power |
+| TB1−           | Ground        | ⚫ Black     | Power Return |
+| A+             | RS-485 Data + | 🔵 Blue     | Slave A+     |
+| B−             | RS-485 Data − | ⚪ White     | Slave B−     |
+| GND            | Shield        | 🟡 Yellow   | Cable Shield |
+
+### RS-485 Electrical Layer
+flowchart LR
+
+TX[Master Transmitter]
+
+A1[A+ Differential Line]
+
+B1[B- Differential Line]
+
+RX[Slave Receiver]
+
+TX --> A1
+TX --> B1
+
+A1 --> RX
+B1 --> RX
+
+### Termination Resistors
+flowchart LR
+
+MASTER[Master Panel]
+
+NODE1[Slave Node 1]
+
+NODE2[Slave Node 2]
+
+NODE3[Slave Node 3]
+
+END[End of Bus]
+
+MASTER --> NODE1 --> NODE2 --> NODE3 --> END
+
+
+### Cable Specifications
+| Parameter | Specification |
+|-----------|---------------|
+| Type      | Shielded Twisted Pair |
+| Impedance | 120Ω ± 15% |
+| Capacitance | < 150 pF/m |
+| Conductor | 22–24 AWG |
+| Max Length | 1200m @ 9600 bps |
+
+### Troubleshooting
+| Issue | Cause | Solution |
+|-------|-------|----------|
+| No communication | Polarity reversed | Swap A+ and B− |
+| Intermittent errors | Poor termination | Add 120Ω resistors at both ends |
+| Long distance | Cable too long | Use repeater or reduce baud rate |
+| Noise | Unshielded cable | Use shielded twisted pair |
+
+### Safety Precautions
+- Always disconnect power before wiring
+- Verify 24V DC with multimeter before connecting
+- Do not exceed 32 devices on a single bus
+- Keep cable runs under 1200m
+- Use proper grounding for shield

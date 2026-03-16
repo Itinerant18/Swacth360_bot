@@ -15,7 +15,7 @@ export async function GET() {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
-        // Only return conversations that have been explicitly saved (title != null)
+        // Only return conversations that have been explicitly saved (title != null and not defaults)
         const { data: conversations, error } = await supabase
             .from('conversations')
             .select(`
@@ -26,6 +26,8 @@ export async function GET() {
                 messages ( id )
             `)
             .neq('title', '')
+            .neq('title', 'New Conversation')
+            .neq('title', 'Untitled')
             .order('updated_at', { ascending: false })
             .limit(50);
 
