@@ -1,49 +1,49 @@
 @import "tailwindcss";
 
-/* ─── Modern Professional Design Tokens ────────────────────────── */
+/* ─── Modern Professional Light Theme Design Tokens ────────────────────────── */
 :root {
-  /* Surface materials */
-  --bg-desk: #0f0f12;
-  --bg-paper: #1a1a1f;
-  --bg-paper-inset: #252530;
-  --bg-leather: #111114;
-  --bg-leather-light: #1a1a1f;
-  --bg-metal: linear-gradient(180deg, #1f1f26 0%, #1a1a1f 50%, #151519 100%);
+  /* Surface materials — light, clean */
+  --bg-desk: #f8f7f3;
+  --bg-paper: #ffffff;
+  --bg-paper-inset: #faf9f6;
+  --bg-leather: #f5f3ef;
+  --bg-leather-light: #faf9f6;
+  --bg-metal: linear-gradient(180deg, #ffffff 0%, #f8f7f3 100%);
 
-  /* Accents */
-  --accent-brass: #3b82f6;
-  --accent-brass-glow: #60a5fa;
-  --accent-teal: #14b8a6;
-  --accent-teal-light: #2dd4bf;
-  --success: #10b981;
-  --danger: #ef4444;
-  --warning: #f59e0b;
+  /* Accents — professional blue & teal */
+  --accent-brass: #0066cc;
+  --accent-brass-glow: #1a7fff;
+  --accent-teal: #0e9384;
+  --accent-teal-light: #1dbf9f;
+  --success: #00a854;
+  --danger: #d32f2f;
+  --warning: #f57c00;
 
   /* Text — professional hierarchy */
-  --text-ink: #f5f5f7;
-  --text-graphite: #e5e5e7;
-  --text-pencil: #a1a1a6;
-  --text-faint: #76767b;
+  --text-ink: #1a1a1a;
+  --text-graphite: #404040;
+  --text-pencil: #666666;
+  --text-faint: #999999;
 
-  /* Borders — clean lines */
-  --border-stitch: #3a3a42;
-  --border-stitch-hover: #484852;
+  /* Borders — subtle, clean */
+  --border-stitch: #e0dcd4;
+  --border-stitch-hover: #d0ccc4;
 
-  /* Shadows */
-  --shadow-raised: 0 4px 6px rgba(0, 0, 0, 0.3),
-    0 1px 3px rgba(0, 0, 0, 0.2);
-  --shadow-card: 0 8px 16px rgba(0, 0, 0, 0.4),
-    0 2px 4px rgba(0, 0, 0, 0.3);
-  --shadow-inset: inset 0 1px 2px rgba(255, 255, 255, 0.05);
-  --shadow-button: 0 2px 8px rgba(59, 130, 246, 0.2),
-    0 1px 3px rgba(0, 0, 0, 0.2);
-  --shadow-button-pressed: inset 0 2px 4px rgba(0, 0, 0, 0.3);
+  /* Shadows — soft, professional */
+  --shadow-raised: 0 2px 4px rgba(0, 0, 0, 0.06),
+    0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-card: 0 4px 12px rgba(0, 0, 0, 0.08),
+    0 2px 4px rgba(0, 0, 0, 0.04);
+  --shadow-inset: inset 0 1px 2px rgba(0, 0, 0, 0.02);
+  --shadow-button: 0 2px 6px rgba(0, 102, 204, 0.12),
+    0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-button-pressed: inset 0 1px 2px rgba(0, 0, 0, 0.1);
 }
 
 @theme inline {
   --color-background: var(--bg-desk);
   --color-foreground: var(--text-ink);
-  --font-sans: "Trebuchet MS", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-sans: "-apple-system", "BlinkMacSystemFont", "Segoe UI", "Roboto", "Helvetica Neue", sans-serif;
 }
 
 /* ─── Base ──────────────────────────────────────────────── */
@@ -52,7 +52,7 @@ html {
 }
 
 body {
-  font-family: "Trebuchet MS", "Segoe UI", system-ui, -apple-system, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Helvetica Neue", sans-serif;
   background: var(--bg-desk);
   color: var(--text-ink);
   min-height: 100vh;
@@ -61,14 +61,14 @@ body {
   overflow-x: hidden;
 }
 
-/* ─── Subtle Noise Texture Overlay ─────────────────────────────── */
+/* ─── Subtle texture for light theme ─────────────────────────────── */
 .desk-texture::before {
   content: '';
   position: fixed;
   inset: 0;
   pointer-events: none;
   z-index: 1;
-  opacity: 0.025;
+  opacity: 0.015;
   background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
   background-size: 256px 256px;
 }
@@ -80,7 +80,7 @@ body {
   inset: 0;
   pointer-events: none;
   z-index: 0;
-  opacity: 0.08;
+  opacity: 0.04;
   background-image:
     linear-gradient(var(--border-stitch) 1px, transparent 1px),
     linear-gradient(90deg, var(--border-stitch) 1px, transparent 1px);
@@ -93,19 +93,19 @@ body {
   border: 1px solid var(--border-stitch);
   border-radius: 12px;
   box-shadow: var(--shadow-card);
-  transition: all 0.3s ease;
+  transition: all 0.2s ease;
 }
 
 .skeuo-card:hover {
   border-color: var(--accent-brass);
-  box-shadow: 0 12px 24px rgba(59, 130, 246, 0.15),
-    0 4px 8px rgba(0, 0, 0, 0.3);
-  transform: translateY(-2px);
+  box-shadow: 0 8px 16px rgba(0, 102, 204, 0.1),
+    0 2px 4px rgba(0, 0, 0, 0.06);
+  transform: translateY(-1px);
 }
 
 /* ─── Raised Button ─────────────────────────────────────── */
 .skeuo-raised {
-  background: #252530;
+  background: #ffffff;
   border: 1px solid var(--border-stitch);
   border-radius: 8px;
   box-shadow: var(--shadow-raised);
@@ -116,20 +116,20 @@ body {
 
 .skeuo-raised:hover {
   border-color: var(--accent-brass);
-  background: #2d2d35;
-  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.15),
-    0 2px 4px rgba(0, 0, 0, 0.2);
+  background: #f8f7f3;
+  box-shadow: 0 4px 12px rgba(0, 102, 204, 0.08),
+    0 2px 4px rgba(0, 0, 0, 0.04);
 }
 
 .skeuo-raised:active {
   transform: scale(0.98);
   box-shadow: var(--shadow-button-pressed);
-  background: #1f1f26;
+  background: #f0eee8;
 }
 
 /* ─── Inset Input Well ──────────────────────────────────── */
 .skeuo-input {
-  background: #1f1f26;
+  background: #faf9f6;
   border: 1px solid var(--border-stitch);
   border-radius: 8px;
   box-shadow: var(--shadow-inset);
@@ -144,33 +144,33 @@ body {
 
 .skeuo-input:focus {
   border-color: var(--accent-brass);
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.2),
-    0 0 0 3px rgba(59, 130, 246, 0.15);
-  background: #252530;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.02),
+    0 0 0 3px rgba(0, 102, 204, 0.1);
+  background: #ffffff;
   outline: none;
 }
 
-/* ─── Dark Surface ───────────────────────────────────── */
+/* ─── Light Surface ───────────────────────────────────── */
 .skeuo-leather {
-  background: linear-gradient(180deg, #1f1f26 0%, #1a1a1f 40%, #151519 100%);
-  color: #f5f5f7;
+  background: linear-gradient(180deg, #ffffff 0%, #f8f7f3 40%, #f5f3ef 100%);
+  color: var(--text-ink);
   border-radius: 12px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3),
-    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04),
+    inset 0 1px 0 rgba(255, 255, 255, 0.5);
 }
 
 /* ─── Header ──────────────────────────────── */
 .skeuo-metal {
-  background: linear-gradient(180deg, #1f1f26 0%, #1a1a1f 50%, #151519 100%);
+  background: linear-gradient(180deg, #ffffff 0%, #f8f7f3 100%);
   border-bottom: 1px solid var(--border-stitch);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.04);
 }
 
 /* ─── Primary Button ──────────────────────────────────────── */
 .skeuo-brass {
-  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  background: linear-gradient(135deg, #0066cc 0%, #0052a3 100%);
   color: #ffffff;
-  border: 1px solid #1e40af;
+  border: 1px solid #003a7a;
   border-radius: 8px;
   box-shadow: var(--shadow-button);
   transition: all 0.2s ease;
@@ -180,16 +180,16 @@ body {
 }
 
 .skeuo-brass:hover {
-  background: linear-gradient(135deg, #60a5fa 0%, #3b82f6 100%);
-  box-shadow: 0 8px 16px rgba(59, 130, 246, 0.3),
-    0 2px 4px rgba(0, 0, 0, 0.2);
+  background: linear-gradient(135deg, #1a7fff 0%, #0066cc 100%);
+  box-shadow: 0 8px 16px rgba(0, 102, 204, 0.15),
+    0 2px 4px rgba(0, 0, 0, 0.06);
   transform: translateY(-1px);
 }
 
 .skeuo-brass:active {
   transform: scale(0.98);
   box-shadow: var(--shadow-button-pressed);
-  background: linear-gradient(135deg, #1e40af 0%, #1e3a8a 100%);
+  background: linear-gradient(135deg, #003a7a 0%, #001f47 100%);
 }
 
 .skeuo-brass:disabled {
@@ -203,14 +203,14 @@ body {
   border: 1px solid var(--border-stitch);
   border-radius: 12px;
   box-shadow: var(--shadow-card);
-  transition: all 0.3s ease;
+  transition: all 0.2s ease;
 }
 
 .card:hover {
   border-color: var(--accent-brass);
-  transform: translateY(-2px);
-  box-shadow: 0 12px 24px rgba(59, 130, 246, 0.15),
-    0 4px 8px rgba(0, 0, 0, 0.3);
+  transform: translateY(-1px);
+  box-shadow: 0 8px 16px rgba(0, 102, 204, 0.1),
+    0 2px 4px rgba(0, 0, 0, 0.06);
 }
 
 .card-strong {
@@ -221,7 +221,7 @@ body {
 }
 
 .input-field {
-  background: #1f1f26;
+  background: #faf9f6;
   border: 1px solid var(--border-stitch);
   border-radius: 8px;
   box-shadow: var(--shadow-inset);
@@ -236,9 +236,9 @@ body {
 
 .input-field:focus {
   border-color: var(--accent-brass);
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.2),
-    0 0 0 3px rgba(59, 130, 246, 0.15);
-  background: #252530;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.02),
+    0 0 0 3px rgba(0, 102, 204, 0.1);
+  background: #ffffff;
   outline: none;
 }
 
@@ -285,17 +285,17 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #3a3a42;
+  background: #d0ccc4;
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #484852;
+  background: #c0bbb3;
 }
 
 /* ─── Selection ─────────────────────────────────────────── */
 ::selection {
-  background: rgba(59, 130, 246, 0.3);
+  background: rgba(0, 102, 204, 0.15);
   color: var(--text-ink);
 }
 

@@ -22,16 +22,16 @@ const CSS = `
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  --bg:        #0f0f12;
-  --surface:   #1a1a1f;
-  --border:    #3a3a42;
-  --border-hi: #484852;
-  --text:      #f5f5f7;
-  --muted:     #a1a1a6;
-  --accent:    #3b82f6;
-  --accent-lo: rgba(59, 130, 246, 0.12);
-  --success:   #10b981;
-  --error:     #ef4444;
+  --bg:        #f8f7f3;
+  --surface:   #ffffff;
+  --border:    #e0dcd4;
+  --border-hi: #d0ccc4;
+  --text:      #1a1a1a;
+  --muted:     #666666;
+  --accent:    #0066cc;
+  --accent-lo: rgba(0, 102, 204, 0.1);
+  --success:   #00a854;
+  --error:     #d32f2f;
 }
 
 html, body { height: 100%; background: var(--bg); }
@@ -41,10 +41,10 @@ html, body { height: 100%; background: var(--bg); }
   display: flex;
   align-items: center;
   justify-content: center;
-  font-family: 'Trebuchet MS', 'Segoe UI', -apple-system, system-ui, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica Neue', sans-serif;
   background:
-    radial-gradient(ellipse 80% 50% at 20% -10%, rgba(59,130,246,0.08) 0%, transparent 60%),
-    radial-gradient(ellipse 60% 40% at 80% 110%, rgba(20,184,166,0.04) 0%, transparent 60%),
+    radial-gradient(ellipse 80% 50% at 20% -10%, rgba(0,102,204,0.05) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 40% at 80% 110%, rgba(14,147,132,0.03) 0%, transparent 60%),
     var(--bg);
   padding: 24px;
 }
@@ -56,7 +56,7 @@ html, body { height: 100%; background: var(--bg); }
     linear-gradient(var(--border) 1px, transparent 1px),
     linear-gradient(90deg, var(--border) 1px, transparent 1px);
   background-size: 40px 40px;
-  opacity: 0.08;
+  opacity: 0.04;
   pointer-events: none;
 }
 
@@ -67,7 +67,7 @@ html, body { height: 100%; background: var(--bg); }
   border: 1px solid var(--border-hi);
   border-radius: 12px;
   padding: 40px;
-  box-shadow: 0 20px 40px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.05);
+  box-shadow: 0 8px 16px rgba(0,0,0,0.08), inset 0 1px 0 rgba(255,255,255,0.5);
   animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 @keyframes slideUp {
@@ -92,12 +92,12 @@ html, body { height: 100%; background: var(--bg); }
 
 .logo-row { display: flex; align-items: center; gap: 12px; margin-bottom: 32px; }
 .logo-icon {
-  width: 40px; height: 40px; background: linear-gradient(135deg, var(--accent) 0%, #2563eb 100%); border-radius: 8px;
+  width: 40px; height: 40px; background: linear-gradient(135deg, var(--accent) 0%, #0052a3 100%); border-radius: 8px;
   display: flex; align-items: center; justify-content: center;
-  font-family: 'Trebuchet MS', 'Segoe UI', sans-serif; font-weight: 700; font-size: 16px; color: #fff;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif; font-weight: 700; font-size: 16px; color: #fff;
   letter-spacing: -0.5px; flex-shrink: 0;
 }
-.logo-text { font-family: 'Trebuchet MS', 'Segoe UI', sans-serif; font-weight: 700; font-size: 18px; color: var(--text); letter-spacing: -0.02em; }
+.logo-text { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif; font-weight: 700; font-size: 18px; color: var(--text); letter-spacing: -0.02em; }
 .logo-sub { font-size: 12px; color: var(--muted); letter-spacing: 0; margin-top: 2px; font-weight: 400; }
 .divider-v { width: 1px; height: 32px; background: var(--border-hi); margin: 0 8px; }
 
@@ -121,13 +121,13 @@ html, body { height: 100%; background: var(--bg); }
   letter-spacing: -0.01em; margin-bottom: 8px;
 }
 input[type="text"], input[type="email"], input[type="password"], input[type="tel"] {
-  width: 100%; background: #252530; border: 1px solid var(--border-hi);
+  width: 100%; background: #faf9f6; border: 1px solid var(--border-hi);
   border-radius: 8px; padding: 12px 14px;
-  font-family: 'Trebuchet MS', 'Segoe UI', sans-serif; font-size: 14px; color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif; font-size: 14px; color: var(--text);
   outline: none; transition: border-color 0.15s, box-shadow 0.15s;
   caret-color: var(--accent);
 }
-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-lo); background: #2d2d35; }
+input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-lo); background: #ffffff; }
 input::placeholder { color: var(--muted); }
 input.err { border-color: var(--error); box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.12); }
 
@@ -137,15 +137,15 @@ input.err { border-color: var(--error); box-shadow: 0 0 0 3px rgba(239, 68, 68, 
 .row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 
 .btn {
-  width: 100%; background: linear-gradient(135deg, var(--accent) 0%, #2563eb 100%); color: #fff; border: none;
+  width: 100%; background: linear-gradient(135deg, var(--accent) 0%, #0052a3 100%); color: #fff; border: none;
   border-radius: 8px; padding: 12px;
-  font-family: 'Trebuchet MS', 'Segoe UI', sans-serif; font-weight: 600; font-size: 14px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif; font-weight: 600; font-size: 14px;
   letter-spacing: -0.01em; cursor: pointer;
   transition: all 0.2s ease;
   display: flex; align-items: center; justify-content: center; gap: 8px;
   margin-top: 8px;
 }
-.btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 8px 16px rgba(59, 130, 246, 0.3); }
+.btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 8px 16px rgba(0, 102, 204, 0.15); }
 .btn:active:not(:disabled) { transform: scale(0.98); }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
