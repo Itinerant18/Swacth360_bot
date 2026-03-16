@@ -16,6 +16,8 @@ export async function GET() {
         const enrichedUsers = (activeUsers || []).map((u: {
             id: string;
             email: string;
+            full_name?: string;
+            phone?: string;
             total_chats?: number;
             total_conversations?: number;
             created_at?: string;
@@ -24,9 +26,9 @@ export async function GET() {
             last_message?: string;
         }) => ({
             id: u.id,
-            name: (u.email || '').split('@')[0],
+            name: u.full_name?.trim() || (u.email || '').split('@')[0],
             email: u.email,
-            phone: 'N/A',
+            phone: u.phone?.trim() || 'N/A',
             queryCount: u.total_conversations || u.total_chats || 0,
             created_at: u.created_at || u.last_sign_in_at,
             lastActive: u.last_message || u.last_chat || u.last_sign_in_at,

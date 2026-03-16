@@ -19,7 +19,11 @@ export default function RAGSettingsTab() {
 
     const handleSave = async () => {
         setSaving(true);
-        localStorage.setItem(RAG_SETTINGS_STORAGE_KEY, JSON.stringify(settings));
+        try {
+            localStorage.setItem(RAG_SETTINGS_STORAGE_KEY, JSON.stringify(settings));
+        } catch (err) {
+            console.error('[RAGSettings] Failed to save:', err);
+        }
         setTimeout(() => {
             setSaving(false);
             setSaved(true);
@@ -29,6 +33,11 @@ export default function RAGSettingsTab() {
 
     const handleReset = () => {
         setSettings(DEFAULT_RAG_SETTINGS);
+        try {
+            localStorage.removeItem(RAG_SETTINGS_STORAGE_KEY);
+        } catch (err) {
+            console.error('[RAGSettings] Failed to clear localStorage:', err);
+        }
     };
 
     return (

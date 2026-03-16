@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+
 // Analytics: Netlify has built-in analytics — no client script needed.
 // Remove @vercel/analytics (Vercel-specific). Use Netlify Analytics in dashboard.
 
@@ -16,6 +17,11 @@ export const viewport: Viewport = {
 export const metadata: Metadata = {
   title: "Dexter Tech Support AI",
   description: "AI-powered HMS panel technical support — by SEPLe",
+  openGraph: {
+    title: "Dexter Tech Support AI",
+    description: "AI-powered HMS panel technical support",
+    type: "website",
+  },
   icons: {
     icon: "/favicon.svg",
     shortcut: "/favicon.svg",

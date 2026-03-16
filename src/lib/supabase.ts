@@ -9,7 +9,11 @@ const googleResolver = new dns.promises.Resolver();
 googleResolver.setServers(['8.8.8.8', '8.8.4.4']);
 
 // Custom DNS lookup using Google DNS
-function customLookup(hostname: string, _opts: any, cb: Function) {
+function customLookup(
+    hostname: string,
+    _opts: unknown,
+    cb: (err: Error | null, address?: string, family?: number) => void
+) {
     googleResolver.resolve4(hostname)
         .then((addrs: string[]) => cb(null, addrs[0], 4))
         .catch((err: Error) => cb(err));
@@ -19,14 +23,17 @@ function customLookup(hostname: string, _opts: any, cb: Function) {
 const agent = new Agent({
     connect: {
         family: 4,
-        lookup: customLookup as any,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        lookup: customLookup as any, // Agent requires specific lookup signature
     },
 });
 
 // Custom fetch using our agent
-const customFetch = (input: any, init?: any) => {
-    return undiciFetch(input, {
-        ...init,
+const customFetch = (input: string | URL | Request, init?: RequestInit) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return undiciFetch(input as any, {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        ...(init as any),
         dispatcher: agent,
     }) as unknown as Promise<Response>;
 };
@@ -41,6 +48,7 @@ export function getSupabase(): SupabaseClient {
             process.env.SUPABASE_SERVICE_ROLE_KEY!,
             {
                 auth: { persistSession: false },
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 global: { fetch: customFetch as any },
             }
         );

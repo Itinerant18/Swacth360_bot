@@ -10,7 +10,7 @@ import {
     faPhone, faEnvelope, faUpload, faFileAlt, faCloudUploadAlt,
     faCheckCircle, faTimesCircle, faMinusCircle, faSpinner,
     faDatabase, faDiagramProject, faSliders, faStar,
-    faSignOutAlt,
+    faSignOutAlt, faLayerGroup,
 } from '@fortawesome/free-solid-svg-icons';
 import GraphTab from '@/components/GraphTab';
 import RAGSettingsTab from '@/components/RAGSettingsTab';
@@ -85,14 +85,16 @@ type IngestResponse = {
 };
 
 // Tab type
-type Tab = 'review' | 'analytics' | 'users' | 'ingest' | 'graph' | 'settings' | 'feedback';
+type Tab = 'review' | 'analytics' | 'users' | 'ingest' | 'graph' | 'settings' | 'feedback' | 'raptor';
 
 export default function AdminDashboard() {
     const [tab, setTab] = useState<Tab>('review');
     const [questions, setQuestions] = useState<UnknownQuestion[]>([]);
     const [analytics, setAnalytics] = useState<Analytics | null>(null);
     const [users, setUsers] = useState<TrackedUser[]>([]);
-    const [loading, setLoading] = useState(true);
+    const [reviewLoading, setReviewLoading] = useState(false);
+    const [analyticsLoading, setAnalyticsLoading] = useState(false);
+    const [usersLoading, setUsersLoading] = useState(false);
     const [expandedId, setExpandedId] = useState<string | null>(null);
     const [answerText, setAnswerText] = useState('');
     const [category, setCategory] = useState('');
@@ -120,7 +122,7 @@ export default function AdminDashboard() {
     };
 
     const fetchQuestions = useCallback(async () => {
-        setLoading(true);
+        setReviewLoading(true);
         setReviewError('');
         try {
             const res = await fetch('/api/admin/questions?status=pending');
@@ -138,11 +140,11 @@ export default function AdminDashboard() {
             setQuestions([]);
             setReviewError((err as Error).message || 'Failed to load review queue');
         }
-        setLoading(false);
+        setReviewLoading(false);
     }, []);
 
     const fetchAnalytics = useCallback(async () => {
-        setLoading(true);
+        setAnalyticsLoading(true);
         setAnalyticsError('');
         try {
             const res = await fetch('/api/admin/analytics');
@@ -157,11 +159,11 @@ export default function AdminDashboard() {
             setAnalytics(EMPTY_ANALYTICS);
             setAnalyticsError((err as Error).message || 'Failed to load analytics');
         }
-        setLoading(false);
+        setAnalyticsLoading(false);
     }, []);
 
     const fetchUsers = useCallback(async () => {
-        setLoading(true);
+        setUsersLoading(true);
         setUsersError('');
         try {
             const res = await fetch('/api/users');
@@ -176,14 +178,13 @@ export default function AdminDashboard() {
             setUsers([]);
             setUsersError((err as Error).message || 'Failed to load users');
         }
-        setLoading(false);
+        setUsersLoading(false);
     }, []);
 
     useEffect(() => {
-        if (tab === 'review') fetchQuestions();
-        else if (tab === 'analytics') fetchAnalytics();
-        else if (tab === 'users') fetchUsers();
-        else setLoading(false);
+        if (tab === 'review') void fetchQuestions();
+        else if (tab === 'analytics') void fetchAnalytics();
+        else if (tab === 'users') void fetchUsers();
     }, [tab, fetchQuestions, fetchAnalytics, fetchUsers]);
 
     const showToast = (msg: string) => {
@@ -390,6 +391,7 @@ export default function AdminDashboard() {
                         { key: 'graph' as const, label: 'Graph', icon: faDiagramProject },
                         { key: 'settings' as const, label: 'RAG Settings', icon: faSliders },
                         { key: 'feedback' as const, label: 'Feedback', icon: faStar },
+                        { key: 'raptor' as const, label: 'RAPTOR', icon: faLayerGroup },
                     ]).map(({ key, label, icon, badge }) => (
                         <button
                             key={key}
@@ -415,7 +417,7 @@ export default function AdminDashboard() {
             <main className="max-w-5xl mx-auto px-4 sm:px-6 py-5 sm:py-6">
 
                 {/* Loading */}
-                {loading && tab !== 'ingest' ? (
+                {((tab === 'review' && reviewLoading) || (tab === 'analytics' && analyticsLoading) || (tab === 'users' && usersLoading)) ? (
                     <div className="flex items-center justify-center py-20">
                         <div className="flex gap-1.5">
                             <div className="w-2 h-2 rounded-full bg-[#CA8A04] animate-bounce" style={{ animationDelay: '0ms' }} />
@@ -533,7 +535,7 @@ export default function AdminDashboard() {
                                     {Object.entries(analytics.knowledgeBase).map(([source, info]) => (
                                         <div key={source} className="flex items-center justify-between py-2 px-3 rounded-lg bg-[#F0EBE3] border border-[#D6CFC4] shadow-[inset_0_1px_2px_rgba(0,0,0,0.04)]">
                                             <div className="flex items-center gap-2">
-                                                <span className={`w-2 h-2 rounded-full ${source === 'json' ? 'bg-blue-500' : source === 'pdf' ? 'bg-green-500' : source === 'admin' ? 'bg-[#CA8A04]' : 'bg-purple-500'}`} />
+                                                <span className={`w-2 h-2 rounded-full ${source === 'json' ? 'bg-blue-500' : source === 'pdf' ? 'bg-green-500' : source === 'admin' ? 'bg-[#CA8A04]' : 'bg-cyan-500'}`} />
                                                 <span className="text-xs sm:text-sm text-[#44403C]">{info.name}</span>
                                             </div>
                                             <span className="text-xs sm:text-sm text-[#78716C] font-mono">{info.count}</span>
@@ -1053,6 +1055,57 @@ export default function AdminDashboard() {
                     <RAGSettingsTab />
                 ) : tab === 'feedback' ? (
                     <FeedbackTab />
+                ) : tab === 'raptor' ? (
+                    <div className="space-y-4 animate-fade-up">
+                        <div className="skeuo-card p-4 sm:p-5 border-[#0D9488]/30">
+                            <div className="flex items-start gap-3 sm:gap-4">
+                                <div className="w-10 h-10 rounded-xl bg-[#0D9488]/10 border border-[#0D9488]/20 flex items-center justify-center flex-shrink-0">
+                                    <FontAwesomeIcon icon={faLayerGroup} className="w-4 h-4 text-[#0D9488]" />
+                                </div>
+                                <div>
+                                    <h2 className="text-sm sm:text-base font-semibold text-[#1C1917]">RAPTOR Indexing</h2>
+                                    <p className="text-xs sm:text-sm text-[#78716C] mt-1">
+                                        Recursive Abstractive Processing for Tree-Organized Retrieval.
+                                        Clusters chunks into hierarchical summaries for multi-hop reasoning.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="skeuo-card p-4 sm:p-5">
+                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
+                                <div className="bg-[#FAF7F2] rounded-lg p-3 text-center">
+                                    <p className="text-xl font-bold text-[#0D9488]">—</p>
+                                    <p className="text-[10px] text-[#78716C] uppercase">Clusters</p>
+                                </div>
+                                <div className="bg-[#FAF7F2] rounded-lg p-3 text-center">
+                                    <p className="text-xl font-bold text-[#0D9488]">—</p>
+                                    <p className="text-[10px] text-[#78716C] uppercase">Summaries</p>
+                                </div>
+                                <div className="bg-[#FAF7F2] rounded-lg p-3 text-center">
+                                    <p className="text-xl font-bold text-[#0D9488]">—</p>
+                                    <p className="text-[10px] text-[#78716C] uppercase">Depth</p>
+                                </div>
+                            </div>
+
+                            <div className="text-center py-10">
+                                <FontAwesomeIcon icon={faLayerGroup} className="w-10 h-10 text-[#A8A29E] mb-3" />
+                                <h3 className="text-base font-semibold text-[#1C1917] mb-2">Coming Soon</h3>
+                                <p className="text-sm text-[#78716C] max-w-md mx-auto">
+                                    RAPTOR indexing will enable multi-hop retrieval by clustering related knowledge
+                                    chunks and creating hierarchical summaries for deeper reasoning.
+                                </p>
+                            </div>
+                        </div>
+
+                        <div className="p-3 sm:p-4 bg-blue-50 rounded-xl border border-blue-200">
+                            <p className="text-xs text-blue-800">
+                                <strong>💡 How it works:</strong> RAPTOR recursively clusters embeddings using UMAP + GMM,
+                                summarizes each cluster, and indexes summaries at multiple abstraction levels.
+                                This enables answering questions that span multiple documents.
+                            </p>
+                        </div>
+                    </div>
                 ) : null}
             </main>
         </div>

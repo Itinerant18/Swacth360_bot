@@ -15,8 +15,9 @@ import { classifyQuery, retrieve, type QueryType, type RAGResult, type RankedMat
 import { parseRAGSettings } from '@/lib/rag-settings';
 import { getSupabase } from '@/lib/supabase';
 import { createServerSupabaseClient } from '@/lib/auth-server';
-import { checkCache, storeCache, invalidateCache as _invalidateCache } from '@/lib/cache';
+import { checkCache, storeCache } from '@/lib/cache';
 import { embedText } from '@/lib/embeddings';
+import { stripThinkTags } from '@/lib/sarvam';
 
 dns.setDefaultResultOrder('ipv4first');
 
@@ -49,7 +50,7 @@ async function translateToEnglish(
     const historyCtx = conversationHistory ? `Context:\n${conversationHistory}\n\n` : '';
     const prompt = `Translate the ${sourceLang} question to English. Resolve pronouns using context. Output ONLY the English translation.\n${historyCtx}${sourceLang}: ${text}\nEnglish:`;
     const result = await sarvamLlm.invoke(prompt);
-    return String(result.content).trim();
+    return stripThinkTags(String(result.content)).trim();
 }
 
 function buildSystemPrompt(
@@ -267,7 +268,7 @@ export async function POST(req: Request) {
                 if (!activeConversationId) {
                     const { data: conv } = await authSupabase
                         .from('conversations')
-                        .insert({ user_id: user.id, title: 'New Conversation' })
+                        .insert({ user_id: user.id, title: '' })
                         .select('id')
                         .single();
                     if (conv) activeConversationId = conv.id;
@@ -362,29 +363,38 @@ export async function POST(req: Request) {
             console.log(`Translation [${language}->EN]: "${englishQuestion}"`);
         }
 
+        // ── Diagram detection — MUST run BEFORE cache checks ──────────
+        // If this is a diagram request, skip cache entirely and go
+        // straight to diagram generation. Otherwise cached text answers
+        // for keywords like "hms panel" intercept diagram queries.
+        const { isDiagram, diagramType } = isDiagramRequest(englishQuestion);
+
         // Tier 1 Cache Check (exact match, no embedding needed)
-        const tier1CacheResult = await checkCache(englishQuestion, null);
-        if (tier1CacheResult.hit) {
-            console.log('[chat] Cache Tier 1 hit - skipping full RAG pipeline');
+        // Skip cache for diagram requests
+        if (!isDiagram) {
+            const tier1CacheResult = await checkCache(englishQuestion, null);
+            if (tier1CacheResult.hit) {
+                console.log('[chat] Cache Tier 1 hit - skipping full RAG pipeline');
 
-            // Persist assistant message to conversation if user is logged in
-            if (authUserId && activeConversationId) {
-                try {
-                    const authSupabase = await createServerSupabaseClient();
-                    await authSupabase.from('messages').insert({
-                        conversation_id: activeConversationId,
-                        role: 'assistant',
-                        content: tier1CacheResult.answer,
-                    });
-                } catch { /* persistence is non-critical */ }
-            }
+                // Persist assistant message to conversation if user is logged in
+                if (authUserId && activeConversationId) {
+                    try {
+                        const authSupabase = await createServerSupabaseClient();
+                        await authSupabase.from('messages').insert({
+                            conversation_id: activeConversationId,
+                            role: 'assistant',
+                            content: tier1CacheResult.answer,
+                        });
+                    } catch { /* persistence is non-critical */ }
+                }
 
-            const cachedResponse = textStreamResponse(tier1CacheResult.answer);
-            if (activeConversationId) {
-                cachedResponse.headers.set('x-conversation-id', activeConversationId);
+                const cachedResponse = textStreamResponse(tier1CacheResult.answer);
+                if (activeConversationId) {
+                    cachedResponse.headers.set('x-conversation-id', activeConversationId);
+                }
+                cachedResponse.headers.set('x-cache', 'HIT:tier1');
+                return cachedResponse;
             }
-            cachedResponse.headers.set('x-cache', 'HIT:tier1');
-            return cachedResponse;
         }
 
         const notFoundMsg = NOT_FOUND_MESSAGES[language] || NOT_FOUND_MESSAGES.en;
@@ -397,28 +407,30 @@ export async function POST(req: Request) {
         // Embed query (reused for Tier 2 cache + RAG retrieval)
         const cachedQueryEmbedding = await embedText(englishQuestion);
 
-        // Tier 2 Cache Check (semantic match)
-        const tier2CacheResult = await checkCache(englishQuestion, cachedQueryEmbedding);
-        if (tier2CacheResult.hit) {
-            console.log(`[chat] Cache Tier 2 hit (sim=${tier2CacheResult.similarity?.toFixed(3)}) - skipping full RAG pipeline`);
+        // Tier 2 Cache Check (semantic match) — also skip for diagram requests
+        if (!isDiagram) {
+            const tier2CacheResult = await checkCache(englishQuestion, cachedQueryEmbedding);
+            if (tier2CacheResult.hit) {
+                console.log(`[chat] Cache Tier 2 hit (sim=${tier2CacheResult.similarity?.toFixed(3)}) - skipping full RAG pipeline`);
 
-            if (authUserId && activeConversationId) {
-                try {
-                    const authSupabase = await createServerSupabaseClient();
-                    await authSupabase.from('messages').insert({
-                        conversation_id: activeConversationId,
-                        role: 'assistant',
-                        content: tier2CacheResult.answer,
-                    });
-                } catch { /* non-critical */ }
-            }
+                if (authUserId && activeConversationId) {
+                    try {
+                        const authSupabase = await createServerSupabaseClient();
+                        await authSupabase.from('messages').insert({
+                            conversation_id: activeConversationId,
+                            role: 'assistant',
+                            content: tier2CacheResult.answer,
+                        });
+                    } catch { /* non-critical */ }
+                }
 
-            const cachedResponse = textStreamResponse(tier2CacheResult.answer);
-            if (activeConversationId) {
-                cachedResponse.headers.set('x-conversation-id', activeConversationId);
+                const cachedResponse = textStreamResponse(tier2CacheResult.answer);
+                if (activeConversationId) {
+                    cachedResponse.headers.set('x-conversation-id', activeConversationId);
+                }
+                cachedResponse.headers.set('x-cache', `HIT:tier2:${tier2CacheResult.similarity?.toFixed(3)}`);
+                return cachedResponse;
             }
-            cachedResponse.headers.set('x-cache', `HIT:tier2:${tier2CacheResult.similarity?.toFixed(3)}`);
-            return cachedResponse;
         }
 
         const baseAnalysis = classifyQuery(englishQuestion);
@@ -475,7 +487,42 @@ export async function POST(req: Request) {
             retrievalMetadata,
         } = lastRagResult;
 
-        const { isDiagram, diagramType } = isDiagramRequest(englishQuestion);
+        // ── Stored diagram short-circuit ────────────────────
+        // If the top RAG match is a stored diagram with high confidence,
+        // serve it directly — no Sarvam LLM call needed.
+        const topMatch = matches[0];
+        if (
+            topMatch &&
+            topMatch.chunkType === 'diagram' &&
+            confidence >= 0.65 &&
+            topMatch.answer?.length > 100
+        ) {
+            console.log(`📐 Stored diagram found: "${topMatch.question}" (conf: ${confidence.toFixed(2)})`);
+
+            const storedDiagramPayload = {
+                __type: 'diagram' as const,
+                markdown: topMatch.answer,
+                title: topMatch.question,
+                diagramType: topMatch.subcategory || 'wiring',
+                panelType: 'HMS Panel',
+                hasKBContext: true,
+                generatedBy: 'kb_stored',
+                success: true,
+            };
+
+            const supabase = getSupabase();
+            void supabase.from('chat_sessions').insert({
+                user_question: latestMessage,
+                english_translation: englishQuestion,
+                answer_mode: 'diagram_stored',
+                top_similarity: confidence,
+                user_id: userId || null,
+            });
+
+            const payload = JSON.stringify(storedDiagramPayload);
+            return textStreamResponse(`DIAGRAM_RESPONSE:${payload}`);
+        }
+
         if (isDiagram) {
             console.log(`Diagram request: ${diagramType}`);
             try {
@@ -548,9 +595,10 @@ export async function POST(req: Request) {
             { role: 'user', content: englishQuestion },
         ]);
 
-        const answer = typeof response.content === 'string'
+        const rawAnswer = typeof response.content === 'string'
             ? response.content
             : JSON.stringify(response.content);
+        const answer = stripThinkTags(rawAnswer);
 
         void evaluateAndStore({
             question: englishQuestion,
@@ -596,35 +644,7 @@ export async function POST(req: Request) {
                     console.warn('Assistant message persistence failed:', saveAssistantMessageError.message);
                 }
 
-                // Auto-title if still "New Conversation"
-                const { data: conv } = await authSupabase
-                    .from('conversations')
-                    .select('title')
-                    .eq('id', activeConversationId)
-                    .single();
-
-                if (conv && conv.title === 'New Conversation') {
-                    const titlePrompt = `Generate a concise 4-6 word title summarizing this conversation topic. Output ONLY the title text, no quotes, no trailing punctuation.\nUser question: ${latestMessage}\nAssistant answer: ${answer.slice(0, 200)}\nTitle:`;
-                    console.log('[Auto-title] Generating title via LLM...');
-                    const titleResult = await sarvamLlm.invoke(titlePrompt);
-                    const title = String(titleResult.content).trim().replace(/^["']|["']$/g, '').replace(/\.+$/, '').slice(0, 80);
-                    console.log(`[Auto-title] LLM returned: "${title}"`);
-
-                    if (title && title.length > 1) {
-                        const { error: updateError } = await authSupabase
-                            .from('conversations')
-                            .update({ title })
-                            .eq('id', activeConversationId);
-
-                        if (updateError) {
-                            console.error(`[Auto-title] DB update FAILED:`, updateError.message);
-                        } else {
-                            console.log(`[Auto-title] ✅ Title updated to: "${title}"`);
-                        }
-                    } else {
-                        console.warn('[Auto-title] Generated title was empty or too short');
-                    }
-                }
+                // Message saved — title will be set by user via "Save Session"
             } catch { /* persistence is non-critical */ }
         }
 

@@ -35,7 +35,7 @@ const TYPE_ICONS: Record<string, string> = {
 };
 
 export default function DiagramCard({
-    markdown, title, diagramType, panelType, hasKBContext, language = 'en',
+    markdown, title, diagramType, hasKBContext, language = 'en',
 }: DiagramCardProps) {
     const [copied, setCopied] = useState(false);
     const lbl = LABELS[language] || LABELS.en;
@@ -50,7 +50,7 @@ export default function DiagramCard({
     };
 
     return (
-        <div style={{
+        <div aria-label={`Diagram Card: ${title}`} style={{
             background: '#0d1117',
             border: '1px solid #21262d',
             borderRadius: '10px',
@@ -99,15 +99,14 @@ export default function DiagramCard({
                 </button>
             </div>
 
-            {/* ── Markdown body ────────────────────────────────────── */}
+            {/* â”€â”€ Markdown body â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
             <div style={{ padding: '18px 20px', overflowX: 'auto' }}>
                 <ReactMarkdown
                     remarkPlugins={[remarkGfm]}
                     components={{
 
-                        // ── Code blocks = ASCII art diagrams (react-markdown v10) ──
-                        // In v10: `pre` wraps fenced blocks; `code` is inline-only
-                        pre({ children }: any) {
+                        // â”€â”€ Code blocks = ASCII art diagrams (react-markdown v10) â”€â”€
+                        pre({ children }: React.HTMLAttributes<HTMLPreElement>) {
                             return (
                                 <pre style={{
                                     background: '#161b22',
@@ -121,7 +120,7 @@ export default function DiagramCard({
                                 </pre>
                             );
                         },
-                        code({ children }: any) {
+                        code({ children }: React.HTMLAttributes<HTMLElement>) {
                             return (
                                 <code style={{
                                     fontFamily: "'Courier New', Consolas, 'Lucida Console', monospace",
@@ -136,8 +135,8 @@ export default function DiagramCard({
                             );
                         },
 
-                        // ── Tables ──
-                        table({ children }: any) {
+                        // â”€â”€ Tables â”€â”€
+                        table({ children }: React.TableHTMLAttributes<HTMLTableElement>) {
                             return (
                                 <div style={{ overflowX: 'auto', margin: '12px 0' }}>
                                     <table style={{
@@ -151,10 +150,10 @@ export default function DiagramCard({
                                 </div>
                             );
                         },
-                        thead({ children }: any) {
+                        thead({ children }: React.HTMLAttributes<HTMLTableSectionElement>) {
                             return <thead style={{ background: '#161b22' }}>{children}</thead>;
                         },
-                        th({ children }: any) {
+                        th({ children }: React.ThHTMLAttributes<HTMLTableCellElement>) {
                             return (
                                 <th style={{
                                     padding: '7px 12px',
@@ -171,7 +170,7 @@ export default function DiagramCard({
                                 </th>
                             );
                         },
-                        td({ children }: any) {
+                        td({ children }: React.TdHTMLAttributes<HTMLTableCellElement>) {
                             return (
                                 <td style={{
                                     padding: '7px 12px',
@@ -183,7 +182,7 @@ export default function DiagramCard({
                                 </td>
                             );
                         },
-                        tr({ children }: any) {
+                        tr({ children }: React.HTMLAttributes<HTMLTableRowElement>) {
                             return (
                                 <tr
                                     onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = '#161b22'; }}
@@ -194,8 +193,8 @@ export default function DiagramCard({
                             );
                         },
 
-                        // ── Headings ──
-                        h1({ children }: any) {
+                        // â”€â”€ Headings â”€â”€
+                        h1({ children }: React.HTMLAttributes<HTMLHeadingElement>) {
                             return (
                                 <h1 style={{
                                     color: '#e6edf3', fontSize: '17px', fontWeight: 700,
@@ -206,7 +205,7 @@ export default function DiagramCard({
                                 </h1>
                             );
                         },
-                        h2({ children }: any) {
+                        h2({ children }: React.HTMLAttributes<HTMLHeadingElement>) {
                             return (
                                 <h2 style={{
                                     color: '#58a6ff', fontSize: '15px', fontWeight: 700,
@@ -217,7 +216,7 @@ export default function DiagramCard({
                                 </h2>
                             );
                         },
-                        h3({ children }: any) {
+                        h3({ children }: React.HTMLAttributes<HTMLHeadingElement>) {
                             return (
                                 <h3 style={{
                                     color: '#79c0ff', fontSize: '13px', fontWeight: 600,
@@ -228,8 +227,8 @@ export default function DiagramCard({
                             );
                         },
 
-                        // ── Paragraph ──
-                        p({ children }: any) {
+                        // â”€â”€ Paragraph â”€â”€
+                        p({ children }: React.HTMLAttributes<HTMLParagraphElement>) {
                             return (
                                 <p style={{
                                     color: '#c9d1d9', fontSize: '13px',
@@ -240,8 +239,8 @@ export default function DiagramCard({
                             );
                         },
 
-                        // ── Lists ──
-                        ul({ children }: any) {
+                        // â”€â”€ Lists â”€â”€
+                        ul({ children }: React.HTMLAttributes<HTMLUListElement>) {
                             return (
                                 <ul style={{
                                     color: '#c9d1d9', fontSize: '13px',
@@ -251,7 +250,7 @@ export default function DiagramCard({
                                 </ul>
                             );
                         },
-                        ol({ children }: any) {
+                        ol({ children }: React.OlHTMLAttributes<HTMLOListElement>) {
                             return (
                                 <ol style={{
                                     color: '#c9d1d9', fontSize: '13px',
@@ -261,20 +260,20 @@ export default function DiagramCard({
                                 </ol>
                             );
                         },
-                        li({ children }: any) {
+                        li({ children }: React.LiHTMLAttributes<HTMLLIElement>) {
                             return <li style={{ margin: '4px 0' }}>{children}</li>;
                         },
 
-                        // ── Bold / Italic ──
-                        strong({ children }: any) {
+                        // â”€â”€ Bold / Italic â”€â”€
+                        strong({ children }: React.HTMLAttributes<HTMLElement>) {
                             return <strong style={{ color: '#e6edf3', fontWeight: 600 }}>{children}</strong>;
                         },
-                        em({ children }: any) {
+                        em({ children }: React.HTMLAttributes<HTMLElement>) {
                             return <em style={{ color: '#a5d6ff' }}>{children}</em>;
                         },
 
-                        // ── Blockquote = source/note attribution ──
-                        blockquote({ children }: any) {
+                        // â”€â”€ Blockquote = source/note attribution â”€â”€
+                        blockquote({ children }: React.BlockquoteHTMLAttributes<HTMLQuoteElement>) {
                             return (
                                 <blockquote style={{
                                     borderLeft: '3px solid #1f6feb',

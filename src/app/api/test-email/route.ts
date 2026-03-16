@@ -5,7 +5,8 @@ import { Resend } from 'resend';
 // Make sure to replace 're_xxxxxxxxx' with your actual key or set RESEND_API_KEY in .env
 const resend = new Resend(process.env.RESEND_API_KEY || 're_xxxxxxxxx');
 
-export async function POST(request: Request) {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export async function POST(_request: Request) {
   try {
     const data = await resend.emails.send({
       from: 'onboarding@resend.dev',

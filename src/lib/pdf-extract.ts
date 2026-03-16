@@ -23,11 +23,13 @@ export async function extractPdfText(buffer: ArrayBuffer): Promise<string> {
             // @ts-expect-error: pdf2json types expect boolean | undefined but 1 is accepted for raw text mode
             const parser = new PDFParser(null, 1); // 1 = raw text mode
 
-            parser.on('pdfParser_dataReady', (data: any) => {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            parser.on('pdfParser_dataReady', (data: { Pages?: any[] }) => {
                 try {
                     // pdf2json stores text in Pages[].Texts[].R[].T (URI encoded)
-                    const pages: string[] = (data?.Pages ?? []).map((page: any) => {
-                        const words: string[] = (page?.Texts ?? []).map((t: any) => {
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    const pages: string[] = (data?.Pages ?? []).map((page: { Texts?: any[] }) => {
+                        const words: string[] = (page?.Texts ?? []).map((t: { R?: { T: string }[] }) => {
                             try {
                                 return decodeURIComponent(t?.R?.[0]?.T ?? '');
                             } catch {
@@ -43,29 +45,34 @@ export async function extractPdfText(buffer: ArrayBuffer): Promise<string> {
                     } else {
                         resolve(text);
                     }
-                } catch (err: any) {
-                    reject(new Error(`pdf2json parse error: ${err.message}`));
+                } catch (err) {
+                    const message = err instanceof Error ? err.message : String(err);
+                    reject(new Error(`pdf2json parse error: ${message}`));
                 }
             });
 
-            parser.on('pdfParser_dataError', (err: any) => {
-                reject(new Error(`pdf2json error: ${err?.parserError ?? err}`));
+            parser.on('pdfParser_dataError', (err: Error | { parserError: Error }) => {
+                const message = err instanceof Error ? err.message : (err?.parserError?.message ?? JSON.stringify(err));
+                reject(new Error(`pdf2json error: ${message}`));
             });
 
             parser.parseBuffer(buf);
         });
-    } catch (err: any) {
-        console.warn(`⚠️  pdf2json failed: ${err.message} — trying fallback`);
+    } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.warn(`âš ï¸  pdf2json failed: ${message} â€” trying fallback`);
     }
 
     // ── Strategy 2: pdfjs-dist (no worker mode) ──────────────────
     try {
         // Dynamically import to avoid webpack static analysis
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs' as any).catch(
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             () => import('pdfjs-dist' as any)
         );
 
-        // Disable worker entirely — run in main thread
+        // Disable worker entirely â€” run in main thread
         pdfjsLib.GlobalWorkerOptions.workerSrc = '';
 
         const loadingTask = pdfjsLib.getDocument({
@@ -83,7 +90,7 @@ export async function extractPdfText(buffer: ArrayBuffer): Promise<string> {
             const page = await pdf.getPage(i);
             const content = await page.getTextContent();
             const text = content.items
-                .map((item: any) => item.str ?? '')
+                .map((item: { str?: string }) => item.str ?? '')
                 .join(' ');
             pages.push(text);
         }
@@ -92,8 +99,9 @@ export async function extractPdfText(buffer: ArrayBuffer): Promise<string> {
         if (result.length > 20) return result;
         throw new Error('pdfjs extracted no usable text');
 
-    } catch (err: any) {
-        console.warn(`⚠️  pdfjs-dist failed: ${err.message} — trying raw fallback`);
+    } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.warn(`âš ï¸  pdfjs-dist failed: ${message} â€” trying raw fallback`);
     }
 
     // ── Strategy 3: Raw text scrape (last resort) ─────────────────
@@ -132,11 +140,12 @@ export async function extractPdfText(buffer: ArrayBuffer): Promise<string> {
             .trim();
 
         if (combined.length > 50) {
-            console.warn('⚠️  Using raw text fallback — quality may be lower');
+            console.warn('âš ï¸  Using raw text fallback â€” quality may be lower');
             return combined;
         }
-    } catch (err: any) {
-        console.warn(`⚠️  Raw fallback failed: ${err.message}`);
+    } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.warn(`âš ï¸  Raw fallback failed: ${message}`);
     }
 
     throw new Error(

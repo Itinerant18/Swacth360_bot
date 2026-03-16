@@ -1,8 +1,6 @@
 /**
- * GET /api/conversations
- *
- * Returns the authenticated user's conversations ordered by most recent.
- * Uses the anon key + RLS (not service role) for security.
+ * GET /api/conversations       — list saved conversations (title IS NOT NULL)
+ * DELETE /api/conversations/[id] — see [id]/route.ts
  */
 
 import { NextResponse } from 'next/server';
@@ -17,7 +15,7 @@ export async function GET() {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
-        // Fetch conversations with message counts and last message preview
+        // Only return conversations that have been explicitly saved (title != null)
         const { data: conversations, error } = await supabase
             .from('conversations')
             .select(`
@@ -27,6 +25,7 @@ export async function GET() {
                 updated_at,
                 messages ( id )
             `)
+            .neq('title', '')
             .order('updated_at', { ascending: false })
             .limit(50);
 
@@ -35,13 +34,18 @@ export async function GET() {
             return NextResponse.json({ error: 'Failed to fetch conversations' }, { status: 500 });
         }
 
-        // Transform: count messages and format
-        const result = (conversations ?? []).map((c: any) => ({
+        const result = (conversations ?? []).map((c: {
+            id: string;
+            title: string | null;
+            created_at: string;
+            updated_at: string;
+            messages: { id: string }[] | { id: string } | null;
+        }) => ({
             id: c.id,
             title: c.title,
             created_at: c.created_at,
             updated_at: c.updated_at,
-            message_count: c.messages?.length ?? 0,
+            message_count: Array.isArray(c.messages) ? c.messages.length : (c.messages ? 1 : 0),
         }));
 
         return NextResponse.json(result);

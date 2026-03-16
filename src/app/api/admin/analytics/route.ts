@@ -76,17 +76,22 @@ export async function GET() {
             sourceMap[key].count++;
         });
 
+        const total = totalChatsRes.count ?? 0;
+        const rag = ragCountRes.count ?? 0;
+        const diagram = diagramCountRes.count ?? 0;
+        const general = fallbackCountRes.count ?? 0;
+
         return NextResponse.json({
-            totalChats: totalChatsRes.count || 0,
-            ragCount: ragCountRes.count || 0,
-            generalCount: fallbackCountRes.count || 0,
-            diagramCount: diagramCountRes.count || 0,
-            ragPercent: totalChatsRes.count ? Math.round(((ragCountRes.count || 0) / totalChatsRes.count) * 100) : 0,
-            diagramPercent: totalChatsRes.count ? Math.round(((diagramCountRes.count || 0) / totalChatsRes.count) * 100) : 0,
+            totalChats: total,
+            ragCount: rag,
+            generalCount: general,
+            diagramCount: diagram,
+            ragPercent: total > 0 ? Math.round((rag / total) * 100) : 0,
+            diagramPercent: total > 0 ? Math.round((diagram / total) * 100) : 0,
             unknownQuestions: {
-                total: totalUnknownRes.count || 0,
-                pending: pendingUnknownRes.count || 0,
-                reviewed: reviewedUnknownRes.count || 0,
+                total: totalUnknownRes.count ?? 0,
+                pending: pendingUnknownRes.count ?? 0,
+                reviewed: reviewedUnknownRes.count ?? 0,
             },
             topUnknown: topUnknownRes.data || [],
             knowledgeBase: sourceMap,

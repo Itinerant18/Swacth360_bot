@@ -87,7 +87,8 @@ export async function raptorSearch(
         console.log(`  🌳 RAPTOR: ${data.length} cluster hits`);
 
         // Map to RankedMatch format
-        return data.map((row: any): RankedMatch => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        return (data as any[]).map((row): RankedMatch => {
             const levelBoost =
                 row.raptor_level === 2 ? RAPTOR_CONFIG.LEVEL2_BOOST :
                     row.raptor_level === 1 ? RAPTOR_CONFIG.LEVEL1_BOOST : 0;
@@ -114,9 +115,10 @@ export async function raptorSearch(
             };
         });
 
-    } catch (err: any) {
-        console.warn(`⚠️  RAPTOR search failed: ${err.message}`);
-        return []; // graceful degradation — falls back to regular vector search
+    } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.warn(`âš ï¸  RAPTOR search failed: ${message}`);
+        return []; // graceful degradation â€” falls back to regular vector search
     }
 }
 

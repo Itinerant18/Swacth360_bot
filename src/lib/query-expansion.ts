@@ -7,6 +7,7 @@
  */
 
 import { ChatOpenAI } from '@langchain/openai';
+import { stripThinkTags, extractJsonFromSarvam } from './sarvam';
 
 // HMS/Dexter domain-specific expansions
 const DOMAIN_EXPANSIONS: Record<string, string[]> = {
@@ -47,15 +48,13 @@ Return as a JSON array of strings, for example:
 Only return the JSON array, nothing else.`;
 
         const result = await llm.invoke(prompt);
-        const content = result.content as string;
+        const content = stripThinkTags(result.content as string);
 
-        try {
-            const parsed = JSON.parse(content);
-            if (Array.isArray(parsed)) {
-                expansions.push(...parsed.filter((p) => typeof p === 'string'));
-            }
-        } catch {
-            // Try to extract from text
+        const parsed = extractJsonFromSarvam<string[]>(content);
+        if (Array.isArray(parsed)) {
+            expansions.push(...parsed.filter((p) => typeof p === 'string'));
+        } else {
+            // Fallback: extract quoted strings from text
             const matches = content.match(/"([^"]+)"/g);
             if (matches) {
                 expansions.push(

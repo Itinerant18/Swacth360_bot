@@ -97,7 +97,8 @@ type KnowledgeRecord = {
     source_name?: string;
     parent_content?: string;
     entities?: string[];
-    chunk_type?: 'chunk' | 'proposition' | 'image' | 'qa';
+    chunk_type?: 'chunk' | 'proposition' | 'image' | 'qa' | 'diagram';
+    diagram_source?: 'manual' | 'admin' | 'pdf_image';
 };
 
 // ─── Valid categories ─────────────────────────────────────────
@@ -657,18 +658,6 @@ export async function POST(req: NextRequest) {
                 continue;
             }
 
-            // Embed the child chunk so adjacent siblings under the same parent
-            // don't collapse into a single semantic duplicate.
-            const embeddingText = buildEnrichedEmbeddingText({
-                question: qa.question,
-                answer: qa.answer,         // answer from Q&A
-                category: qa.category,
-                tags: qa.tags,
-                entities,
-                sourceName,
-                rawContent: parent,        // ← parent chunk for full context
-            });
-
             const vector = await embedText(buildEnrichedEmbeddingText({
                 question: qa.question,
                 answer: qa.answer,
@@ -800,6 +789,43 @@ export async function POST(req: NextRequest) {
     if (extractedImages.length > 0) {
         console.log(`🖼️  Processing ${extractedImages.length} image(s) with entity enrichment...`);
 
+        // Helper: convert a Gemini image description into a structured ASCII diagram via Sarvam
+        async function generateDiagramFromDescription(
+            description: string,
+            imageType: string,
+            imgTitle: string,
+        ): Promise<string | null> {
+            try {
+                const prompt = `You are a SENIOR industrial documentation specialist.
+Convert this technical image description into a professional ASCII/Markdown diagram.
+
+IMAGE TYPE: ${imageType}
+TITLE: ${imgTitle}
+DESCRIPTION:
+${description}
+
+Requirements:
+1. Use Unicode box-drawing characters (┌ ─ ┐ │ └ ┘ ├ ┤ ┬ ┴ ┼)
+2. Include a terminal connection table with Signal | Wire Colour | Specification columns
+3. Use inline code for all technical values (\`24V DC\`, \`TB1+\`, \`RS-485\`)
+4. Add numbered installation steps
+5. Include ⚠️ Critical Notes section
+6. Maximum 80 characters per line
+
+Output the diagram in markdown only. No preamble.`;
+
+                const result = await sarvamLlm.invoke(prompt);
+                const diagram = (result.content as string).trim();
+                // Only accept if it looks like a real diagram (has box chars or table)
+                if (diagram.length > 100 && (/[┌┐└┘─│]/.test(diagram) || /\|.*\|.*\|/.test(diagram))) {
+                    return diagram;
+                }
+                return null;
+            } catch {
+                return null;
+            }
+        }
+
         for (let i = 0; i < extractedImages.length; i++) {
             const img = extractedImages[i];
             const id = `admin_pdf_img_${timestamp}_${String(i).padStart(3, '0')}`;
@@ -853,12 +879,36 @@ export async function POST(req: NextRequest) {
                     continue;
                 }
 
+                // Attempt to convert image description → structured ASCII diagram
+                const diagramImageTypes = ['wiring', 'schematic', 'circuit', 'pinout', 'connection', 'panel'];
+                const isWiringType = diagramImageTypes.some(t =>
+                    (img.imageType || '').toLowerCase().includes(t) ||
+                    (img.description || '').toLowerCase().includes(t)
+                );
+
+                let generatedDiagram: string | null = null;
+                let useChunkType: 'image' | 'diagram' = 'image';
+
+                if (isWiringType) {
+                    generatedDiagram = await generateDiagramFromDescription(
+                        img.description,
+                        img.imageType,
+                        img.title,
+                    );
+                    if (generatedDiagram) {
+                        useChunkType = 'diagram';
+                        console.log(`  📐 Diagram generated from image: ${img.title}`);
+                    }
+                }
+
                 const { error: dbErr, compatibilityFallbackUsed } = await upsertKnowledgeRecord(supabase, {
                     id,
                     question: qa.question,
-                    answer: qa.answer,
+                    answer: generatedDiagram || qa.answer,
                     category: qa.category,
-                    subcategory: `Visual Content — ${img.imageType}`,
+                    subcategory: useChunkType === 'diagram'
+                        ? img.imageType
+                        : `Visual Content — ${img.imageType}`,
                     product: 'HMS Panel',
                     tags: imageTags,
                     content: embeddingText,
@@ -867,7 +917,8 @@ export async function POST(req: NextRequest) {
                     embedding: vector,
                     source: 'pdf_image',
                     source_name: sourceName,
-                    chunk_type: 'image',
+                    chunk_type: useChunkType,
+                    ...(useChunkType === 'diagram' ? { diagram_source: 'pdf_image' as const } : {}),
                 });
 
                 if (dbErr) {

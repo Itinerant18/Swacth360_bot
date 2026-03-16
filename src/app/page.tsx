@@ -11,7 +11,7 @@ import {
     faSignal, faRobot, faPaperPlane,
     faCopy, faCheck, faChevronDown, faSpinner, faDiagramProject,
     faThumbsUp, faThumbsDown, faSignOutAlt, faBolt,
-    faPlus, faTrash, faTimes, faComment,
+    faPlus, faTrash, faTimes, faComment, faBookmark, faLock,
 } from '@fortawesome/free-solid-svg-icons';
 import LanguageSelector from '../components/LanguageSelector';
 import DiagramCard from '../components/DiagramCard';
@@ -71,7 +71,7 @@ function normalizeConversation(conversation: ConversationApiShape): Conversation
         id: String(conversation.id),
         title: typeof conversation.title === 'string' && conversation.title.trim()
             ? conversation.title
-            : 'New Conversation',
+            : 'Untitled',
         createdAt: conversation.createdAt ?? conversation.created_at ?? new Date().toISOString(),
         updatedAt: conversation.updatedAt ?? conversation.updated_at ?? conversation.createdAt ?? conversation.created_at ?? new Date().toISOString(),
         messageCount: conversation.messageCount ?? conversation.message_count ?? 0,
@@ -244,7 +244,8 @@ export default function Chat() {
 
             if (session) {
                 const email = session.user.email ?? '';
-                if (isAdminEmail(email)) {
+                const admin = isAdminEmail(email);
+                if (admin) {
                     window.location.href = '/admin';
                     return;
                 }
@@ -491,7 +492,76 @@ export default function Chat() {
         }
     }, [activeConversationId, handleNewConversation, historyError?.conversationId]);
 
+    // ─── Save Session State ────────────────────────────────────
+    const [showSaveModal, setShowSaveModal] = useState(false);
+    const [saveSessionName, setSaveSessionName] = useState('');
+    const [isSavingSession, setIsSavingSession] = useState(false);
+    const [sessionSaved, setSessionSaved] = useState(false);
+
+    // ─── Guest Question Limit ─────────────────────────────────
+    const GUEST_QUESTION_LIMIT = 3;
+    const [guestQuestionCount, setGuestQuestionCount] = useState(0);
+    const [showGuestGate, setShowGuestGate] = useState(false);
+
+    useEffect(() => {
+        if (!isAuthenticated) {
+            const stored = localStorage.getItem('guest_question_count');
+            const count = stored ? parseInt(stored, 10) : 0;
+            setGuestQuestionCount(count);
+            if (count >= GUEST_QUESTION_LIMIT) setShowGuestGate(true);
+        } else {
+            setShowGuestGate(false);
+        }
+    }, [isAuthenticated]);
+
+    const incrementGuestCount = useCallback(() => {
+        const newCount = guestQuestionCount + 1;
+        setGuestQuestionCount(newCount);
+        localStorage.setItem('guest_question_count', String(newCount));
+        if (newCount >= GUEST_QUESTION_LIMIT) {
+            setShowGuestGate(true);
+        }
+    }, [guestQuestionCount]);
+
+    // ─── Save Session Handler ─────────────────────────────────
+    const handleSaveSession = useCallback(async () => {
+        if (!activeConversationId || !saveSessionName.trim() || isSavingSession) return;
+
+        setIsSavingSession(true);
+        try {
+            const res = await fetch(`/api/conversations/${activeConversationId}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({ title: saveSessionName.trim() }),
+            });
+
+            if (!res.ok) throw new Error('Save failed');
+
+            setSessionSaved(true);
+            setShowSaveModal(false);
+            setSaveSessionName('');
+            void refreshConversations();
+
+            setTimeout(() => setSessionSaved(false), 3000);
+        } catch (err) {
+            console.error('Save session failed:', err);
+            window.alert('Failed to save session. Please try again.');
+        } finally {
+            setIsSavingSession(false);
+        }
+    }, [activeConversationId, saveSessionName, isSavingSession, refreshConversations]);
+
     const handleSubmit = (e?: { preventDefault?: () => void }) => {
+        // Guest limit check
+        if (!isAuthenticated && guestQuestionCount >= GUEST_QUESTION_LIMIT) {
+            e?.preventDefault?.();
+            setShowGuestGate(true);
+            return;
+        }
+        if (!isAuthenticated && input.trim()) {
+            incrementGuestCount();
+        }
         scrollBehaviorRef.current = 'smooth';
         setHistoryError(null);
         rawHandleSubmit(e);
@@ -622,6 +692,14 @@ export default function Chat() {
     };
 
     const handleSuggestionClick = (question: string) => {
+        // Guest limit check
+        if (!isAuthenticated && guestQuestionCount >= GUEST_QUESTION_LIMIT) {
+            setShowGuestGate(true);
+            return;
+        }
+        if (!isAuthenticated) {
+            incrementGuestCount();
+        }
         scrollBehaviorRef.current = 'smooth';
         setHistoryError(null);
         void append({ role: 'user', content: question });
@@ -1148,29 +1226,122 @@ export default function Chat() {
                 <div className="flex-shrink-0 bg-gradient-to-t from-[#E8E0D4] via-[#E8E0D4]/95 to-transparent pt-3 sm:pt-4 pb-[env(safe-area-inset-bottom,12px)] sm:pb-5 px-3 sm:px-4 z-20">
                     <div className="max-w-3xl mx-auto">
 
+                        {/* ── Save Session Bar ── */}
+                        {isAuthenticated && activeConversationId && messages.length > 0 && !sessionSaved && (
+                            <div className="mb-2">
+                                {showSaveModal ? (
+                                    <div className="flex items-center gap-2 p-2 skeuo-card rounded-xl animate-fade-up">
+                                        <input
+                                            type="text"
+                                            value={saveSessionName}
+                                            onChange={(e) => setSaveSessionName(e.target.value)}
+                                            placeholder="Enter session name..."
+                                            className="flex-1 px-3 py-1.5 text-sm rounded-lg border border-[#D6CFC4] bg-[#FAF7F2] text-[#1C1917] focus:outline-none focus:border-[#CA8A04] transition-colors"
+                                            autoFocus
+                                            onKeyDown={(e) => {
+                                                if (e.key === 'Enter' && saveSessionName.trim()) {
+                                                    e.preventDefault();
+                                                    void handleSaveSession();
+                                                }
+                                                if (e.key === 'Escape') {
+                                                    setShowSaveModal(false);
+                                                    setSaveSessionName('');
+                                                }
+                                            }}
+                                        />
+                                        <button
+                                            onClick={() => void handleSaveSession()}
+                                            disabled={!saveSessionName.trim() || isSavingSession}
+                                            className="skeuo-brass px-3 py-1.5 text-xs rounded-lg disabled:opacity-40 flex items-center gap-1.5"
+                                        >
+                                            {isSavingSession ? (
+                                                <FontAwesomeIcon icon={faSpinner} className="w-3 h-3 animate-spin" />
+                                            ) : (
+                                                <FontAwesomeIcon icon={faBookmark} className="w-3 h-3" />
+                                            )}
+                                            Save
+                                        </button>
+                                        <button
+                                            onClick={() => { setShowSaveModal(false); setSaveSessionName(''); }}
+                                            className="p-1.5 rounded-lg text-[#78716C] hover:text-[#1C1917] hover:bg-black/5 transition-colors"
+                                        >
+                                            <FontAwesomeIcon icon={faTimes} className="w-3 h-3" />
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <button
+                                        onClick={() => setShowSaveModal(true)}
+                                        className="w-full flex items-center justify-center gap-2 py-1.5 text-xs text-[#78716C] hover:text-[#CA8A04] rounded-lg hover:bg-[#CA8A04]/5 transition-all duration-200"
+                                    >
+                                        <FontAwesomeIcon icon={faBookmark} className="w-3 h-3" />
+                                        Save this session
+                                    </button>
+                                )}
+                            </div>
+                        )}
 
+                        {/* ── Session Saved Confirmation ── */}
+                        {sessionSaved && (
+                            <div className="mb-2 flex items-center justify-center gap-2 py-1.5 text-xs text-[#16A34A] animate-fade-up">
+                                <FontAwesomeIcon icon={faCheck} className="w-3 h-3" />
+                                Session saved to history!
+                            </div>
+                        )}
 
-                        <form onSubmit={handleSubmit} className="relative flex items-center">
-                            <input ref={inputRef}
-                                className="skeuo-input w-full p-3 sm:p-4 pl-4 sm:pl-5 pr-12 sm:pr-14 text-sm sm:text-[15px]"
-                                value={input}
-                                placeholder={TEXT_MAP[language].placeholder}
-                                onChange={handleInputChange}
-                                onKeyDown={handleKeyDown}
-                                disabled={isLoading || isLoadingHistory}
-                                autoComplete="off"
-                            />
-                            <button type="submit" disabled={isLoading || isLoadingHistory || !input.trim()}
-                                className="absolute right-1.5 sm:right-2 p-2 sm:p-2.5 skeuo-brass rounded-lg sm:rounded-xl disabled:opacity-30">
-                                {isLoading || isLoadingHistory
-                                    ? <FontAwesomeIcon icon={faSpinner} className="w-3.5 h-3.5 sm:w-4 sm:h-4 animate-spin" />
-                                    : <FontAwesomeIcon icon={faPaperPlane} className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                                }
-                            </button>
-                        </form>
-                        <p className="text-center text-[10px] sm:text-[11px] text-[#A8A29E] mt-2">
-                            {TEXT_MAP[language].footer} <span className="hidden sm:inline">· Ctrl+Enter to send</span>
-                        </p>
+                        {/* ── Guest Gate or Input Form ── */}
+                        {showGuestGate && !isAuthenticated ? (
+                            <div className="skeuo-card rounded-2xl p-5 text-center animate-fade-up">
+                                <div className="w-10 h-10 mx-auto rounded-xl bg-[#CA8A04]/10 flex items-center justify-center mb-3">
+                                    <FontAwesomeIcon icon={faLock} className="w-4 h-4 text-[#CA8A04]" />
+                                </div>
+                                <h3 className="text-sm font-semibold text-[#1C1917] mb-1">
+                                    Free questions used up
+                                </h3>
+                                <p className="text-xs text-[#78716C] mb-4 leading-relaxed">
+                                    Sign in to continue chatting with unlimited access,<br />
+                                    save your sessions, and access full history.
+                                </p>
+                                <button
+                                    onClick={() => window.location.href = '/login'}
+                                    className="skeuo-brass px-5 py-2 text-sm font-semibold rounded-xl"
+                                >
+                                    Sign In to Continue
+                                </button>
+                            </div>
+                        ) : (
+                            <>
+                                <form onSubmit={handleSubmit} className="relative flex items-center">
+                                    <label htmlFor="chat-input" className="sr-only">Ask a question</label>
+                                    <input ref={inputRef}
+                                        id="chat-input"
+                                        className="skeuo-input w-full p-3 sm:p-4 pl-4 sm:pl-5 pr-12 sm:pr-14 text-sm sm:text-[15px]"
+                                        value={input}
+                                        placeholder={TEXT_MAP[language].placeholder}
+                                        onChange={handleInputChange}
+                                        onKeyDown={handleKeyDown}
+                                        disabled={isLoading || isLoadingHistory}
+                                        autoComplete="off"
+                                    />
+                                    <button type="submit" disabled={isLoading || isLoadingHistory || !input.trim()}
+                                        className="absolute right-1.5 sm:right-2 p-2 sm:p-2.5 skeuo-brass rounded-lg sm:rounded-xl disabled:opacity-30">
+                                        {isLoading || isLoadingHistory
+                                            ? <FontAwesomeIcon icon={faSpinner} className="w-3.5 h-3.5 sm:w-4 sm:h-4 animate-spin" />
+                                            : <FontAwesomeIcon icon={faPaperPlane} className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                                        }
+                                    </button>
+                                </form>
+                                <div className="flex items-center justify-between mt-2">
+                                    <p className="text-[10px] sm:text-[11px] text-[#A8A29E]">
+                                        {TEXT_MAP[language].footer} <span className="hidden sm:inline">· Ctrl+Enter to send</span>
+                                    </p>
+                                    {!isAuthenticated && (
+                                        <span className="text-[10px] text-[#A8A29E]">
+                                            {GUEST_QUESTION_LIMIT - guestQuestionCount} free {GUEST_QUESTION_LIMIT - guestQuestionCount === 1 ? 'question' : 'questions'} left
+                                        </span>
+                                    )}
+                                </div>
+                            </>
+                        )}
                     </div>
                 </div>
             </div>

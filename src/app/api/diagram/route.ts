@@ -27,9 +27,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabase } from '@/lib/supabase';
 import { embedText } from '@/lib/embeddings';
+import { stripThinkTags } from '@/lib/sarvam';
 import { ChatOpenAI } from '@langchain/openai';
-import { PromptTemplate } from '@langchain/core/prompts';
-import { StringOutputParser } from '@langchain/core/output_parsers';
 
 
 
@@ -126,253 +125,395 @@ async function searchKBForDiagram(query: string, diagramType: string): Promise<s
 
 const DIAGRAM_PROMPTS: Record<string, string> = {
 
-    wiring: `You are an HMS industrial panel technical writer.
-Generate a complete WIRING DIAGRAM for: {panelType}
+  wiring: `You are a senior technical writer for HMS industrial panels at SEPLe.
+Generate a COMPLETE, PROFESSIONAL wiring diagram document for: {panelType}
 
 {kbSection}
 
-Produce a markdown document with these EXACT sections:
+Produce a markdown document with EXACTLY these sections in this order.
+Fill every table cell. Use real values from the knowledge base where available.
 
 ## 🔌 Wiring Diagram — {panelType}
 
 ### Connection Overview
 \`\`\`
-[Use ASCII art boxes and arrows like this:]
-
-  ┌─────────────────┐          ┌─────────────────┐
-  │   HMS PANEL     │          │   SLAVE DEVICE  │
-  │                 │          │                 │
-  │  TB1+ ──────────┼──────────┼── A+ (RS-485)   │
-  │  TB1- ──────────┼──────────┼── B- (RS-485)   │
-  │  GND  ──────────┼──────────┼── GND           │
-  │  24V+ ──────────┼──────────┼── PWR+          │
-  └─────────────────┘          └─────────────────┘
+  ┌──────────────────────┐                    ┌──────────────────────┐
+  │     HMS PANEL        │                    │    FIELD DEVICE      │
+  │   ({panelType})      │                    │                      │
+  │                      │   ── A+ (Blue) ──► │  RS-485 A+           │
+  │  TB1+  ──────────────┼───────────────────►│  24V DC In           │
+  │  TB1−  ──────────────┼───────────────────►│  GND                 │
+  │  GND   ──────────────┼───────────────────►│  GND                 │
+  │  A+    ──────────────┼───────────────────►│  RS-485 A+           │
+  │  B−    ──────────────┼───────────────────►│  RS-485 B−           │
+  └──────────────────────┘                    └──────────────────────┘
 \`\`\`
 
-### Terminal Connections Table
-| Terminal | Signal     | Wire Color | Connected To    | Specification    |
-|----------|------------|------------|-----------------|------------------|
-| TB1+     | 24V DC+    | Red        | Power Supply +  | 18–30V DC, 150mA |
+### Terminal Connection Table
+| Terminal | Signal Type | Wire Color | Destination | Specification |
+|----------|------------|-----------|-------------|---------------|
+| \`TB1+\` | 24V DC Power | 🔴 Red | PSU Positive | \`18–30V DC\`, max \`5A\` |
+| \`TB1−\` | Ground (0V) | ⚫ Black | PSU Negative | 0V reference |
+| \`A+\` | RS-485 Data A | 🔵 Blue | Slave A+ | EIA-485, differential |
+| \`B−\` | RS-485 Data B | ⚪ White | Slave B− | EIA-485, differential |
+| \`GND\` | Shield / PE | 🟡 Yellow | Earth bond | IEC 60757 |
+(Add all terminals specific to {panelType}. Do not leave rows empty.)
 
-### Wire Color Code
-| Color  | Signal         | Standard |
-|--------|---------------|----------|
-| 🔴 Red    | 24V DC (+)  | IEC 60757 |
-| ⚫ Black  | GND / 0V    | IEC 60757 |
-| 🔵 Blue   | RS-485 A+   | EIA-485   |
-| ⚪ White  | RS-485 B-   | EIA-485   |
-| 🟡 Yellow | Shield / PE | IEC 60757 |
-| 🟢 Green  | Earth       | IEC 60757 |
+### Wire Colour Code (IEC 60757)
+| Colour | Signal | AWG / mm² |
+|--------|--------|-----------|
+| 🔴 Red | DC Positive (+) | 18 AWG / 1.0mm² |
+| ⚫ Black | DC Negative / GND | 18 AWG / 1.0mm² |
+| 🔵 Blue | RS-485 A+ (Data) | 22 AWG / 0.5mm² |
+| ⚪ White | RS-485 B− (Data) | 22 AWG / 0.5mm² |
+| 🟡 Yellow | Shield / Protective Earth | 20 AWG / 0.75mm² |
+| 🟢 Green | Earth Bond | 18 AWG / 1.0mm² |
 
-### Step-by-Step Wiring Instructions
-1. **De-energize** all power before wiring
-2. List each step clearly
+### Installation Steps
+1. **De-energise** all circuits before starting — verify with multimeter at \`TB1+\`
+2. **Connect power** — \`TB1+\` → PSU positive (🔴 Red), \`TB1−\` → PSU negative (⚫ Black)
+3. **Connect RS-485** — \`A+\` → slave \`A+\` (🔵 Blue), \`B−\` → slave \`B−\` (⚪ White)
+4. **Add termination resistor** — \`120Ω\` between \`A+\` and \`B−\` at both ends of the bus
+5. **Connect shield** — single-point earth at panel end only (🟡 Yellow → \`GND\`)
+6. **Power on** — verify \`PWR\` LED is solid green within 3 seconds
 
-### ⚠️ Important Notes
-- List safety warnings
-- List spec values
-- List common mistakes`,
+### ⚠️ Critical Notes
+- Never exceed \`30V DC\` on power terminals — device damage is immediate and irreversible
+- RS-485 polarity reversal (\`A+\`/\`B−\` swapped) causes silent communication failure
+- Always use shielded twisted pair cable for RS-485 runs longer than \`10m\`
+- Maximum bus length: \`1200m\` at \`9600 bps\` | \`600m\` at \`19200 bps\``,
 
-    power: `You are an HMS industrial panel technical writer.
-Generate a complete POWER SUPPLY WIRING DIAGRAM for: {panelType}
+  power: `You are a senior technical writer for HMS industrial panels at SEPLe.
+Generate a COMPLETE, PROFESSIONAL power supply wiring document for: {panelType}
 
 {kbSection}
-
-Produce a markdown document:
 
 ## ⚡ Power Supply Diagram — {panelType}
 
 ### Power Architecture
 \`\`\`
-[ASCII art showing power flow:]
-
-  230V AC                    24V DC
-  ─────────►  ┌──────────┐  ─────────►  ┌─────────────┐
-              │   PSU    │              │  HMS Panel  │
-  N ─────────►│          │  GND ───────►│             │
-              └──────────┘              └─────────────┘
+  230V AC Mains                    24V DC Bus
+  ────────────┐                    ┌───────────────────────────
+              │  ┌──────────────┐  │
+  L ─────────►│  │     PSU      │  ├──► TB1+  HMS Panel
+  N ─────────►│  │  24V / 5A    │  ├──► TB2+  I/O Module
+  PE ────────►│  │  DIN Rail    │  ├──► TB3+  Comms Module
+              │  └──────┬───────┘  │
+              │         │ GND ─────┴──► TB1−  (Common GND)
+              └─────────┘
 \`\`\`
 
-### Power Requirements Table
+### Power Requirements
 | Component | Input Voltage | Current Draw | Fuse Rating |
 |-----------|--------------|-------------|-------------|
+| HMS Panel (CPU) | \`24V DC ±20%\` | \`80mA typical\` | \`500mA\` |
+| I/O Module | \`24V DC ±20%\` | \`40mA per module\` | \`250mA\` |
+| RS-485 Bus | Powered from panel | \`20mA\` | — |
+| Total system | \`24V DC\` | \`≤ 150mA\` | \`1A\` (PSU output) |
 
-### Wiring Terminals
-| Terminal | Function   | Wire Size | Color |
-|----------|-----------|-----------|-------|
+### Power Wiring Terminals
+| Terminal | Function | Wire Colour | Min Wire Size |
+|----------|----------|------------|--------------|
+| \`TB1+\` | 24V DC Input | 🔴 Red | 18 AWG / 1.0mm² |
+| \`TB1−\` | GND / 0V | ⚫ Black | 18 AWG / 1.0mm² |
+| \`PE\` | Protective Earth | 🟢 Green | 18 AWG / 1.0mm² |
+
+### Power-On Sequence
+1. Confirm PSU output: \`24V DC ±1V\` (measure at PSU terminals before connecting)
+2. Connect \`TB1−\` (GND) first — always ground before applying positive
+3. Connect \`TB1+\` (24V) — panel should power on within 1 second
+4. Verify \`PWR\` LED: solid 🟢 Green = healthy | flashing 🔴 Red = fault
 
 ### ⚠️ Safety Requirements
-- List requirements`,
+- Input mains (\`230V AC\`) must be handled by a qualified electrician only
+- PSU must be CE-marked and rated for DIN-rail mounting (EN 60950)
+- Always fit an appropriately rated fuse or MCB on the \`230V AC\` supply
+- Do not exceed \`30V DC\` on panel power terminals under any circumstances`,
 
-    network: `You are an HMS industrial panel technical writer.
-Generate a complete NETWORK / BUS TOPOLOGY DIAGRAM for: {panelType}
+  network: `You are a senior technical writer for HMS industrial panels at SEPLe.
+Generate a COMPLETE, PROFESSIONAL network topology document for: {panelType}
 
 {kbSection}
 
-Produce a markdown document:
-
-## 🌐 Network Topology — {panelType}
+## 🌐 Network / Bus Topology — {panelType}
 
 ### Bus Architecture
 \`\`\`
-[ASCII art showing network topology:]
-
-  ┌──────────┐    RS-485 Bus (max 1200m)
-  │  Master  │────────────────────────────────────┐
-  │  (PLC)   │                                    │
-  └──────────┘                                    │
-       │                                          │
-       ├── Node 1: [Device] (Addr: 01)            │
-       ├── Node 2: [Device] (Addr: 02)            │
-       └── Node N: [Device] (Addr: N)  120Ω ─────┘
-                                      terminator
+  Master Device (PLC / HMS Panel)
+  ┌─────────────────────┐
+  │  {panelType}        │  ◄── Configuration PC (RS-232 or USB during setup)
+  │  Modbus RTU Master  │
+  └────────┬────────────┘
+           │  RS-485 Bus (Shielded Twisted Pair)
+           │  Max length: 1200m @ 9600 bps
+           │
+     ┌─────┴──────────────────────────────────────────┐
+     │                                                │
+  ┌──┴──────┐     ┌──────────┐     ┌──────────┐    ┌─┴────────┐
+  │ Node 01 │     │ Node 02  │     │ Node 03  │    │  Node N  │
+  │ Addr: 1 │     │ Addr: 2  │     │ Addr: 3  │    │ Addr: N  │
+  └─────────┘     └──────────┘     └──────────┘    └──────────┘
+  120Ω ◄──────────────────────────────────────────────────► 120Ω
+  (Near end)                                         (Far end)
 \`\`\`
 
 ### Network Parameters
-| Parameter      | Value     | Notes              |
-|----------------|-----------|--------------------|
-| Protocol       | Modbus RTU |                   |
-| Baud Rate      | 9600 bps  | Default            |
-| Max Nodes      | 32        |                   |
-| Max Cable Dist | 1200m     | At 9600 baud       |
-| Termination    | 120Ω      | Both ends of bus   |
+| Parameter | Value | Notes |
+|-----------|-------|-------|
+| Protocol | \`Modbus RTU\` | RS-485 physical layer |
+| Baud rate | \`9600 bps\` default | Configurable: 1200–115200 |
+| Data bits | \`8\` | Fixed |
+| Parity | \`None\` (or \`Even\`) | Must match all devices |
+| Stop bits | \`1\` (or \`2\`) | Must match all devices |
+| Max nodes | \`32\` (standard RS-485) | Up to 128 with repeaters |
+| Max cable | \`1200m @ 9600 bps\` | \`600m @ 19200 bps\` |
+| Termination | \`120Ω\` | Both ends of bus only |
+| Cable type | Shielded twisted pair | \`0.5mm²\` minimum |
 
 ### Node Address Table
-| Node | Device      | Address | Baud Rate |
-|------|------------|---------|-----------|
+| Node | Device Type | Address | Baud Rate | Notes |
+|------|------------|---------|-----------|-------|
+| 1 | HMS Panel (Master) | — | \`9600\` | Master device |
+| 2 | I/O Module | \`1\` | \`9600\` | First slave |
+| 3 | Sensor Gateway | \`2\` | \`9600\` | Second slave |
+(Update with actual device addresses for {panelType})
 
-### ⚠️ Wiring Notes
-- List notes`,
+### ⚠️ Common Network Faults
+| Symptom | Likely Cause | Fix |
+|---------|-------------|-----|
+| All nodes timeout (\`E001\`) | Missing terminator | Add \`120Ω\` at both bus ends |
+| One node fails intermittently | Address conflict | Verify all addresses are unique |
+| CRC errors on all nodes | A+/B− polarity reversed | Swap blue and white wires |
+| Communication drops at high speed | Cable too long | Reduce baud rate or add repeater |`,
 
-    panel: `You are an HMS industrial panel technical writer.
-Generate a complete PANEL LAYOUT DIAGRAM for: {panelType}
+  panel: `You are a senior technical writer for HMS industrial panels at SEPLe.
+Generate a COMPLETE, PROFESSIONAL panel layout document for: {panelType}
 
 {kbSection}
-
-Produce a markdown document:
 
 ## 📋 Panel Layout — {panelType}
 
-### Physical Layout
+### Front Panel Layout
 \`\`\`
-[ASCII art showing panel face/layout:]
-
-  ┌────────────────────────────────────────┐
-  │              HMS PANEL                 │
-  │  ┌──────────┐  ┌──────────────────┐   │
-  │  │  DISPLAY │  │   STATUS LEDs    │   │
-  │  └──────────┘  └──────────────────┘   │
-  │                                        │
-  │  ┌────────────────────────────────┐   │
-  │  │         DIN RAIL AREA          │   │
-  │  │  [MCB] [PSU] [CPU] [I/O]      │   │
-  │  └────────────────────────────────┘   │
-  │                                        │
-  │  TB1  TB2  TB3  TB4  TB5  TB6  TB7   │
-  └────────────────────────────────────────┘
+  ┌──────────────────────────────────────────────────────┐
+  │                    {panelType}                       │
+  │  ┌─────────────────────┐  ┌──────────────────────┐  │
+  │  │   STATUS DISPLAY    │  │    STATUS LEDs        │  │
+  │  │   [LCD / 7-seg]     │  │  PWR  COM  ERR  NET  │  │
+  │  └─────────────────────┘  │  [🟢] [🟡] [🔴] [🔵] │  │
+  │                           └──────────────────────┘  │
+  │  ┌────────────────────────────────────────────────┐  │
+  │  │              DIN RAIL SECTION                  │  │
+  │  │  ┌──────┐  ┌──────┐  ┌──────┐  ┌──────────┐  │  │
+  │  │  │ MCB  │  │ PSU  │  │ CPU  │  │ I/O MOD  │  │  │
+  │  │  │ 6A   │  │ 24V  │  │      │  │          │  │  │
+  │  │  └──────┘  └──────┘  └──────┘  └──────────┘  │  │
+  │  └────────────────────────────────────────────────┘  │
+  │                                                      │
+  │  TB1   TB2   TB3   TB4   TB5   TB6   TB7   TB8      │
+  │  [PWR] [GND] [485] [485] [DI1] [DI2] [DO1] [DO2]   │
+  └──────────────────────────────────────────────────────┘
 \`\`\`
 
 ### Component Placement
-| Component | Location    | Function              |
-|-----------|-------------|-----------------------|
+| Component | DIN Position | Function | Notes |
+|-----------|-------------|----------|-------|
+| MCB | Leftmost | Mains circuit breaker | \`6A\`, \`230V AC\` |
+| PSU | Left of CPU | 24V DC power supply | DIN rail, CE-marked |
+| CPU Module | Centre | Main controller | {panelType} |
+| I/O Module | Right of CPU | Digital inputs/outputs | Expansion |
 
 ### Terminal Block Map
-| TB Block | Terminals | Signals              |
-|----------|-----------|----------------------|`,
+| TB Block | Terminals | Signal Group | Colour Code |
+|----------|-----------|-------------|------------|
+| TB1 | \`TB1+\` | 24V DC Power | 🔴 Red |
+| TB2 | \`TB2−\` | GND / 0V | ⚫ Black |
+| TB3 | \`TB3 A+\` | RS-485 Data A | 🔵 Blue |
+| TB4 | \`TB4 B−\` | RS-485 Data B | ⚪ White |
+| TB5–6 | \`DI1–DI2\` | Digital Inputs | 🟡 Yellow |
+| TB7–8 | \`DO1–DO2\` | Digital Outputs (relay) | 🟢 Green |
 
-    block: `You are an HMS industrial panel technical writer.
-Generate a complete BLOCK / SYSTEM DIAGRAM for: {panelType}
+### ⚠️ Installation Notes
+- Maintain \`25mm\` clearance above and below DIN rail for airflow
+- Group power and signal wiring in separate cable ducts
+- Label all terminal blocks before installation`,
+
+  block: `You are a senior technical writer for HMS industrial panels at SEPLe.
+Generate a COMPLETE, PROFESSIONAL system block diagram for: {panelType}
 
 {kbSection}
-
-Produce a markdown document:
 
 ## 🔷 System Block Diagram — {panelType}
 
 ### System Architecture
 \`\`\`
-[ASCII art block diagram:]
-
-  ┌──────────┐     ┌───────────────┐     ┌──────────────┐
-  │  FIELD   │     │  HMS PANEL /  │     │   SCADA /    │
-  │ DEVICES  │────►│   CONTROLLER  │────►│    HMI       │
-  └──────────┘     └───────────────┘     └──────────────┘
-       │                   │                     │
-  [Sensors]          [Processing]          [Monitoring]
-  [Actuators]        [Control Logic]       [Alarms]
+  ┌────────────────┐     ┌───────────────────────┐     ┌────────────────┐
+  │  FIELD DEVICES │     │    {panelType}         │     │  SUPERVISORY   │
+  │                │     │                       │     │                │
+  │ • Sensors      │────►│  ┌─────────────────┐  │────►│ • SCADA        │
+  │ • Actuators    │     │  │   CPU / Logic   │  │     │ • HMI          │
+  │ • Drives       │◄────│  │   Processing    │  │◄────│ • Historian    │
+  │ • PLCs         │     │  └────────┬────────┘  │     │ • Alarms       │
+  └────────────────┘     │           │            │     └────────────────┘
+                         │  ┌────────┴────────┐  │
+  ┌────────────────┐     │  │  I/O & Comms    │  │     ┌────────────────┐
+  │  POWER SUPPLY  │     │  │  • Digital I/O  │  │     │  CONFIGURATION │
+  │                │     │  │  • RS-485 Bus   │  │     │                │
+  │  24V DC / 5A  │────►│  │  • Modbus RTU  │  │◄────│ • Config PC    │
+  │  DIN Rail PSU  │     │  └─────────────────┘  │     │ • USB / RS-232 │
+  └────────────────┘     └───────────────────────┘     └────────────────┘
 \`\`\`
 
 ### Signal Flow
-| From           | Signal Type | To             | Protocol  |
-|----------------|-------------|----------------|-----------|
+| Signal Direction | From | Protocol | To | Data |
+|-----------------|------|----------|-----|------|
+| Input (field → panel) | Sensors / Switches | Digital 24V DC | \`DI1–DI8\` | ON/OFF states |
+| Output (panel → field) | \`DO1–DO4\` | Relay contact | Actuators | Commands |
+| Upstream (panel → SCADA) | \`RS-485\` | Modbus RTU | SCADA server | All registers |
+| Config (PC → panel) | USB / RS-232 | Proprietary | CPU | Parameters |
 
 ### I/O Summary
-| Type    | Count | Description         |
-|---------|-------|---------------------|
-| DI      |       | Digital Inputs      |
-| DO      |       | Digital Outputs     |
-| AI      |       | Analog Inputs       |
-| AO      |       | Analog Outputs      |`,
+| Type | Count | Signal Level | Terminals |
+|------|-------|-------------|-----------|
+| Digital Inputs | 8 | \`24V DC\` (NPN/PNP selectable) | \`DI1–DI8\` |
+| Digital Outputs | 4 | Relay, \`250V AC / 5A\` | \`DO1–DO4\` |
+| RS-485 Port | 1 | EIA-485 | \`A+\`, \`B−\`, \`GND\` |
+| Power Input | 1 | \`18–30V DC\` | \`TB1+\`, \`TB1−\` |`,
 
-    connector: `You are an HMS industrial panel technical writer.
-Generate a complete CONNECTOR / PINOUT DIAGRAM for: {panelType}
+  connector: `You are a senior technical writer for HMS industrial panels at SEPLe.
+Generate a COMPLETE, PROFESSIONAL connector pinout document for: {panelType}
 
 {kbSection}
-
-Produce a markdown document:
 
 ## 🔗 Connector Pinout — {panelType}
 
-### Connector Layout
+### Connector Face Views
 \`\`\`
-[ASCII art showing connector face view:]
-
-  DB9 Male (Face View)        RJ45 (T568B)
-  ┌───────────────┐           ┌─────────────┐
-  │ 1  2  3  4  5 │           │ 1 2 3 4 5 6 7 8 │
-  │  6  7  8  9   │           └─────────────┘
-  └───────────────┘
+  RJ45 (Ethernet / RS-485 adapter)    DB9 Male (RS-232 / Config port)
+  ┌─────────────────────┐             ┌─────────────────────┐
+  │  1  2  3  4  5  6  7  8  │         │  1   2   3   4   5  │
+  │  ──────────────────  │             │    6   7   8   9    │
+  └─────────────────────┘             └─────────────────────┘
+  (Tab faces down — T568B)             (Solder side view)
 \`\`\`
 
-### Pin Assignment Table
-| Pin | Signal     | Direction | Description          | Wire Color |
-|-----|-----------|-----------|----------------------|------------|
-| 1   |           | →         |                      |            |
-| 2   |           | ←         |                      |            |
+### RJ45 Pin Assignment (T568B)
+| Pin | Signal | Wire Colour | Direction | Description |
+|-----|--------|-----------|-----------|-------------|
+| 1 | TX+ | 🟠 Orange/White | Output | Transmit Data + |
+| 2 | TX− | 🟠 Orange | Output | Transmit Data − |
+| 3 | RX+ | 🟢 Green/White | Input | Receive Data + |
+| 4 | — | 🔵 Blue | — | Unused / PoE |
+| 5 | — | 🔵 Blue/White | — | Unused / PoE |
+| 6 | RX− | 🟢 Green | Input | Receive Data − |
+| 7 | — | 🟤 Brown/White | — | Unused |
+| 8 | GND | 🟤 Brown | Ground | Cable shield |
+
+### DB9 Pin Assignment (RS-232)
+| Pin | Signal | Direction | Description |
+|-----|--------|-----------|-------------|
+| 2 | RXD | Input | Receive Data |
+| 3 | TXD | Output | Transmit Data |
+| 5 | GND | — | Signal Ground |
+| 7 | RTS | Output | Request to Send |
+| 8 | CTS | Input | Clear to Send |
+| 1,4,6,9 | — | — | Not connected |
 
 ### ⚠️ Connection Notes
-- List notes`,
+- Always use pre-crimped RJ45 connectors — hand-crimped connectors cause intermittent faults
+- RS-232 maximum cable length: \`15m\` at \`9600 bps\` (use RS-485 for longer runs)
+- Never connect RS-232 and RS-485 simultaneously`,
 
-    led: `You are an HMS industrial panel technical writer.
-Generate a complete LED / INDICATOR STATUS DIAGRAM for: {panelType}
+  led: `You are a senior technical writer for HMS industrial panels at SEPLe.
+Generate a COMPLETE, PROFESSIONAL LED status reference for: {panelType}
 
 {kbSection}
-
-Produce a markdown document:
 
 ## 💡 LED Status Indicators — {panelType}
 
 ### LED Panel Layout
 \`\`\`
-[ASCII art showing LED positions:]
-
-  ┌─────────────────────────────────┐
-  │  PWR  COM  ERR  NET  I/O  ALM  │
-  │  [🟢] [🟡] [🔴] [🔵] [🟢] [🔴] │
-  └─────────────────────────────────┘
+  ┌──────────────────────────────────────────────────────────┐
+  │  PWR      COM      ERR      NET      I/O      ALM        │
+  │                                                          │
+  │  [ 🟢 ]  [ 🟡 ]  [ ⚫ ]  [ 🔵 ]  [ 🟢 ]  [ ⚫ ]      │
+  │                                                          │
+  │  Power  Comms   Error   Network  I/O OK  Alarm          │
+  └──────────────────────────────────────────────────────────┘
 \`\`\`
 
-### LED Status Table
-| LED Label | Color       | State    | Meaning                    |
-|-----------|-------------|----------|----------------------------|
-| PWR       | 🟢 Green    | Solid ON  | Power OK                  |
-| PWR       | 🔴 Red      | Solid ON  | Power fault               |
-| COM       | 🟡 Amber    | Blinking  | Communication active      |
-| ERR       | 🔴 Red      | Solid ON  | Error / Fault             |
+### LED State Reference
+| LED | Colour | State | Meaning | Action Required |
+|-----|--------|-------|---------|----------------|
+| PWR | 🟢 Green | Solid ON | Power OK, system healthy | None |
+| PWR | 🔴 Red | Solid ON | Power fault or brownout | Check \`TB1+\` voltage: must be \`18–30V DC\` |
+| PWR | ⚫ Off | Off | No power | Check PSU output and \`TB1+\` wiring |
+| COM | 🟡 Amber | Blinking | Active communication | None — normal operation |
+| COM | 🟡 Amber | Solid ON | Communication stalled | Check RS-485 wiring and baud rate |
+| COM | ⚫ Off | Off | No communication | Verify slave address and cable \`A+\`/\`B−\` polarity |
+| ERR | 🔴 Red | Solid ON | System error (see error code) | Read error code from display |
+| ERR | 🔴 Red | Blinking | Non-critical warning | Check logs |
+| ERR | ⚫ Off | Off | No errors | None |
+| NET | 🔵 Blue | Solid ON | Network connected | None |
+| NET | 🔵 Blue | Blinking | Network activity | None — normal |
+| NET | ⚫ Off | Off | No network / not configured | Check Ethernet cable or RS-485 bus |
+| I/O | 🟢 Green | Solid ON | All I/O normal | None |
+| I/O | 🟡 Amber | Blinking | I/O state changing | None — normal |
+| ALM | 🔴 Red | Solid ON | Active alarm | Investigate alarm log immediately |
+| ALM | 🔴 Red | Blinking | Alarm acknowledged, not cleared | Resolve alarm condition |
 
 ### Fault Diagnosis by LED Pattern
-| LED Pattern          | Probable Cause      | Action               |
-|----------------------|--------------------|-----------------------|`,
+| PWR | COM | ERR | ALM | Diagnosis | First Action |
+|-----|-----|-----|-----|-----------|-------------|
+| 🟢 | 🟡 blink | ⚫ | ⚫ | Normal operation | None |
+| 🟢 | ⚫ | 🔴 | ⚫ | Communication lost | Check \`A+\`/\`B−\` wiring |
+| 🔴 | ⚫ | 🔴 | ⚫ | Power fault | Measure \`TB1+\`: should be \`18–30V DC\` |
+| 🟢 | 🟡 solid | 🔴 | 🔴 | Bus stall + alarm | Reboot slave devices |
+| ⚫ | ⚫ | ⚫ | ⚫ | No power | Check PSU, MCB, and \`TB1+\` fuse |`,
+
+  alarm: `You are a senior technical writer for HMS industrial panels at SEPLe.
+Generate a COMPLETE, PROFESSIONAL alarm system wiring document for: {panelType}
+
+{kbSection}
+
+## 🚨 Alarm System Wiring — {panelType}
+
+### Alarm Zone Architecture
+\`\`\`
+  HMS Panel ({panelType})
+  ┌────────────────────────────────────────┐
+  │  ALARM INPUTS          ALARM OUTPUTS   │
+  │                                        │
+  │  Zone 1 ──[PIR]──► DI1    DO1 ──► 🔔 Siren (24V)   │
+  │  Zone 2 ──[MAG]──► DI2    DO2 ──► 💡 Strobe         │
+  │  Zone 3 ──[MCP]──► DI3    DO3 ──► 📡 Dialer         │
+  │  Zone 4 ──[SMK]──► DI4    DO4 ──► 🔑 Access relay   │
+  │  Tamper  ──────────► DI5                             │
+  │  24V DC ────────────────────────────────────────►    │
+  └────────────────────────────────────────┘
+\`\`\`
+
+### Zone Wiring Table
+| Zone | Detector Type | Terminal | EOL Resistor | Wire | Normal State |
+|------|--------------|----------|-------------|------|-------------|
+| Zone 1 | PIR Motion | \`DI1\` | \`4k7Ω\` | 🔴🔵 | Closed loop |
+| Zone 2 | Magnetic contact | \`DI2\` | \`4k7Ω\` | 🔴🔵 | Closed loop |
+| Zone 3 | Manual call point | \`DI3\` | \`4k7Ω\` | 🔴🔵 | Closed loop |
+| Zone 4 | Smoke detector | \`DI4\` | \`4k7Ω\` | 🔴🔵 | Closed loop |
+| Tamper | Panel tamper switch | \`DI5\` | \`4k7Ω\` | 🔴⚫ | Closed loop |
+
+### Output Wiring Table
+| Output | Device | Terminal | Rating | Activation |
+|--------|--------|----------|--------|-----------|
+| DO1 | Siren / Sounder | \`DO1+\`, \`DO1−\` | \`24V DC\`, \`500mA\` max | On alarm |
+| DO2 | Strobe light | \`DO2+\`, \`DO2−\` | \`24V DC\`, \`250mA\` max | On alarm |
+| DO3 | Auto-dialer | \`DO3\` (relay N/O) | \`250V AC\`, \`5A\` | On alarm |
+| DO4 | Access control relay | \`DO4\` (relay N/C) | \`250V AC\`, \`5A\` | On alarm (lock) |
+
+### ⚠️ Critical Wiring Notes
+- All zones MUST use End-of-Line (EOL) resistors for tamper detection — \`4k7Ω\` standard
+- Siren loop must be individually fused: \`1A\` fast-blow fuse on \`DO1+\`
+- Never share 0V (GND) between alarm output devices and input zones`,
 };
 
 // ─── Generate text diagram via Sarvam ────────────────────────
@@ -381,8 +522,7 @@ async function generateTextDiagram(
     diagramType: string,
     kbContext: string,
     sarvamKey: string,
-    language: string,
-    detailLevel: 'basic' | 'context-rich' = 'context-rich'
+    language: string
 ): Promise<{ markdown: string; title: string; diagramType: string }> {
 
     const sarvam = new ChatOpenAI({
@@ -406,12 +546,20 @@ async function generateTextDiagram(
         .replace(/{panelType}/g, panelType)
         .replace(/{kbSection}/g, kbSection);
 
-    const systemPrompt = `You are a technical documentation expert for HMS/Dexter industrial panels.
-Generate complete, accurate, detailed markdown diagrams.
-Use Unicode box-drawing characters (┌┐└┘├┤┬┴┼─│) for ASCII art.
-Fill ALL table cells with real data from the knowledge base.
-If a spec is unknown, write the typical HMS panel value.
-ALWAYS output valid markdown that renders correctly.`;
+    const systemPrompt = `You are a SENIOR industrial documentation specialist for HMS/Dexter panels at SEPLe.
+
+Your output standards:
+1. ACCURACY — Use KB data verbatim when available. Never invent terminal names or voltages.
+2. PROFESSIONALISM — Every diagram must look like it came from an official technical manual.
+3. COMPLETENESS — Fill ALL table cells. Use standard HMS reference values when KB data is unavailable.
+4. STRUCTURE — Follow the exact section order from the template. Do not add extra sections.
+5. ASCII ART — Use Unicode box-drawing characters (┌┐└┘├┤┬┴┼─│►◄) consistently. Align all boxes.
+6. FORMATTING — Terminal names, voltages, error codes, and measurements must be in backtick \`inline code\`.
+7. WIRE COLOURS — Use emoji circles: 🔴 Red, ⚫ Black, 🔵 Blue, ⚪ White, 🟡 Yellow, 🟢 Green, 🟠 Orange, 🟤 Brown.
+8. ACTIONABLE — Every diagram must include numbered installation/verification steps.
+9. NO THINKING — Do NOT use <think> tags. Output ONLY the markdown diagram document directly. No preamble, no reasoning, no closing remarks.
+
+Output valid markdown that renders correctly. Start immediately with the diagram content.`;
 
     try {
         const result = await sarvam.invoke([
@@ -419,7 +567,7 @@ ALWAYS output valid markdown that renders correctly.`;
             { role: 'user', content: fullPrompt },
         ]);
 
-        let markdown = (result.content as string).trim();
+        let markdown = stripThinkTags((result.content as string)).trim();
 
         // Add KB source note if we used real data
         if (kbContext) {
@@ -456,68 +604,61 @@ ALWAYS output valid markdown that renders correctly.`;
 
 // ─── Fallback markdown when Sarvam fails ─────────────────────
 function buildFallbackMarkdown(panelType: string, diagramType: string, kbContext: string): string {
-    const header = `## 🔌 ${diagramType.charAt(0).toUpperCase() + diagramType.slice(1)} Diagram — ${panelType}`;
+    const typeLabel = diagramType.charAt(0).toUpperCase() + diagramType.slice(1);
+    const emoji: Record<string, string> = { wiring: '🔌', power: '⚡', network: '🌐', panel: '📋', block: '🔷', connector: '🔗', led: '💡', alarm: '🚨' };
+    const icon = emoji[diagramType] || '🔌';
+    const header = `## ${icon} ${typeLabel} Diagram — ${panelType}`;
 
-    if (kbContext) {
-        return `${header}
+    const kbBlock = kbContext
+        ? `### Knowledge Base Specifications\n\n${kbContext}\n\n---\n`
+        : '';
 
-### Available Specifications from Knowledge Base
-
-${kbContext}
-
----
-
-### Standard HMS Panel Wiring Reference
-
-\`\`\`
-  ┌─────────────────────┐          ┌─────────────────────┐
-  │     HMS PANEL       │          │    FIELD DEVICE     │
-  │                     │          │                     │
-  │  TB1+  ─────────────┼──────────┼──  A+  (RS-485)    │
-  │  TB1-  ─────────────┼──────────┼──  B-  (RS-485)    │
-  │  GND   ─────────────┼──────────┼──  GND             │
-  │  24V+  ─────────────┼──────────┼──  PWR+            │
-  │                     │          │                     │
-  └─────────────────────┘          └─────────────────────┘
-\`\`\`
-
-| Terminal | Signal    | Color  | Spec        |
-|----------|-----------|--------|-------------|
-| TB1+     | RS-485 A+ | 🔵 Blue  | EIA-485   |
-| TB1-     | RS-485 B- | ⚪ White | EIA-485   |
-| GND      | Ground    | ⚫ Black | 0V        |
-| 24V+     | Power     | 🔴 Red   | 18–30V DC |
-
-> 📚 **Source:** From knowledge base. Verify with official manual.`;
-    }
+    const sourceNote = kbContext
+        ? `> 📚 **Source:** Generated from uploaded manual data. Always verify with the official ${panelType} installation manual before making physical connections.`
+        : `> ℹ️ **Note:** Standard HMS reference diagram. Upload the **${panelType}** manual via **Admin → Train Bot** for panel-specific wiring data and specifications.`;
 
     return `${header}
 
-### Standard HMS / Dexter Panel Reference Diagram
+${kbBlock}### Standard HMS Panel Reference
 
 \`\`\`
-  ┌─────────────────────┐          ┌─────────────────────┐
-  │     HMS PANEL       │          │    FIELD DEVICE     │
-  │                     │          │                     │
-  │  TB1+  ─────────────┼──────────┼──  A+  (RS-485)    │
-  │  TB1-  ─────────────┼──────────┼──  B-  (RS-485)    │
-  │  GND   ─────────────┼──────────┼──  GND             │
-  │  24V+  ─────────────┼──────────┼──  PWR+            │
-  └─────────────────────┘          └─────────────────────┘
+  ┌──────────────────────┐                    ┌──────────────────────┐
+  │     HMS PANEL        │                    │    FIELD DEVICE      │
+  │   (${panelType})     │                    │                      │
+  │                      │                    │                      │
+  │  TB1+  ──────────────┼───────────────────►│  24V DC In           │
+  │  TB1−  ──────────────┼───────────────────►│  GND                 │
+  │  A+    ──────────────┼───────────────────►│  RS-485 A+           │
+  │  B−    ──────────────┼───────────────────►│  RS-485 B−           │
+  │  GND   ──────────────┼───────────────────►│  Shield / PE         │
+  └──────────────────────┘                    └──────────────────────┘
 \`\`\`
 
-### Wire Color Standard (IEC 60757)
+### Terminal Connection Table
+| Terminal | Signal Type | Wire Colour | Destination | Specification |
+|----------|------------|------------|-------------|---------------|
+| \`TB1+\` | 24V DC Power | 🔴 Red | PSU Positive | \`18–30V DC\`, max \`5A\` |
+| \`TB1−\` | Ground (0V) | ⚫ Black | PSU Negative | 0V reference |
+| \`A+\` | RS-485 Data A | 🔵 Blue | Slave A+ | EIA-485, differential |
+| \`B−\` | RS-485 Data B | ⚪ White | Slave B− | EIA-485, differential |
+| \`GND\` | Shield / PE | 🟡 Yellow | Earth bond | IEC 60757 |
 
-| Color         | Signal         |
-|---------------|---------------|
-| 🔴 Red        | 24V DC (+)    |
-| ⚫ Black      | GND / 0V      |
-| 🔵 Blue       | RS-485 A+     |
-| ⚪ White      | RS-485 B-     |
-| 🟡 Yellow     | Shield / PE   |
-| 🟢 Green      | Earth Bond    |
+### Wire Colour Code (IEC 60757)
+| Colour | Signal | AWG / mm² |
+|--------|--------|-----------|
+| 🔴 Red | DC Positive (+) | 18 AWG / 1.0mm² |
+| ⚫ Black | DC Negative / GND | 18 AWG / 1.0mm² |
+| 🔵 Blue | RS-485 A+ (Data) | 22 AWG / 0.5mm² |
+| ⚪ White | RS-485 B− (Data) | 22 AWG / 0.5mm² |
+| 🟡 Yellow | Shield / Protective Earth | 20 AWG / 0.75mm² |
+| 🟢 Green | Earth Bond | 18 AWG / 1.0mm² |
 
-> ℹ️ Upload the **${panelType}** manual via **Admin → Train Bot** for panel-specific wiring data.`;
+### ⚠️ Critical Notes
+- Never exceed \`30V DC\` on power terminals
+- Always use \`120Ω\` termination resistors at both ends of RS-485 bus
+- RS-485 maximum cable length: \`1200m\` at \`9600 bps\`
+
+${sourceNote}`;
 }
 
 // ─── Main Handler ─────────────────────────────────────────────
@@ -580,7 +721,7 @@ export async function generateDiagramInternal(
     }
 
     // Generate markdown diagram via Sarvam
-    const result = await generateTextDiagram(panelType, diagramType, kbContext, sarvamKey, language, detailLevel);
+    const result = await generateTextDiagram(panelType, diagramType, kbContext, sarvamKey, language);
 
     console.log(`✅ Diagram generated: ${result.markdown.length} chars`);
 

@@ -38,6 +38,7 @@
  */
 
 import { ChatOpenAI } from '@langchain/openai';
+import { extractJsonFromSarvam } from './sarvam';
 import type { QueryAnalysis } from './rag-engine';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -56,14 +57,17 @@ export interface SubQuery {
   priority: number;             // 1 = most important
 }
 
+export interface SubQueryResult {
+  subQuery: SubQuery;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  matches: any[]; // Matches from RAG engine
+  answerMode: string;
+  confidence: number;
+}
+
 export interface MergedRAGResult {
   contextString: string;        // merged context for LLM prompt
-  subResults: {
-    subQuery: SubQuery;
-    matches: any[];
-    answerMode: string;
-    confidence: number;
-  }[];
+  subResults: SubQueryResult[];
   overallConfidence: number;
   answerMode: 'rag_high' | 'rag_medium' | 'rag_partial' | 'general';
 }
@@ -149,6 +153,13 @@ If this has MULTIPLE independent sub-questions, respond:
 
 Respond ONLY with valid JSON, no markdown.`;
 
+interface RawSubQuery {
+    query: string;
+    focus?: string;
+    queryType?: string;
+    priority?: number;
+}
+
 async function llmDecompose(
   query: string,
   llm: ChatOpenAI,
@@ -156,18 +167,19 @@ async function llmDecompose(
   try {
     const prompt = DECOMPOSE_PROMPT.replace('{query}', query.slice(0, 300));
     const result = await llm.invoke(prompt);
-    const raw = (result.content as string).trim()
-      .replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-    const parsed = JSON.parse(raw);
+    const parsed = extractJsonFromSarvam<{ decompose?: boolean; subQueries?: RawSubQuery[]; reason?: string }>(result.content as string);
+    if (!parsed) {
+      return { isDecomposed: false, originalQuery: query, subQueries: [{ query, focus: 'full question', queryType: 'unknown', priority: 1 }] };
+    }
 
     if (!parsed.decompose || !Array.isArray(parsed.subQueries)) {
       return { isDecomposed: false, originalQuery: query, subQueries: [{ query, focus: 'full question', queryType: 'unknown', priority: 1 }] };
     }
 
-    const subQueries: SubQuery[] = parsed.subQueries
-      .filter((sq: any) => sq.query?.length > 10)
+    const subQueries: SubQuery[] = (parsed.subQueries as RawSubQuery[])
+      .filter((sq) => sq.query?.length > 10)
       .slice(0, 3)
-      .map((sq: any, i: number) => ({
+      .map((sq, i: number) => ({
         query: sq.query.trim(),
         focus: sq.focus || `part ${i + 1}`,
         queryType: sq.queryType || 'unknown',
@@ -266,7 +278,8 @@ export async function decomposeQuery(
  */
 export function mergeSubQueryResults(
   subResults: MergedRAGResult['subResults'],
-  originalQuery: string,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  _originalQuery: string,
 ): MergedRAGResult {
   const seenIds = new Set<string>();
   let mergedContext = '';

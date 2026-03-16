@@ -11,8 +11,6 @@
  * - Cost reduction vs using LLM for reranking
  */
 
-import { embedText, embedTexts } from './embeddings';
-
 // Configuration
 const RERANKER_MODEL = 'BAAI/bge-reranker-v2-m3';
 const RERANK_TOP_K = 10; // Return top K after reranking

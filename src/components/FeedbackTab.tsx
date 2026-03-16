@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
     faStar,
@@ -29,11 +29,7 @@ export default function FeedbackTab() {
     const [error, setError] = useState('');
     const [filter, setFilter] = useState<'all' | 'positive' | 'negative'>('all');
 
-    useEffect(() => {
-        void fetchFeedback();
-    }, []);
-
-    const fetchFeedback = async () => {
+    const fetchFeedback = useCallback(async () => {
         setLoading(true);
         setError('');
 
@@ -52,23 +48,29 @@ export default function FeedbackTab() {
         } finally {
             setLoading(false);
         }
-    };
+    }, []);
+
+    useEffect(() => {
+        void fetchFeedback();
+    }, [fetchFeedback]);
 
     const filteredFeedback = feedback.filter((item) => {
-        if (filter === 'positive') return item.is_relevant === true || item.rating >= 4;
-        if (filter === 'negative') return item.is_relevant === false || item.rating <= 2;
+        const rating = item.rating ?? 0;
+        if (filter === 'positive') return item.is_relevant === true && rating >= 4;
+        if (filter === 'negative') return item.is_relevant === false || rating <= 2;
         return true;
     });
 
-    const avgRating = feedback.length > 0
-        ? (feedback.reduce((sum, item) => sum + (item.rating || 0), 0) / feedback.length).toFixed(1)
+    const ratedItems = feedback.filter((item) => typeof item.rating === 'number' && item.rating > 0);
+    const avgRating = ratedItems.length > 0
+        ? (ratedItems.reduce((sum, item) => sum + item.rating, 0) / ratedItems.length).toFixed(1)
         : '-';
 
-    const positiveCount = feedback.filter((item) => item.is_relevant === true || item.rating >= 4).length;
-    const negativeCount = feedback.filter((item) => item.is_relevant === false || item.rating <= 2).length;
+    const positiveCount = feedback.filter((item) => item.is_relevant === true || (item.rating ?? 0) >= 4).length;
+    const negativeCount = feedback.filter((item) => item.is_relevant === false || ((item.rating ?? 0) > 0 && (item.rating ?? 0) <= 2)).length;
 
     return (
-        <div className="space-y-4 animate-fade-up">
+        <div aria-label="Retrieval Feedback Dashboard" className="space-y-4 animate-fade-up">
             <div className="skeuo-card p-4 sm:p-5 border-[#0D9488]/30">
                 <div className="flex items-start gap-3 sm:gap-4">
                     <div className="w-10 h-10 rounded-xl bg-[#0D9488]/10 border border-[#0D9488]/20 flex items-center justify-center flex-shrink-0">

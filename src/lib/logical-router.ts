@@ -43,7 +43,7 @@ export interface LogicalRouteDecision {
 
 export interface RelationalResult {
   answer: string;
-  data: Record<string, any>[];
+  data: Record<string, unknown>[];
   source: string;       // which table/view answered this
 }
 
@@ -57,7 +57,8 @@ interface RelationalPattern {
 
 // ─── Relational Query Handlers ────────────────────────────────────────────────
 
-async function handleKBStats(_query: string): Promise<RelationalResult | null> {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+async function handleKBStats(__query: string): Promise<RelationalResult | null> {
   const supabase = getSupabase();
   const { data, error } = await supabase
     .from('kb_health')
@@ -77,7 +78,8 @@ async function handleKBStats(_query: string): Promise<RelationalResult | null> {
   };
 }
 
-async function handleSourceList(_query: string): Promise<RelationalResult | null> {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+async function handleSourceList(__query: string): Promise<RelationalResult | null> {
   const supabase = getSupabase();
   const { data, error } = await supabase
     .from('kb_sources')
@@ -98,7 +100,8 @@ async function handleSourceList(_query: string): Promise<RelationalResult | null
   };
 }
 
-async function handleUnknownQuestions(_query: string): Promise<RelationalResult | null> {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+async function handleUnknownQuestions(__query: string): Promise<RelationalResult | null> {
   const supabase = getSupabase();
   const { data, error } = await supabase
     .from('unknown_questions')
@@ -120,7 +123,8 @@ async function handleUnknownQuestions(_query: string): Promise<RelationalResult 
   };
 }
 
-async function handleIngestionHistory(_query: string): Promise<RelationalResult | null> {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+async function handleIngestionHistory(__query: string): Promise<RelationalResult | null> {
   const supabase = getSupabase();
   const { data, error } = await supabase
     .from('ingestion_log')
@@ -141,7 +145,8 @@ async function handleIngestionHistory(_query: string): Promise<RelationalResult 
   };
 }
 
-async function handleQueryAnalytics(_query: string): Promise<RelationalResult | null> {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+async function handleQueryAnalytics(__query: string): Promise<RelationalResult | null> {
   const supabase = getSupabase();
   const { data, error } = await supabase
     .from('answer_mode_summary')
@@ -173,7 +178,8 @@ async function handleQueryAnalytics(_query: string): Promise<RelationalResult | 
   };
 }
 
-async function handleEntityCoverage(_query: string): Promise<RelationalResult | null> {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+async function handleEntityCoverage(__query: string): Promise<RelationalResult | null> {
   const supabase = getSupabase();
   const { data, error } = await supabase
     .from('kb_entity_coverage')
@@ -289,8 +295,9 @@ export async function logicalRoute(query: string): Promise<{
             relationalResult: result,
           };
         }
-      } catch (err: any) {
-        console.warn(`⚠️  Relational handler failed (${pattern.label}): ${err.message}`);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.warn(`âš ï¸  Relational handler failed (${pattern.label}): ${message}`);
       }
     }
   }

@@ -48,6 +48,21 @@ const DEFAULT_OPTIONS: Required<HybridSearchOptions> = {
     queryEntities: [],
 };
 
+interface HybridSearchRPCResult {
+    id: string;
+    question: string;
+    answer: string;
+    category: string;
+    subcategory: string;
+    content: string;
+    source: string;
+    source_name: string;
+    chunk_type: string;
+    entities: string[] | null;
+    similarity?: number;
+    hybrid_score?: number;
+}
+
 /**
  * Perform hybrid search combining vector and BM25
  */
@@ -74,16 +89,16 @@ export async function hybridSearch(
     );
 
     if (vectorError) {
-        console.warn('⚠️  Hybrid search RPC failed, using fallback');
-        return fallbackHybridSearch(query, queryVector, opts);
+        console.warn('âš ï¸  Hybrid search RPC failed, using fallback');
+        return fallbackHybridSearch(query, queryVector, opts as Required<HybridSearchOptions>);
     }
 
-    if (!vectorResults || vectorResults.length === 0) {
+    if (!vectorResults || (vectorResults as HybridSearchRPCResult[]).length === 0) {
         return [];
     }
 
     // 2. Calculate BM25 scores for each result
-    const resultsWithBM25: HybridSearchResult[] = vectorResults.map((row: any) => ({
+    const resultsWithBM25: HybridSearchResult[] = (vectorResults as HybridSearchRPCResult[]).map((row) => ({
         id: row.id,
         question: row.question,
         answer: row.answer,
@@ -136,7 +151,8 @@ async function fallbackHybridSearch(
     if (!vectorResults) return [];
 
     // Calculate vector similarities
-    const resultsWithScores = vectorResults.map((row: any) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const resultsWithScores = (vectorResults as any[]).map((row) => {
         const vectorScore = row.embedding
             ? cosineSimilarity(queryVector, row.embedding)
             : 0;
@@ -153,14 +169,14 @@ async function fallbackHybridSearch(
 
     // Filter by threshold
     const filtered = resultsWithScores.filter(
-        (r: any) => r.vectorScore >= opts.minSimilarity
+        (r) => r.vectorScore >= opts.minSimilarity
     );
 
     // Sort and return
     return filtered
-        .sort((a: any, b: any) => b.hybridScore - a.hybridScore)
+        .sort((a, b) => b.hybridScore - a.hybridScore)
         .slice(0, opts.topK)
-        .map((row: any) => ({
+        .map((row) => ({
             id: row.id,
             question: row.question,
             answer: row.answer,

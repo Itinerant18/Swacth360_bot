@@ -43,7 +43,7 @@ const ENTITY_TYPE_COLORS: Record<EntityType, string> = {
     error: 'bg-red-100 text-red-700 border-red-200',
     terminal: 'bg-amber-100 text-amber-700 border-amber-200',
     device: 'bg-blue-100 text-blue-700 border-blue-200',
-    protocol: 'bg-purple-100 text-purple-700 border-purple-200',
+    protocol: 'bg-cyan-100 text-cyan-700 border-cyan-200',
     component: 'bg-green-100 text-green-700 border-green-200',
     cause: 'bg-orange-100 text-orange-700 border-orange-200',
     solution: 'bg-emerald-100 text-emerald-700 border-emerald-200',
@@ -317,8 +317,10 @@ export default function GraphTab() {
                         {activeTab === 'search' && (
                             <div className="space-y-4">
                                 <div className="flex gap-2">
+                                    <label htmlFor="graph-search" className="sr-only">Search entity</label>
                                     <input
                                         type="text"
+                                        id="graph-search"
                                         value={searchEntity}
                                         onChange={(e) => setSearchEntity(e.target.value)}
                                         onKeyDown={(e) => e.key === 'Enter' && void handleSearch()}
@@ -342,6 +344,11 @@ export default function GraphTab() {
                                                 <div className="w-2 h-2 bg-[#0D9488] rounded-full animate-bounce" style={{ animationDelay: '100ms' }} />
                                                 <div className="w-2 h-2 bg-[#0D9488] rounded-full animate-bounce" style={{ animationDelay: '200ms' }} />
                                             </div>
+                                        </div>
+                                    ) : actionError ? (
+                                        <div className="text-center py-8">
+                                            <FontAwesomeIcon icon={faTriangleExclamation} className="w-8 h-8 text-red-400 mb-2" />
+                                            <p className="text-red-600 text-sm">{actionError}</p>
                                         </div>
                                     ) : related.length > 0 ? (
                                         <div className="space-y-2">
@@ -385,26 +392,34 @@ export default function GraphTab() {
                                         Add New Entity
                                     </h4>
                                     <div className="flex gap-2">
-                                        <input
-                                            type="text"
-                                            value={newEntity.name}
-                                            onChange={(e) => setNewEntity({ ...newEntity, name: e.target.value })}
-                                            placeholder="Entity name (for example E015, COM1)"
-                                            className="flex-1 px-3 py-2 rounded-lg border border-[#D6CFC4] text-sm"
-                                        />
-                                        <select
-                                            value={newEntity.type}
-                                            onChange={(e) => setNewEntity({ ...newEntity, type: e.target.value as EntityType })}
-                                            className="px-3 py-2 rounded-lg border border-[#D6CFC4] text-sm"
-                                        >
-                                            <option value="error">Error</option>
-                                            <option value="terminal">Terminal</option>
-                                            <option value="device">Device</option>
-                                            <option value="protocol">Protocol</option>
-                                            <option value="component">Component</option>
-                                            <option value="cause">Cause</option>
-                                            <option value="solution">Solution</option>
-                                        </select>
+                                        <div className="flex-1">
+                                            <label htmlFor="new-entity-name" className="sr-only">Entity name</label>
+                                            <input
+                                                type="text"
+                                                id="new-entity-name"
+                                                value={newEntity.name}
+                                                onChange={(e) => setNewEntity({ ...newEntity, name: e.target.value })}
+                                                placeholder="Entity name (for example E015, COM1)"
+                                                className="w-full px-3 py-2 rounded-lg border border-[#D6CFC4] text-sm"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label htmlFor="new-entity-type" className="sr-only">Entity type</label>
+                                            <select
+                                                id="new-entity-type"
+                                                value={newEntity.type}
+                                                onChange={(e) => setNewEntity({ ...newEntity, type: e.target.value as EntityType })}
+                                                className="px-3 py-2 rounded-lg border border-[#D6CFC4] text-sm"
+                                            >
+                                                <option value="error">Error</option>
+                                                <option value="terminal">Terminal</option>
+                                                <option value="device">Device</option>
+                                                <option value="protocol">Protocol</option>
+                                                <option value="component">Component</option>
+                                                <option value="cause">Cause</option>
+                                                <option value="solution">Solution</option>
+                                            </select>
+                                        </div>
                                         <button
                                             onClick={() => void handleAddEntity()}
                                             disabled={busy || !newEntity.name.trim()}
@@ -421,32 +436,44 @@ export default function GraphTab() {
                                         Add Relationship
                                     </h4>
                                     <div className="flex gap-2 items-center">
-                                        <input
-                                            type="text"
-                                            value={newRelation.entityA}
-                                            onChange={(e) => setNewRelation({ ...newRelation, entityA: e.target.value })}
-                                            placeholder="Entity A"
-                                            className="flex-1 px-3 py-2 rounded-lg border border-[#D6CFC4] text-sm"
-                                        />
-                                        <select
-                                            value={newRelation.relationship}
-                                            onChange={(e) => setNewRelation({ ...newRelation, relationship: e.target.value })}
-                                            className="px-3 py-2 rounded-lg border border-[#D6CFC4] text-sm"
-                                        >
-                                            <option value="related_to">Related to</option>
-                                            <option value="part_of">Part of</option>
-                                            <option value="connected_to">Connected to</option>
-                                            <option value="caused_by">Caused by</option>
-                                            <option value="resolved_by">Resolved by</option>
-                                            <option value="compatible_with">Compatible with</option>
-                                        </select>
-                                        <input
-                                            type="text"
-                                            value={newRelation.entityB}
-                                            onChange={(e) => setNewRelation({ ...newRelation, entityB: e.target.value })}
-                                            placeholder="Entity B"
-                                            className="flex-1 px-3 py-2 rounded-lg border border-[#D6CFC4] text-sm"
-                                        />
+                                        <div className="flex-1">
+                                            <label htmlFor="rel-entity-a" className="sr-only">Entity A</label>
+                                            <input
+                                                type="text"
+                                                id="rel-entity-a"
+                                                value={newRelation.entityA}
+                                                onChange={(e) => setNewRelation({ ...newRelation, entityA: e.target.value })}
+                                                placeholder="Entity A"
+                                                className="w-full px-3 py-2 rounded-lg border border-[#D6CFC4] text-sm"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label htmlFor="rel-type" className="sr-only">Relationship type</label>
+                                            <select
+                                                id="rel-type"
+                                                value={newRelation.relationship}
+                                                onChange={(e) => setNewRelation({ ...newRelation, relationship: e.target.value })}
+                                                className="px-3 py-2 rounded-lg border border-[#D6CFC4] text-sm"
+                                            >
+                                                <option value="related_to">Related to</option>
+                                                <option value="part_of">Part of</option>
+                                                <option value="connected_to">Connected to</option>
+                                                <option value="caused_by">Caused by</option>
+                                                <option value="resolved_by">Resolved by</option>
+                                                <option value="compatible_with">Compatible with</option>
+                                            </select>
+                                        </div>
+                                        <div className="flex-1">
+                                            <label htmlFor="rel-entity-b" className="sr-only">Entity B</label>
+                                            <input
+                                                type="text"
+                                                id="rel-entity-b"
+                                                value={newRelation.entityB}
+                                                onChange={(e) => setNewRelation({ ...newRelation, entityB: e.target.value })}
+                                                placeholder="Entity B"
+                                                className="w-full px-3 py-2 rounded-lg border border-[#D6CFC4] text-sm"
+                                            />
+                                        </div>
                                         <button
                                             onClick={() => void handleAddRelationship()}
                                             disabled={busy || !newRelation.entityA || !newRelation.entityB}
@@ -489,7 +516,7 @@ export default function GraphTab() {
                                                             className={`w-3 h-3 ${entity.type === 'error' ? 'text-red-500'
                                                                 : entity.type === 'terminal' ? 'text-amber-500'
                                                                     : entity.type === 'device' ? 'text-blue-500'
-                                                                        : entity.type === 'protocol' ? 'text-purple-500'
+                                                                        : entity.type === 'protocol' ? 'text-cyan-500'
                                                                             : 'text-green-500'
                                                                 }`}
                                                         />
@@ -510,39 +537,44 @@ export default function GraphTab() {
 
                         {activeTab === 'insights' && (
                             <div className="space-y-4">
-                                <div className="p-4 bg-[#FAF7F2] rounded-lg">
-                                    <h4 className="text-sm font-semibold text-[#1C1917] mb-3">Entity Type Distribution</h4>
-                                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                                        {Object.entries(typeBreakdown).map(([type, count]) => (
-                                            <div key={type} className={`p-3 rounded-lg border ${ENTITY_TYPE_COLORS[type as EntityType]}`}>
-                                                <div className="flex items-center gap-2 mb-1">
-                                                    <FontAwesomeIcon icon={ENTITY_TYPE_ICONS[type as EntityType]} className="w-4 h-4" />
-                                                    <span className="text-xs font-medium capitalize">{type}</span>
-                                                </div>
-                                                <p className="text-xl font-bold">{count}</p>
-                                            </div>
-                                        ))}
+                                {entities.length === 0 ? (
+                                    <div className="text-center py-8">
+                                        <FontAwesomeIcon icon={faLightbulb} className="w-8 h-8 text-[#A8A29E] mb-2" />
+                                        <p className="text-[#78716C] text-sm">No entities yet. Add some via the Manage tab or auto-extract from samples.</p>
                                     </div>
-                                </div>
+                                ) : (
+                                    <>
+                                        <div className="p-4 bg-[#FAF7F2] rounded-lg">
+                                            <h4 className="text-sm font-semibold text-[#1C1917] mb-3">Entity Type Distribution</h4>
+                                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                                                {Object.entries(typeBreakdown).map(([type, count]) => (
+                                                    <div key={type} className={`p-3 rounded-lg border ${ENTITY_TYPE_COLORS[type as EntityType]}`}>
+                                                        <div className="flex items-center gap-2 mb-1">
+                                                            <FontAwesomeIcon icon={ENTITY_TYPE_ICONS[type as EntityType]} className="w-4 h-4" />
+                                                            <span className="text-xs font-medium capitalize">{type}</span>
+                                                        </div>
+                                                        <p className="text-xl font-bold">{count}</p>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
 
-                                <div className="p-4 bg-[#FAF7F2] rounded-lg">
-                                    <h4 className="text-sm font-semibold text-[#1C1917] mb-3">Relationship Types</h4>
-                                    <div className="space-y-2">
-                                        {[
-                                            { type: 'part_of', desc: 'Device to component' },
-                                            { type: 'connected_to', desc: 'Terminal to terminal' },
-                                            { type: 'caused_by', desc: 'Error to cause' },
-                                            { type: 'resolved_by', desc: 'Error to solution' },
-                                            { type: 'compatible_with', desc: 'Protocol to protocol' },
-                                            { type: 'related_to', desc: 'General relationship' },
-                                        ].map(rel => (
-                                            <div key={rel.type} className="flex items-center justify-between p-2 bg-white rounded-lg border border-[#D6CFC4]">
-                                                <span className="text-sm font-medium text-[#1C1917]">{rel.type.replace('_', ' ')}</span>
-                                                <span className="text-xs text-[#78716C]">{rel.desc}</span>
+                                        <div className="p-4 bg-[#FAF7F2] rounded-lg">
+                                            <h4 className="text-sm font-semibold text-[#1C1917] mb-3">Relationship Types</h4>
+                                            <div className="space-y-2">
+                                                {(stats?.relationship_types && stats.relationship_types.length > 0)
+                                                    ? stats.relationship_types.map(rel => (
+                                                        <div key={rel} className="flex items-center justify-between p-2 bg-white rounded-lg border border-[#D6CFC4]">
+                                                            <span className="text-sm font-medium text-[#1C1917]">{rel.replace(/_/g, ' ')}</span>
+                                                            <span className="text-xs text-[#78716C] capitalize">{rel.replace(/_/g, ' ')}</span>
+                                                        </div>
+                                                    ))
+                                                    : <p className="text-sm text-[#78716C]">No relationship types found yet.</p>
+                                                }
                                             </div>
-                                        ))}
-                                    </div>
-                                </div>
+                                        </div>
+                                    </>
+                                )}
 
                                 <button
                                     onClick={() => void handleExtractFromText()}

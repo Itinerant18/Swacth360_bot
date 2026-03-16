@@ -38,6 +38,7 @@
  */
 
 import { ChatOpenAI } from '@langchain/openai';
+import { extractJsonFromSarvam } from './sarvam';
 import { embedText } from './embeddings';
 import { getSupabase } from './supabase';
 import type { RankedMatch, RAGResult } from './rag-engine';
@@ -129,10 +130,8 @@ Respond ONLY with JSON:
 If no verifiable claims, respond: {"claims": []}`;
 
         const result = await llm.invoke(prompt);
-        const raw = (result.content as string).trim()
-            .replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-        const parsed = JSON.parse(raw);
-        const claims: { claim: string; supported: boolean }[] = parsed.claims ?? [];
+        const parsed = extractJsonFromSarvam<{ claims?: { claim: string; supported: boolean }[] }>(result.content as string);
+        const claims = parsed?.claims ?? [];
 
         if (claims.length === 0) return 0.75; // no verifiable claims = neutral
 
@@ -375,9 +374,10 @@ export async function storeEvalResult(
             flags: evalResult.flags,
             user_id: userId ?? null,
         });
-    } catch (err: any) {
-        // Silently fail — evals must never break the main flow
-        console.warn(`⚠️  Eval storage failed: ${err.message}`);
+    } catch (err) {
+        // Silently fail â€” evals must never break the main flow
+        const message = err instanceof Error ? err.message : String(err);
+        console.warn(`âš ï¸  Eval storage failed: ${message}`);
     }
 }
 
@@ -385,7 +385,7 @@ export async function storeEvalResult(
  * evaluateAndStore()
  *
  * Convenience wrapper: evaluate + store in one call.
- * Use `void evaluateAndStore(...)` in chat route — non-blocking.
+ * Use `void evaluateAndStore(...)` in chat route â€” non-blocking.
  */
 export async function evaluateAndStore(params: {
     question: string;
@@ -408,11 +408,12 @@ export async function evaluateAndStore(params: {
         console.log(`   Overall:          ${(s.overallScore * 100).toFixed(0)}%`);
 
         if (result.flags.length > 0) {
-            console.warn(`   ⚠️  Flags: ${result.flags.map(f => f.message).join(' | ')}`);
+            console.warn(`   âš ï¸  Flags: ${result.flags.map(f => f.message).join(' | ')}`);
         }
 
         await storeEvalResult(result, params.userId);
-    } catch (err: any) {
-        console.warn(`⚠️  Eval pipeline failed: ${err.message}`);
+    } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.warn(`âš ï¸  Eval pipeline failed: ${message}`);
     }
 }

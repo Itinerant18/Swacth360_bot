@@ -32,6 +32,7 @@
 import { ChatOpenAI } from '@langchain/openai';
 import { embedTexts } from './embeddings';
 import { getSupabase } from './supabase';
+import { stripThinkTags } from './sarvam';
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
@@ -253,7 +254,7 @@ Write the summary (no preamble):`;
 
     try {
         const result = await llm.invoke(prompt);
-        const summary = (result.content as string).trim().slice(0, 800);
+        const summary = stripThinkTags((result.content as string)).trim().slice(0, 800);
         return summary || `HMS ${cluster.category} — ${cluster.entities.join(', ')} (${cluster.members.length} entries from ${cluster.sourceNames.join(', ')})`;
     } catch {
         // Fallback summary
@@ -478,13 +479,14 @@ export async function buildRaptorTree(llm: ChatOpenAI): Promise<{
 
         return { levelsBuilt, clustersBuilt, chunksIndexed: chunks.length };
 
-    } catch (err: any) {
-        console.error(`❌ RAPTOR BUILD FAILED: ${err.message}`);
+    } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.error(`❌ RAPTOR BUILD FAILED: ${message}`);
         if (buildLogId) {
             await supabase.from('raptor_clusters').delete().eq('build_id', buildLogId);
             await supabase.from('raptor_build_log').update({
                 status: 'failed',
-                error_msg: err.message,
+                error_msg: message,
                 completed_at: new Date().toISOString(),
             }).eq('id', buildLogId);
         }
