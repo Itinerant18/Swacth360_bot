@@ -1504,7 +1504,9 @@ npx tsx scripts/ingest-diagram.ts --file="data/diagrams/uart-rs232-bitstream.md"
 npx tsx scripts/ingest-diagram.ts --dir="data/diagrams/" --type="block"
 npx tsx scripts/ingest-diagram.ts --dir="data/diagrams" --type="wiring"
 
-
+# Or JSONL Files (.jsonl)
+#Individual JSONL file:
+npx tsx scripts/ingest-jsonl.ts --file="data/langextract/your-file.jsonl" --name="Document Name"
 ```
 
 ### **Git Commands**
