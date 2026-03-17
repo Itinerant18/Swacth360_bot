@@ -38,6 +38,9 @@ type Analytics = {
     topUnknown: { english_text: string; user_question: string; frequency: number; top_similarity: number }[];
     knowledgeBase: Record<string, { count: number; name: string }>;
     recentSessions: { user_question: string; answer_mode: string; top_similarity: number; created_at: string }[];
+    conversations?: { total: number; totalMessages: number; isNewSystem: boolean };
+    feedback?: { total: number; positive: number; negative: number };
+    tokenUsage?: { totalTokens: number; totalRequests: number };
 };
 
 const EMPTY_ANALYTICS: Analytics = {
@@ -51,6 +54,9 @@ const EMPTY_ANALYTICS: Analytics = {
     topUnknown: [],
     knowledgeBase: {},
     recentSessions: [],
+    conversations: { total: 0, totalMessages: 0, isNewSystem: false },
+    feedback: { total: 0, positive: 0, negative: 0 },
+    tokenUsage: { totalTokens: 0, totalRequests: 0 },
 };
 
 type TrackedUser = {
@@ -104,6 +110,13 @@ export default function AdminDashboard() {
     const [analyticsError, setAnalyticsError] = useState('');
     const [usersError, setUsersError] = useState('');
     const [activeQuestionId, setActiveQuestionId] = useState<string | null>(null);
+
+    // RAPTOR state
+    const [raptorHealth, setRaptorHealth] = useState<{ level: number; cluster_count: number; total_leaf_coverage: number; avg_quality: string; avg_children: string }[]>([]);
+    const [raptorBuildLog, setRaptorBuildLog] = useState<{ id: string; status: string; started_at: string; completed_at?: string; clusters_built?: number; error_msg?: string }[]>([]);
+    const [raptorLoading, setRaptorLoading] = useState(false);
+    const [raptorError, setRaptorError] = useState('');
+    const [raptorBuilding, setRaptorBuilding] = useState(false);
 
     // Ingest state
     const [ingestMode, setIngestMode] = useState<'pdf' | 'text'>('pdf');
@@ -181,11 +194,41 @@ export default function AdminDashboard() {
         setUsersLoading(false);
     }, []);
 
+    const fetchRaptor = useCallback(async () => {
+        setRaptorLoading(true);
+        setRaptorError('');
+        try {
+            const res = await fetch('/api/admin/raptor');
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Failed to load RAPTOR data');
+            setRaptorHealth(data.health || []);
+            setRaptorBuildLog(data.buildLog || []);
+        } catch (err: unknown) {
+            setRaptorError((err as Error).message || 'Failed to load RAPTOR data');
+        }
+        setRaptorLoading(false);
+    }, []);
+
+    const triggerRaptorBuild = async () => {
+        setRaptorBuilding(true);
+        try {
+            const res = await fetch('/api/admin/raptor', { method: 'POST' });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Build failed');
+            showToast(`RAPTOR build complete: ${data.stats?.totalClusters ?? 0} clusters`);
+            await fetchRaptor();
+        } catch (err: unknown) {
+            showToast(`Error: ${(err as Error).message}`);
+        }
+        setRaptorBuilding(false);
+    };
+
     useEffect(() => {
         if (tab === 'review') void fetchQuestions();
         else if (tab === 'analytics') void fetchAnalytics();
         else if (tab === 'users') void fetchUsers();
-    }, [tab, fetchQuestions, fetchAnalytics, fetchUsers]);
+        else if (tab === 'raptor') void fetchRaptor();
+    }, [tab, fetchQuestions, fetchAnalytics, fetchUsers, fetchRaptor]);
 
     const showToast = (msg: string) => {
         setToast(msg);
@@ -517,10 +560,19 @@ export default function AdminDashboard() {
                             </div>
                         )}
                         <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4">
-                            <SkeuoStat label="Total Chats" value={analytics.totalChats} icon={faComment} />
-                            <SkeuoStat label="RAG Answers" value={`${analytics.ragCount} (${analytics.ragPercent}%)`} icon={faBook} accent="text-emerald-700" />
+                            {analytics.conversations?.isNewSystem ? (
+                                <>
+                                    <SkeuoStat label="Conversations" value={analytics.conversations.total} icon={faComment} />
+                                    <SkeuoStat label="Messages" value={analytics.conversations.totalMessages} icon={faBook} accent="text-emerald-700" />
+                                </>
+                            ) : (
+                                <>
+                                    <SkeuoStat label="Total Chats" value={analytics.totalChats} icon={faComment} />
+                                    <SkeuoStat label="RAG Answers" value={`${analytics.ragCount} (${analytics.ragPercent}%)`} icon={faBook} accent="text-emerald-700" />
+                                </>
+                            )}
                             <SkeuoStat label="LLM Fallback" value={analytics.generalCount} icon={faRobot} accent="text-amber-700" />
-                            <SkeuoStat label="Diagrams" value={`${analytics.diagramCount || 0} (${analytics.diagramPercent || 0}%)`} icon={faDiagramProject} accent="text-[#CA8A04]" />
+                            <SkeuoStat label="Feedback" value={analytics.feedback?.total ?? 0} icon={faStar} accent="text-[#CA8A04]" />
                             <SkeuoStat label="Pending" value={analytics.unknownQuestions.pending} icon={faCircleExclamation} accent="text-red-700" />
                         </div>
 
@@ -1072,35 +1124,133 @@ export default function AdminDashboard() {
                             </div>
                         </div>
 
-                        <div className="skeuo-card p-4 sm:p-5">
-                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
-                                <div className="bg-[#FAF7F2] rounded-lg p-3 text-center">
-                                    <p className="text-xl font-bold text-[#0D9488]">—</p>
-                                    <p className="text-[10px] text-[#78716C] uppercase">Clusters</p>
-                                </div>
-                                <div className="bg-[#FAF7F2] rounded-lg p-3 text-center">
-                                    <p className="text-xl font-bold text-[#0D9488]">—</p>
-                                    <p className="text-[10px] text-[#78716C] uppercase">Summaries</p>
-                                </div>
-                                <div className="bg-[#FAF7F2] rounded-lg p-3 text-center">
-                                    <p className="text-xl font-bold text-[#0D9488]">—</p>
-                                    <p className="text-[10px] text-[#78716C] uppercase">Depth</p>
-                                </div>
+                        {raptorError && (
+                            <div className="skeuo-card p-4 sm:p-5 border-red-200 bg-red-50/40">
+                                <p className="text-sm text-red-700">{raptorError}</p>
                             </div>
+                        )}
 
-                            <div className="text-center py-10">
-                                <FontAwesomeIcon icon={faLayerGroup} className="w-10 h-10 text-[#A8A29E] mb-3" />
-                                <h3 className="text-base font-semibold text-[#1C1917] mb-2">Coming Soon</h3>
-                                <p className="text-sm text-[#78716C] max-w-md mx-auto">
-                                    RAPTOR indexing will enable multi-hop retrieval by clustering related knowledge
-                                    chunks and creating hierarchical summaries for deeper reasoning.
-                                </p>
+                        {raptorLoading ? (
+                            <div className="flex items-center justify-center py-20">
+                                <div className="flex gap-1.5">
+                                    <div className="w-2 h-2 rounded-full bg-[#CA8A04] animate-bounce" style={{ animationDelay: '0ms' }} />
+                                    <div className="w-2 h-2 rounded-full bg-[#D97706] animate-bounce" style={{ animationDelay: '150ms' }} />
+                                    <div className="w-2 h-2 rounded-full bg-[#0D9488] animate-bounce" style={{ animationDelay: '300ms' }} />
+                                </div>
                             </div>
-                        </div>
+                        ) : (
+                            <>
+                                <div className="skeuo-card p-4 sm:p-5">
+                                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+                                        <div className="bg-[#FAF7F2] rounded-lg p-3 text-center">
+                                            <p className="text-xl font-bold text-[#0D9488]">
+                                                {raptorHealth.reduce((sum, h) => sum + h.cluster_count, 0) || '0'}
+                                            </p>
+                                            <p className="text-[10px] text-[#78716C] uppercase">Total Clusters</p>
+                                        </div>
+                                        <div className="bg-[#FAF7F2] rounded-lg p-3 text-center">
+                                            <p className="text-xl font-bold text-[#0D9488]">{raptorHealth.length || '0'}</p>
+                                            <p className="text-[10px] text-[#78716C] uppercase">Depth Levels</p>
+                                        </div>
+                                        <div className="bg-[#FAF7F2] rounded-lg p-3 text-center">
+                                            <p className="text-xl font-bold text-[#0D9488]">
+                                                {raptorHealth[0]?.total_leaf_coverage ?? '0'}
+                                            </p>
+                                            <p className="text-[10px] text-[#78716C] uppercase">Leaf Coverage</p>
+                                        </div>
+                                        <div className="bg-[#FAF7F2] rounded-lg p-3 text-center">
+                                            <p className="text-xl font-bold text-emerald-600">
+                                                {raptorHealth.length > 0
+                                                    ? `${(parseFloat(raptorHealth[0]?.avg_quality || '0') * 100).toFixed(0)}%`
+                                                    : '—'}
+                                            </p>
+                                            <p className="text-[10px] text-[#78716C] uppercase">Avg Quality</p>
+                                        </div>
+                                    </div>
+
+                                    {/* Per-level breakdown */}
+                                    {raptorHealth.length > 0 && (
+                                        <div className="space-y-2 mb-4">
+                                            <h3 className="text-xs text-[#78716C] uppercase tracking-wider font-medium">Hierarchy Levels</h3>
+                                            {raptorHealth.map((h) => (
+                                                <div key={h.level} className="flex items-center justify-between py-2 px-3 rounded-lg bg-[#F0EBE3] border border-[#D6CFC4]">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="w-6 h-6 rounded-full bg-[#0D9488]/15 text-[#0D9488] flex items-center justify-center text-[10px] font-bold">L{h.level}</span>
+                                                        <span className="text-sm text-[#44403C]">{h.cluster_count} clusters</span>
+                                                    </div>
+                                                    <div className="flex items-center gap-3 text-xs text-[#78716C]">
+                                                        <span>{h.total_leaf_coverage} leaves</span>
+                                                        <span>avg {parseFloat(h.avg_children).toFixed(1)} children</span>
+                                                        <span className={parseFloat(h.avg_quality) > 0.7 ? 'text-emerald-600' : 'text-amber-600'}>
+                                                            {(parseFloat(h.avg_quality) * 100).toFixed(0)}% quality
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+
+                                    {/* Build log */}
+                                    {raptorBuildLog.length > 0 && (
+                                        <div className="space-y-2">
+                                            <h3 className="text-xs text-[#78716C] uppercase tracking-wider font-medium">Build History</h3>
+                                            {raptorBuildLog.map((log) => (
+                                                <div key={log.id} className={`flex items-center justify-between py-2 px-3 rounded-lg border ${
+                                                    log.status === 'completed' ? 'bg-emerald-50/50 border-emerald-200'
+                                                    : log.status === 'running' ? 'bg-blue-50/50 border-blue-200'
+                                                    : 'bg-red-50/50 border-red-200'
+                                                }`}>
+                                                    <div className="flex items-center gap-2">
+                                                        <span className={`w-2 h-2 rounded-full ${
+                                                            log.status === 'completed' ? 'bg-emerald-500'
+                                                            : log.status === 'running' ? 'bg-blue-500 animate-pulse'
+                                                            : 'bg-red-500'
+                                                        }`} />
+                                                        <span className="text-xs text-[#44403C] capitalize">{log.status}</span>
+                                                        {log.clusters_built != null && <span className="text-xs text-[#78716C]">({log.clusters_built} clusters)</span>}
+                                                    </div>
+                                                    <span className="text-xs text-[#A8A29E]">
+                                                        {new Date(log.started_at).toLocaleDateString()} {new Date(log.started_at).toLocaleTimeString()}
+                                                    </span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+
+                                    {raptorHealth.length === 0 && !raptorError && (
+                                        <div className="text-center py-10">
+                                            <FontAwesomeIcon icon={faLayerGroup} className="w-10 h-10 text-[#A8A29E] mb-3" />
+                                            <h3 className="text-base font-semibold text-[#1C1917] mb-2">No RAPTOR index yet</h3>
+                                            <p className="text-sm text-[#78716C] max-w-md mx-auto">
+                                                Click the button below to build the RAPTOR hierarchical index from your knowledge base.
+                                            </p>
+                                        </div>
+                                    )}
+                                </div>
+
+                                <button
+                                    onClick={() => void triggerRaptorBuild()}
+                                    disabled={raptorBuilding}
+                                    className="skeuo-brass w-full py-3 text-sm flex items-center justify-center gap-2"
+                                >
+                                    {raptorBuilding ? (
+                                        <>
+                                            <FontAwesomeIcon icon={faSpinner} className="w-4 h-4 animate-spin" />
+                                            Building RAPTOR tree... (this may take a few minutes)
+                                        </>
+                                    ) : (
+                                        <>
+                                            <FontAwesomeIcon icon={faLayerGroup} className="w-4 h-4" />
+                                            {raptorHealth.length > 0 ? 'Rebuild RAPTOR Index' : 'Build RAPTOR Index'}
+                                        </>
+                                    )}
+                                </button>
+                            </>
+                        )}
 
                         <div className="p-3 sm:p-4 bg-blue-50 rounded-xl border border-blue-200">
                             <p className="text-xs text-blue-800">
-                                <strong>💡 How it works:</strong> RAPTOR recursively clusters embeddings using UMAP + GMM,
+                                <strong>How it works:</strong> RAPTOR recursively clusters embeddings using UMAP + GMM,
                                 summarizes each cluster, and indexes summaries at multiple abstraction levels.
                                 This enables answering questions that span multiple documents.
                             </p>

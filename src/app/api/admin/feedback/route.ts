@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { submitFeedback } from '@/lib/knowledge-graph';
 import { getSupabase } from '@/lib/supabase';
+import { recordFeedback } from '@/lib/feedback-reranker';
 
 export async function POST(request: NextRequest) {
     try {
@@ -31,8 +32,14 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        // Submit feedback
+        // Submit feedback to knowledge graph
         await submitFeedback(queryText, resultId, rating, isRelevant ?? null, feedbackText);
+
+        // Update feedback-driven reranking scores
+        // Rating 1-2 = negative, 4-5 = positive, 3 = neutral
+        if (rating !== 3) {
+            void recordFeedback(resultId, rating >= 4, queryText);
+        }
 
         return NextResponse.json({
             success: true,

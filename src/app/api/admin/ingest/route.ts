@@ -40,6 +40,7 @@ import { getSupabase } from '@/lib/supabase';
 import { embedText } from '@/lib/embeddings';
 import { extractPdfText } from '@/lib/pdf-extract';
 import { ChatOpenAI } from '@langchain/openai';
+import { semanticChunk } from '@/lib/semantic-chunker';
 
 // ─── Config ───────────────────────────────────────────────────
 const CHILD_CHUNK_SIZE = 400;       // small chunks for precise retrieval
@@ -552,6 +553,7 @@ export async function POST(req: NextRequest) {
     let sourceName = '';
     let inputType: 'pdf' | 'text' = 'text';
     let pdfBuffer: ArrayBuffer | null = null;
+    let chunkingMode: 'parent-child' | 'semantic' = 'parent-child';
 
     const contentType = req.headers.get('content-type') ?? '';
     console.info('[admin.ingest] request', {
@@ -564,6 +566,8 @@ export async function POST(req: NextRequest) {
         const file = form.get('file') as File | null;
         sourceName = (form.get('sourceName') as string | null)?.trim()
             || file?.name.replace('.pdf', '') || 'Uploaded PDF';
+        chunkingMode = (form.get('chunkingMode') as string | null) === 'semantic'
+            ? 'semantic' : 'parent-child';
         inputType = 'pdf';
 
         if (!file) {
@@ -589,6 +593,7 @@ export async function POST(req: NextRequest) {
         const body = await req.json().catch(() => ({}));
         rawText = (body.text ?? '').trim();
         sourceName = (body.sourceName ?? 'Admin Text Input').trim();
+        chunkingMode = body.chunkingMode === 'semantic' ? 'semantic' : 'parent-child';
         inputType = 'text';
         if (rawText.length < 50)
             return NextResponse.json({ error: 'Text too short — paste at least 50 characters' }, { status: 400 });
@@ -603,7 +608,32 @@ export async function POST(req: NextRequest) {
     });
 
     const hasText = rawText.trim().length >= 50;
-    const chunkPairs = hasText ? buildParentChildChunks(rawText) : [];
+    let chunkPairs: ChunkPair[] = [];
+
+    if (hasText && chunkingMode === 'semantic') {
+        // Semantic chunking: split at topic boundaries using embedding similarity
+        console.log(`🧠 Using semantic chunking mode for ${sourceName}`);
+        try {
+            const semanticChunks = await semanticChunk(rawText, {
+                similarityThreshold: 0.75,
+                minChunkSize: 100,
+                maxChunkSize: 1500,
+            });
+            chunkPairs = semanticChunks.map((chunk, idx) => ({
+                parent: chunk.content,
+                child: chunk.content.slice(0, CHILD_CHUNK_SIZE),
+                section: `Semantic Chunk ${idx + 1}`,
+                chunkIndex: idx,
+            }));
+            console.log(`🧠 Semantic chunking produced ${chunkPairs.length} chunks`);
+        } catch (err) {
+            console.warn(`⚠️  Semantic chunking failed, falling back to parent-child:`, (err as Error).message);
+            chunkPairs = buildParentChildChunks(rawText);
+        }
+    } else if (hasText) {
+        chunkPairs = buildParentChildChunks(rawText);
+    }
+
     const isImageOnly = inputType === 'pdf' && !hasText;
 
     if (isImageOnly) console.log('ℹ️  No text extracted — running image-only pipeline via Gemini');
@@ -972,7 +1002,9 @@ Output the diagram in markdown only. No preamble.`;
         results,
         // Tell the UI about the new pipeline features
         pipeline: {
-            parentChildChunking: true,
+            chunkingMode,
+            parentChildChunking: chunkingMode === 'parent-child',
+            semanticChunking: chunkingMode === 'semantic',
             propositionExtraction: true,
             semanticDeduplication: true,
             entityEnrichment: true,

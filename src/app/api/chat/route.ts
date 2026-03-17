@@ -18,6 +18,9 @@ import { createServerSupabaseClient } from '@/lib/auth-server';
 import { checkCache, storeCache } from '@/lib/cache';
 import { embedText } from '@/lib/embeddings';
 import { stripThinkTags } from '@/lib/sarvam';
+import { rewriteWithContext, type ConversationMessage } from '@/lib/conversation-retrieval';
+import { applyFeedbackBoost } from '@/lib/feedback-reranker';
+import { checkRateLimit, getClientIdentifier, rateLimitHeaders, RATE_LIMITS } from '@/lib/rate-limiter';
 
 dns.setDefaultResultOrder('ipv4first');
 
@@ -238,6 +241,23 @@ function buildMergedRagResult(
 export async function POST(req: Request) {
     const requestStart = performance.now();
 
+    // ── Rate Limiting ─────────────────────────────────────────────
+    const clientIp = getClientIdentifier(req);
+    // Determine rate limit tier (will be refined after auth check)
+    const rateLimitResult = await checkRateLimit(clientIp, RATE_LIMITS.guest);
+    if (!rateLimitResult.allowed) {
+        return new Response(
+            JSON.stringify({ error: 'Rate limit exceeded. Please try again later.' }),
+            {
+                status: 429,
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...rateLimitHeaders(rateLimitResult),
+                },
+            }
+        );
+    }
+
     try {
         const {
             messages,
@@ -363,16 +383,38 @@ export async function POST(req: Request) {
             console.log(`Translation [${language}->EN]: "${englishQuestion}"`);
         }
 
+        // ── Conversation-Aware Retrieval ──────────────────────────────
+        // Rewrite follow-up queries using conversation history so that
+        // pronouns like "it", "that", "this" resolve correctly.
+        const contextMessages: ConversationMessage[] = historySource
+            .map((m: { role: string; content: string }) => ({
+                role: m.role as 'user' | 'assistant',
+                content: m.content,
+            }));
+
+        const { rewritten: contextualQuestion, wasRewritten } = await rewriteWithContext(
+            englishQuestion,
+            contextMessages,
+            sarvamLlm,
+        );
+
+        if (wasRewritten) {
+            console.log(`Context rewrite: "${englishQuestion}" -> "${contextualQuestion}"`);
+        }
+
+        // Use the contextual question for retrieval, original for display
+        const retrievalQuestion = wasRewritten ? contextualQuestion : englishQuestion;
+
         // ── Diagram detection — MUST run BEFORE cache checks ──────────
         // If this is a diagram request, skip cache entirely and go
         // straight to diagram generation. Otherwise cached text answers
         // for keywords like "hms panel" intercept diagram queries.
-        const { isDiagram, diagramType } = isDiagramRequest(englishQuestion);
+        const { isDiagram, diagramType } = isDiagramRequest(retrievalQuestion);
 
         // Tier 1 Cache Check (exact match, no embedding needed)
         // Skip cache for diagram requests
         if (!isDiagram) {
-            const tier1CacheResult = await checkCache(englishQuestion, null);
+            const tier1CacheResult = await checkCache(retrievalQuestion, null);
             if (tier1CacheResult.hit) {
                 console.log('[chat] Cache Tier 1 hit - skipping full RAG pipeline');
 
@@ -398,18 +440,18 @@ export async function POST(req: Request) {
         }
 
         const notFoundMsg = NOT_FOUND_MESSAGES[language] || NOT_FOUND_MESSAGES.en;
-        const { decision, relationalResult } = await logicalRoute(englishQuestion);
+        const { decision, relationalResult } = await logicalRoute(retrievalQuestion);
         if (decision.route === 'relational' && relationalResult) {
             const relationalAnswer = formatRelationalAnswer(relationalResult, langName);
             return textStreamResponse(relationalAnswer);
         }
 
         // Embed query (reused for Tier 2 cache + RAG retrieval)
-        const cachedQueryEmbedding = await embedText(englishQuestion);
+        const cachedQueryEmbedding = await embedText(retrievalQuestion);
 
         // Tier 2 Cache Check (semantic match) — also skip for diagram requests
         if (!isDiagram) {
-            const tier2CacheResult = await checkCache(englishQuestion, cachedQueryEmbedding);
+            const tier2CacheResult = await checkCache(retrievalQuestion, cachedQueryEmbedding);
             if (tier2CacheResult.hit) {
                 console.log(`[chat] Cache Tier 2 hit (sim=${tier2CacheResult.similarity?.toFixed(3)}) - skipping full RAG pipeline`);
 
@@ -433,11 +475,11 @@ export async function POST(req: Request) {
             }
         }
 
-        const baseAnalysis = classifyQuery(englishQuestion);
+        const baseAnalysis = classifyQuery(retrievalQuestion);
         const routedPrompt = selectRoute(baseAnalysis, langName, notFoundMsg, 'general');
         logRoute(baseAnalysis, routedPrompt);
 
-        const decomposed = await decomposeQuery(englishQuestion, baseAnalysis, sarvamLlm);
+        const decomposed = await decomposeQuery(retrievalQuestion, baseAnalysis, sarvamLlm);
         const decomposedPrefix = buildDecomposedPromptPrefix(decomposed);
         const useHybridSearch = shouldUseHybridRetrieval(
             baseAnalysis,
@@ -472,7 +514,13 @@ export async function POST(req: Request) {
             );
             lastRagResult = buildMergedRagResult(baseAnalysis, subResults, ragStart);
         } else {
-            lastRagResult = await retrieve(englishQuestion, sarvamLlm, retrieveOptions);
+            lastRagResult = await retrieve(retrievalQuestion, sarvamLlm, retrieveOptions);
+        }
+
+        // ── Feedback-Driven Reranking Boost ──────────────────────────
+        // Adjust scores based on historical user feedback (thumbs up/down)
+        if (lastRagResult.matches.length > 0) {
+            await applyFeedbackBoost(lastRagResult.matches);
         }
 
         console.log(`RAG Engine completed [${elapsed(ragStart)}]`);
@@ -585,14 +633,14 @@ export async function POST(req: Request) {
             answerMode,
             confidence,
             contextString,
-            englishQuestion,
+            retrievalQuestion,
             historySection,
             decomposedPrefix
         );
 
         const response = await sarvamLlm.invoke([
             { role: 'system', content: systemPrompt },
-            { role: 'user', content: englishQuestion },
+            { role: 'user', content: retrievalQuestion },
         ]);
 
         const rawAnswer = typeof response.content === 'string'
@@ -601,7 +649,7 @@ export async function POST(req: Request) {
         const answer = stripThinkTags(rawAnswer);
 
         void evaluateAndStore({
-            question: englishQuestion,
+            question: retrievalQuestion,
             answer,
             ragResult: lastRagResult,
             llm: sarvamLlm,
@@ -622,7 +670,7 @@ export async function POST(req: Request) {
 
         // Store answer in both cache tiers (fire-and-forget)
         void storeCache({
-            query: englishQuestion,
+            query: retrievalQuestion,
             queryVector: cachedQueryEmbedding,
             answer,
             answerMode: dbAnswerMode,
@@ -653,10 +701,14 @@ export async function POST(req: Request) {
         console.log(`Sources: ${retrievalMetadata?.sourcesUsed?.join(', ') || 'none'}`);
         console.log(`${'='.repeat(60)}\n`);
 
-        // Return with conversation ID header for frontend
+        // Return with conversation ID header and rate limit info
         const chatResponse = textStreamResponse(answer);
         if (activeConversationId) {
             chatResponse.headers.set('x-conversation-id', activeConversationId);
+        }
+        const rlHeaders = rateLimitHeaders(rateLimitResult);
+        for (const [key, value] of Object.entries(rlHeaders)) {
+            chatResponse.headers.set(key, value);
         }
         return chatResponse;
     } catch (error: unknown) {

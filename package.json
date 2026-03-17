@@ -7,7 +7,10 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test:smoke": "tsx tests/admin-smoke.test.ts"
+    "test:smoke": "tsx tests/admin-smoke.test.ts",
+    "benchmark": "tsx scripts/run-rag-benchmark.ts",
+    "benchmark:factual": "tsx scripts/run-rag-benchmark.ts --category factual",
+    "benchmark:diagnostic": "tsx scripts/run-rag-benchmark.ts --category diagnostic"
   },
   "dependencies": {
     "@fortawesome/fontawesome-svg-core": "^7.2.0",

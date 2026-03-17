@@ -14,17 +14,8 @@ import { getSupabase } from '@/lib/supabase';
 
 const RAPTOR_CONFIG_TOKENS = 300;
 
-function isAuthorized(request: NextRequest): boolean {
-    const adminKey = request.headers.get('x-admin-key');
-    return Boolean(process.env.ADMIN_API_KEY) && adminKey === process.env.ADMIN_API_KEY;
-}
-
 export async function POST(req: NextRequest) {
-    if (!isAuthorized(req)) {
-        console.warn('[admin.raptor.post] unauthorized');
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
+    void req;
     try {
         console.info('[admin.raptor.post] request');
         const supabase = getSupabase();
@@ -87,12 +78,7 @@ export async function POST(req: NextRequest) {
     }
 }
 
-export async function GET(req: NextRequest) {
-    if (!isAuthorized(req)) {
-        console.warn('[admin.raptor.get] unauthorized');
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
+export async function GET(_req: NextRequest) {
     try {
         console.info('[admin.raptor.get] request');
         const supabase = getSupabase();
