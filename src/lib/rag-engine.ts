@@ -434,7 +434,7 @@ async function multiVectorSearch(
                 recency_boost: recencyBoost,
             });
             if (error || !mmrData) return [];
-            type SupabaseRow = { id: string; question: string; answer: string; category: string; subcategory?: string; content: string; source: string; source_name: string; chunk_type?: string; similarity: number; mmr_score?: number; weighted_score?: number };
+            type SupabaseRow = { id: string; question: string; answer: string; category: string; subcategory?: string; content: string; source: string; source_name: string; chunk_type?: string; similarity: number; final_score?: number; source_rank?: number; mmr_score?: number; weighted_score?: number };
             return (mmrData as SupabaseRow[]).map(row => ({
                 id: row.id,
                 question: row.question,
@@ -446,10 +446,10 @@ async function multiVectorSearch(
                 source_name: row.source_name,
                 chunkType: row.chunk_type,
                 vectorSimilarity: row.similarity,
-                mmrScore: row.mmr_score,
+                mmrScore: row.final_score,
                 crossScore: 0,
                 bm25Score: 0,
-                finalScore: row.mmr_score ?? 0,
+                finalScore: row.final_score ?? row.similarity ?? 0,
                 retrievalVector: label,
             }));
         } else if (useWeighted) {
@@ -972,6 +972,7 @@ export async function retrieve(
             p_matches_found: reranked.length,
             p_answer_mode: answerMode,
             p_latency_ms: Math.round(latencyMs),
+            p_user_id: null,
         });
 
         // Record access for each returned match

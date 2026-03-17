@@ -361,7 +361,7 @@ Respond with ONLY valid JSON:
  * This prevents knowledge drift from repeated re-uploads of the same manual
  * and keeps retrieval precise (no duplicate hits).
  */
-export function buildFallbackQAPair(
+function buildFallbackQAPair(
     chunk: string,
     sourceName: string,
     section: string,
@@ -608,10 +608,10 @@ export async function POST(req: NextRequest) {
 
     if (isImageOnly) console.log('ℹ️  No text extracted — running image-only pipeline via Gemini');
 
-    // Image extraction
+    // Image extraction — run for ALL PDFs (text+image manuals have diagrams too)
     let extractedImages: ExtractedImage[] = [];
-    if (inputType === 'pdf' && pdfBuffer && geminiKey && isImageOnly) {
-        console.log('🖼️  Extracting images via Gemini...');
+    if (inputType === 'pdf' && pdfBuffer && geminiKey) {
+        console.log(`🖼️  Running Gemini image extraction on ${sourceName} (${pdfBuffer.byteLength} bytes)`);
         extractedImages = await extractImagesFromPdf(pdfBuffer, sourceName, geminiKey);
         console.log(`🖼️  Found ${extractedImages.length} image(s)`);
     }

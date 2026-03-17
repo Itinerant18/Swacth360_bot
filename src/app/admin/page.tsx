@@ -838,7 +838,7 @@ export default function AdminDashboard() {
                                     {processing ? (
                                         <>
                                             <FontAwesomeIcon icon={faSpinner} className="w-4 h-4 animate-spin" />
-                                            Processing... (this may take 30-60 seconds)
+                                            Processing... (may take 60-120 seconds for PDFs with diagrams)
                                         </>
                                     ) : (
                                         <>

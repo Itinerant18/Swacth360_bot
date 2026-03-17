@@ -494,7 +494,7 @@ export async function POST(req: Request) {
         if (
             topMatch &&
             topMatch.chunkType === 'diagram' &&
-            confidence >= 0.65 &&
+            confidence >= 0.55 &&
             topMatch.answer?.length > 100
         ) {
             console.log(`📐 Stored diagram found: "${topMatch.question}" (conf: ${confidence.toFixed(2)})`);

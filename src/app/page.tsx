@@ -499,6 +499,10 @@ export default function Chat() {
     const [sessionSaved, setSessionSaved] = useState(false);
 
     // ─── Guest Question Limit ─────────────────────────────────
+    // GUEST LIMIT: Currently enforced client-side only (localStorage).
+    // TODO: Add server-side IP-based rate limiting via a guest_rate_limit table.
+    // See: supabase/migrations/XXX_guest_rate_limit.sql (not yet created)
+    // The client-side gate prevents casual abuse but not determined bypasses.
     const GUEST_QUESTION_LIMIT = 3;
     const [guestQuestionCount, setGuestQuestionCount] = useState(0);
     const [showGuestGate, setShowGuestGate] = useState(false);
