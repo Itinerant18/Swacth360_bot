@@ -1,44 +1,101 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faSliders, faBrain, faMagnifyingGlass, faSave, faRotate } from '@fortawesome/free-solid-svg-icons';
+import { faSliders, faBrain, faMagnifyingGlass, faSave, faRotate, faTriangleExclamation, faArrowsRotate } from '@fortawesome/free-solid-svg-icons';
 import {
     DEFAULT_RAG_SETTINGS,
     RAG_SETTINGS_STORAGE_KEY,
     type RAGSettings,
-    loadStoredRAGSettings,
 } from '@/lib/rag-settings';
 
 export default function RAGSettingsTab() {
-    const [settings, setSettings] = useState<RAGSettings>(() => (
-        loadStoredRAGSettings() ?? DEFAULT_RAG_SETTINGS
-    ));
+    const [settings, setSettings] = useState<RAGSettings>(DEFAULT_RAG_SETTINGS);
     const [saving, setSaving] = useState(false);
     const [saved, setSaved] = useState(false);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState('');
+
+    const fetchSettings = useCallback(async () => {
+        setLoading(true);
+        setError('');
+        try {
+            const res = await fetch('/api/admin/rag-settings');
+            if (!res.ok) throw new Error('Failed to load settings');
+            const data: RAGSettings = await res.json();
+            setSettings(data);
+            // Sync to localStorage so chat client can read them
+            try { localStorage.setItem(RAG_SETTINGS_STORAGE_KEY, JSON.stringify(data)); } catch { /* ok */ }
+        } catch (err) {
+            setError((err as Error).message);
+            // Fall back to localStorage if API fails
+            try {
+                const raw = localStorage.getItem(RAG_SETTINGS_STORAGE_KEY);
+                if (raw) setSettings(JSON.parse(raw));
+            } catch { /* ok */ }
+        } finally {
+            setLoading(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        void fetchSettings();
+    }, [fetchSettings]);
 
     const handleSave = async () => {
         setSaving(true);
+        setError('');
         try {
-            localStorage.setItem(RAG_SETTINGS_STORAGE_KEY, JSON.stringify(settings));
-        } catch (err) {
-            console.error('[RAGSettings] Failed to save:', err);
-        }
-        setTimeout(() => {
-            setSaving(false);
+            const res = await fetch('/api/admin/rag-settings', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(settings),
+            });
+            if (!res.ok) {
+                const data = await res.json();
+                throw new Error(data.error || 'Failed to save settings');
+            }
+            // Sync to localStorage for chat client
+            try { localStorage.setItem(RAG_SETTINGS_STORAGE_KEY, JSON.stringify(settings)); } catch { /* ok */ }
             setSaved(true);
             setTimeout(() => setSaved(false), 2000);
-        }, 500);
-    };
-
-    const handleReset = () => {
-        setSettings(DEFAULT_RAG_SETTINGS);
-        try {
-            localStorage.removeItem(RAG_SETTINGS_STORAGE_KEY);
         } catch (err) {
-            console.error('[RAGSettings] Failed to clear localStorage:', err);
+            setError((err as Error).message);
+        } finally {
+            setSaving(false);
         }
     };
+
+    const handleReset = async () => {
+        setSettings(DEFAULT_RAG_SETTINGS);
+        setSaving(true);
+        setError('');
+        try {
+            const res = await fetch('/api/admin/rag-settings', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(DEFAULT_RAG_SETTINGS),
+            });
+            if (!res.ok) throw new Error('Failed to reset settings');
+            try { localStorage.removeItem(RAG_SETTINGS_STORAGE_KEY); } catch { /* ok */ }
+        } catch (err) {
+            setError((err as Error).message);
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    if (loading) {
+        return (
+            <div className="flex justify-center py-12">
+                <div className="flex gap-1.5">
+                    <div className="w-2 h-2 rounded-full bg-[#CA8A04] animate-bounce" style={{ animationDelay: '0ms' }} />
+                    <div className="w-2 h-2 rounded-full bg-[#D97706] animate-bounce" style={{ animationDelay: '150ms' }} />
+                    <div className="w-2 h-2 rounded-full bg-[#0D9488] animate-bounce" style={{ animationDelay: '300ms' }} />
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="space-y-4 animate-fade-up">
@@ -56,6 +113,27 @@ export default function RAGSettingsTab() {
                     </div>
                 </div>
             </div>
+
+            {error && (
+                <div className="skeuo-card p-4 sm:p-5 border-red-200 bg-red-50/40">
+                    <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-start gap-2">
+                            <FontAwesomeIcon icon={faTriangleExclamation} className="w-4 h-4 text-red-600 mt-0.5" />
+                            <p className="text-sm text-red-700">{error}</p>
+                        </div>
+                        <button
+                            onClick={() => void fetchSettings()}
+                            disabled={loading}
+                            className="skeuo-raised px-3 py-1.5 text-xs text-[#44403C] disabled:opacity-50"
+                        >
+                            <span className="flex items-center gap-1.5">
+                                <FontAwesomeIcon icon={faArrowsRotate} className="w-3 h-3" />
+                                Retry
+                            </span>
+                        </button>
+                    </div>
+                </div>
+            )}
 
             {/* Search Features */}
             <div className="skeuo-card p-4 sm:p-5">
@@ -216,8 +294,6 @@ export default function RAGSettingsTab() {
                 >
                     {saving ? (
                         <FontAwesomeIcon icon={faRotate} className="w-4 h-4 animate-spin" />
-                    ) : saved ? (
-                        <FontAwesomeIcon icon={faSave} className="w-4 h-4" />
                     ) : (
                         <FontAwesomeIcon icon={faSave} className="w-4 h-4" />
                     )}
@@ -225,6 +301,7 @@ export default function RAGSettingsTab() {
                 </button>
                 <button
                     onClick={handleReset}
+                    disabled={saving}
                     className="skeuo-raised py-3 px-4 text-sm text-[#44403C]"
                 >
                     Reset
@@ -234,7 +311,7 @@ export default function RAGSettingsTab() {
             {/* Info */}
             <div className="p-3 sm:p-4 bg-blue-50 rounded-xl border border-blue-200">
                 <p className="text-xs text-blue-800">
-                    <strong>💡 Tip:</strong> These settings control how the bot retrieves knowledge.
+                    <strong>Tip:</strong> Settings are saved to the server and shared across all users.
                     Higher Top K = more candidates. Lower λ = more diverse results.
                     Graph Boost requires migration 013 to be applied.
                 </p>

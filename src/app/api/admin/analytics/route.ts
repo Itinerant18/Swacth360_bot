@@ -18,14 +18,19 @@ export async function GET() {
             // New conversation system counts
             convTotalRes,
             messageTotalRes,
+            // New system answer mode counts
+            msgRagRes,
+            msgFallbackRes,
+            msgDiagramRes,
             // Shared data
             totalUnknownRes,
             pendingUnknownRes,
             reviewedUnknownRes,
             topUnknownRes,
             kbCompositionRes,
-            // New: feedback & token stats
+            // Feedback from retrieval_feedback (consistent with FeedbackTab)
             feedbackStatsRes,
+            // Token usage
             tokenStatsRes,
         ] = await Promise.all([
             // Legacy
@@ -41,6 +46,10 @@ export async function GET() {
             // New conversation system
             supabase.from('conversations').select('*', { count: 'exact', head: true }),
             supabase.from('messages').select('*', { count: 'exact', head: true }).eq('role', 'user'),
+            // New system answer mode counts (from messages table)
+            supabase.from('messages').select('*', { count: 'exact', head: true }).eq('role', 'assistant').eq('answer_mode', 'rag'),
+            supabase.from('messages').select('*', { count: 'exact', head: true }).eq('role', 'assistant').in('answer_mode', ['general', 'partial', 'live']),
+            supabase.from('messages').select('*', { count: 'exact', head: true }).eq('role', 'assistant').in('answer_mode', ['diagram', 'diagram_stored']),
             // Shared
             supabase.from('unknown_questions').select('*', { count: 'exact', head: true }),
             supabase.from('unknown_questions').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
@@ -52,8 +61,8 @@ export async function GET() {
                 .order('frequency', { ascending: false })
                 .limit(10),
             supabase.from('hms_knowledge').select('source, source_name'),
-            // Feedback summary
-            supabase.from('feedback_scores').select('score, positive_count, negative_count'),
+            // Feedback from retrieval_feedback table (same source as FeedbackTab)
+            supabase.from('retrieval_feedback').select('id, rating, is_relevant'),
             // Token usage summary
             supabase.from('token_usage').select('tokens_used, request_count').gte(
                 'period_start',
@@ -96,17 +105,17 @@ export async function GET() {
 
         const useLegacy = legacyTotal > 0;
         const total = useLegacy ? legacyTotal : messageTotal;
-        const rag = useLegacy ? (legacyRagRes.count ?? 0) : 0;
-        const diagram = useLegacy ? (legacyDiagramRes.count ?? 0) : 0;
-        const general = useLegacy ? (legacyFallbackRes.count ?? 0) : 0;
+        const rag = useLegacy ? (legacyRagRes.count ?? 0) : (msgRagRes.count ?? 0);
+        const diagram = useLegacy ? (legacyDiagramRes.count ?? 0) : (msgDiagramRes.count ?? 0);
+        const general = useLegacy ? (legacyFallbackRes.count ?? 0) : (msgFallbackRes.count ?? 0);
 
         // Recent sessions — prefer new messages if legacy is empty
         let recentSessions = legacyRecentRes.data || [];
         if (recentSessions.length === 0 && !useLegacy) {
-            // Fetch recent messages from the new system
+            // Fetch recent messages from the new system (with answer_mode)
             const { data: recentMessages } = await supabase
                 .from('messages')
-                .select('content, role, created_at, conversation_id')
+                .select('content, role, created_at, conversation_id, answer_mode, top_similarity')
                 .eq('role', 'user')
                 .order('created_at', { ascending: false })
                 .limit(10);
@@ -116,19 +125,25 @@ export async function GET() {
                 role: string;
                 created_at: string;
                 conversation_id: string;
+                answer_mode: string | null;
+                top_similarity: number | null;
             }) => ({
                 user_question: m.content,
-                answer_mode: 'conversation',
-                top_similarity: null,
+                answer_mode: m.answer_mode || 'conversation',
+                top_similarity: m.top_similarity,
                 created_at: m.created_at,
             }));
         }
 
-        // Feedback stats
+        // Feedback stats from retrieval_feedback (consistent with FeedbackTab)
         const feedbackData = feedbackStatsRes.data || [];
         const totalFeedback = feedbackData.length;
-        const positiveFeedback = feedbackData.filter((f: { score: number }) => f.score > 0).length;
-        const negativeFeedback = feedbackData.filter((f: { score: number }) => f.score < 0).length;
+        const positiveFeedback = feedbackData.filter(
+            (f: { rating: number; is_relevant: boolean }) => f.is_relevant === true || (f.rating ?? 0) >= 4
+        ).length;
+        const negativeFeedback = feedbackData.filter(
+            (f: { rating: number; is_relevant: boolean }) => f.is_relevant === false || ((f.rating ?? 0) > 0 && (f.rating ?? 0) <= 2)
+        ).length;
 
         // Token usage stats
         const tokenData = tokenStatsRes.data || [];

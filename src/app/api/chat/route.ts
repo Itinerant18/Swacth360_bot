@@ -269,7 +269,29 @@ export async function POST(req: Request) {
         } = await req.json();
         const languageNames = { en: 'English', bn: 'Bengali', hi: 'Hindi' } as const;
         const langName = languageNames[language as keyof typeof languageNames] || 'English';
-        const parsedRagSettings = parseRAGSettings(ragSettings);
+
+        // Try client-sent settings first, fall back to server-stored settings
+        let parsedRagSettings = parseRAGSettings(ragSettings);
+        if (!parsedRagSettings) {
+            try {
+                const { data } = await getSupabase()
+                    .from('rag_settings')
+                    .select('*')
+                    .eq('id', 1)
+                    .single();
+                if (data) {
+                    parsedRagSettings = parseRAGSettings({
+                        useHybridSearch: data.use_hybrid_search,
+                        useReranker: data.use_reranker,
+                        useQueryExpansion: data.use_query_expansion,
+                        useGraphBoost: data.use_graph_boost,
+                        topK: data.top_k,
+                        alpha: data.alpha,
+                        mmrLambda: data.mmr_lambda,
+                    });
+                }
+            } catch { /* use defaults if DB fails */ }
+        }
 
         const latestMessage = messages[messages.length - 1].content;
 
@@ -426,6 +448,7 @@ export async function POST(req: Request) {
                             conversation_id: activeConversationId,
                             role: 'assistant',
                             content: tier1CacheResult.answer,
+                            answer_mode: 'cache',
                         });
                     } catch { /* persistence is non-critical */ }
                 }
@@ -462,6 +485,7 @@ export async function POST(req: Request) {
                             conversation_id: activeConversationId,
                             role: 'assistant',
                             content: tier2CacheResult.answer,
+                            answer_mode: 'cache',
                         });
                     } catch { /* non-critical */ }
                 }
@@ -687,6 +711,8 @@ export async function POST(req: Request) {
                     conversation_id: activeConversationId,
                     role: 'assistant',
                     content: answer,
+                    answer_mode: dbAnswerMode,
+                    top_similarity: matches[0]?.finalScore || confidence,
                 });
                 if (saveAssistantMessageError) {
                     console.warn('Assistant message persistence failed:', saveAssistantMessageError.message);

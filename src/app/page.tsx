@@ -16,7 +16,7 @@ import {
 import LanguageSelector from '../components/LanguageSelector';
 import DiagramCard from '../components/DiagramCard';
 import { signOut, isAdminEmail, getSupabaseAuth, sanitizeAuthSession } from '@/lib/auth';
-import { loadStoredRAGSettings, type RAGSettings } from '@/lib/rag-settings';
+import { loadStoredRAGSettings, fetchServerRAGSettings, type RAGSettings } from '@/lib/rag-settings';
 
 interface Conversation {
     id: string;
@@ -298,15 +298,21 @@ export default function Chat() {
     }, [isAuthenticated]);
 
     useEffect(() => {
-        const refreshSettings = () => {
-            setRagSettings(loadStoredRAGSettings());
+        const refreshSettings = async () => {
+            // Try server first, fall back to localStorage
+            const serverSettings = await fetchServerRAGSettings();
+            if (serverSettings) {
+                setRagSettings(serverSettings);
+            } else {
+                setRagSettings(loadStoredRAGSettings());
+            }
         };
 
-        refreshSettings();
-        window.addEventListener('storage', refreshSettings);
+        void refreshSettings();
+        window.addEventListener('storage', () => void refreshSettings());
 
         return () => {
-            window.removeEventListener('storage', refreshSettings);
+            window.removeEventListener('storage', () => void refreshSettings());
         };
     }, []);
 

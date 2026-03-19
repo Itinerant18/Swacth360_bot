@@ -58,3 +58,14 @@ export function loadStoredRAGSettings(): RAGSettings | null {
         return null;
     }
 }
+
+export async function fetchServerRAGSettings(): Promise<RAGSettings | null> {
+    try {
+        const res = await fetch('/api/admin/rag-settings');
+        if (!res.ok) return null;
+        const data = await res.json();
+        return parseRAGSettings(data);
+    } catch {
+        return null;
+    }
+}
