@@ -612,7 +612,411 @@ Enhanced analytics dashboard with detailed insights:
 
 ---
 
-## 📡 **Complete API Reference** (Updated March 12, 2026)
+## System Architecture & Data Flow
+
+The system follows a **Layered Monolithic Architecture** centered around a sophisticated RAG engine. 
+
+```text
+[ User Interface (Next.js React Client) ]
+       │        │
+       ▼        ▼
+[ Next.js API Routes (Serverless Functions) ]
+       │        │
+       ▼        ▼
+[ Core Logic (src/lib) ] ───────► [ External AI Services ]
+  │  - rag-engine.ts                  - OpenAI (Embeddings)
+  │  - logical-router.ts              - Sarvam AI (LLM)
+  │  - query-decomposer.ts            - HuggingFace (Reranker)
+  │
+  ▼
+[ Data Access & State ]
+  │  - supabase.ts (pgvector database & auth)
+  │  - cache.ts (Upstash Redis)
+```
+
+**Key Modules:**
+1. **Frontend UI Layer:** Chat interface, Markdown/Mermaid renderers, Admin dashboard.
+2. **API Layer:** Chat orchestration, Admin ingestion triggers, Diagram generation API.
+3. **Intelligence/RAG Layer:** Query expansion, vector retrieval, cross-encoder reranking, and RAPTOR hierarchical processing.
+4. **Data Layer:** Supabase for persistent memory (vectors, conversation history) and Upstash for latency-sensitive query caching.
+
+### **Data & Control Flow**
+
+**Tracing a standard Chat Request:**
+1. **Entry:** User types a question in the UI (`src/app/page.tsx`).
+2. **API:** Request hits `src/app/api/chat/route.ts`. 
+3. **Preprocessing:** The `conversation-retrieval.ts` module looks at past messages and rewrites the query so it's fully contextualized. 
+4. **Cache Check:** `cache.ts` checks Upstash Redis for an exact match. If found, it returns immediately.
+5. **Strategy:** `logical-router.ts` decides the search approach.
+6. **Expansion:** `query-expansion.ts` generates a HYDE hypothetical answer and synonym queries.
+7. **Retrieval:** `rag-engine.ts` queries Supabase via `pgvector` for chunks matching the expanded queries.
+8. **Reranking:** The top 30 chunks are sent to `reranker.ts` (HuggingFace cross-encoder) to be re-sorted by true semantic relevance. The top 5 are kept.
+9. **Generation:** The compressed context and the query are sent via `sarvam.ts` or standard LangChain OpenAI tools to generate the final answer.
+10. **Exit:** The answer is streamed back to the client, rendered as markdown (or Mermaid diagrams), and the session is logged to Supabase.
+
+---
+
+---
+
+## Technology Stack
+
+* **Project Type:** Full-Stack Web Application (Next.js App Router)
+* **Language:** TypeScript
+* **Frontend:** Next.js 16.1.6, React 19.2.3, Tailwind CSS v4, Lucide React, Mermaid.js (for dynamic protocol diagrams), Recharts.
+* **Backend/API:** Next.js Route Handlers (`src/app/api`).
+* **Database & Auth:** Supabase (PostgreSQL with `pgvector` for semantic search).
+* **Caching:** Upstash Redis (Tier 1 exact match cache) & Supabase pgvector (Tier 2 semantic match cache).
+* **AI / LLM Orchestration:**
+  * **LangChain** (`@langchain/openai`, `@langchain/core`, `@langchain/community`).
+  * **OpenAI** (for `text-embedding-3-small` and high-tier reasoning).
+  * **Sarvam AI** (specialized reasoning model handling, specifically stripping `<think>` tags).
+  * **HuggingFace** (for cross-encoder reranking).
+* **Infrastructure:** Hosted on Netlify (`@netlify/plugin-nextjs`).
+
+**What config files tell us:**
+* `package.json`: Shows heavy reliance on the LangChain ecosystem and custom scripts for benchmarking (`run-rag-benchmark.ts`) and testing. Notably uses `ai` v4 alongside Next 16.
+* `tsconfig.json`: Standard strict TypeScript configuration using `@/*` aliases for `src/*`.
+* `next.config.ts`: Handles Next.js environment mapping and server-side rendering configurations.
+* `middleware.ts`: Implements Edge-level routing, likely handling auth session checks before users hit protected `/admin` routes.
+
+---
+
+---
+
+## Project Structure & Working Flow
+
+The repository is organized as a Next.js App Router monorepo, separating core intelligence (RAG logic) from the presentation layer (UI) and operational scripts.
+
+```text
+tech-support-ai/
+├── 📁 .planning/                 # Architectural blueprints & codebase maps
+├── 📁 data/                      # Knowledge Base Raw Data
+│   ├── 📁 diagrams/              # Markdown & ASCII industrial diagrams
+│   └── 📁 pdf/                   # Source technical manuals & documentation
+├── 📁 scripts/                   # Data Pipeline & CLI Tooling
+│   ├── 📄 audit-kb.ts            # Validates vector dimensions and chunk integrity
+│   ├── 📄 ingest-diagram.ts      # Parses and embeds Markdown diagram data
+│   ├── 📄 ingest-pdf.ts          # Extracts, chunks, and embeds PDF data
+│   ├── 📄 run-rag-benchmark.ts   # Automated RAG performance & quality evaluation
+│   └── 📄 seed-supabase.ts       # Populates initial Supabase database schemas
+├── 📁 src/                       # Application Source Code
+│   ├── 📁 app/                   # Next.js App Router (Routing & Endpoints)
+│   │   ├── 📁 admin/             # Protected Admin Dashboard UI
+│   │   ├── 📁 api/               # Serverless Backend Endpoints
+│   │   │   ├── 📁 chat/          # CORE: Main RAG conversational endpoint
+│   │   │   ├── 📁 diagram/       # Generates Mermaid.js syntax via LLM
+│   │   │   └── 📁 admin/         # Admin endpoints (ingest, analytics, raptor, graph)
+│   │   ├── 📁 auth/              # Supabase authentication flows
+│   │   ├── 📄 layout.tsx         # Global React layout and providers
+│   │   └── 📄 page.tsx           # Main Chat Interface
+│   ├── 📁 components/            # Reusable React UI Components
+│   │   ├── 📄 DiagramCard.tsx    # Renders Mermaid.js/ASCII diagrams
+│   │   ├── 📄 GraphTab.tsx       # Admin Knowledge Graph visualizer
+│   │   └── 📄 RAGSettingsTab.tsx # UI for tuning RAG parameters
+│   └── 📁 lib/                   # 🧠 Core Intelligence & RAG Engine
+│       ├── 📄 rag-engine.ts      # Orchestrates retrieval, MMR, and confidence scoring
+│       ├── 📄 hybrid-search.ts   # Combines dense (Vector) and sparse (BM25) search
+│       ├── 📄 reranker.ts        # HuggingFace Cross-Encoder re-scoring logic
+│       ├── 📄 raptor-builder.ts  # Hierarchical clustering for long-context retrieval
+│       ├── 📄 query-expansion.ts # Generates HYDE (Hypothetical Document Embeddings)
+│       ├── 📄 semantic-chunker.ts# Context-aware document parsing
+│       └── 📄 cache.ts           # Tier-1 exact-match caching via Upstash Redis
+├── 📁 supabase/                  # Database Infrastructure
+│   └── 📁 migrations/            # SQL schemas, pgvector indexes, and RPC functions
+├── 📁 tests/                     # Quality Assurance
+│   └── 📄 admin-smoke.test.ts    # Node.js assertions for API health
+├── 📄 middleware.ts              # Edge routing and authentication intercepts
+├── 📄 next.config.ts             # Framework build and environment configuration
+└── 📄 package.json               # Dependencies and CLI script definitions
+```
+
+### **Functional Working Structure (How Files Interact)**
+
+1. **Ingestion Flow (Data → Database)**
+   - `scripts/ingest-pdf.ts` reads files from `data/pdf/`.
+   - It utilizes `src/lib/semantic-chunker.ts` to break the text logically.
+   - It calls `src/lib/embeddings.ts` (OpenAI) to generate vector coordinates.
+   - Data is pushed to the `knowledge_chunks` table defined in `supabase/migrations/`.
+
+2. **Query Flow (User → API → RAG Engine → LLM)**
+   - The user interface in `src/app/page.tsx` sends a POST request to `src/app/api/chat/route.ts`.
+   - The route handler invokes `src/lib/rag-engine.ts`.
+   - The RAG engine checks `src/lib/cache.ts` for an exact match.
+   - If no cache match, `src/lib/query-expansion.ts` builds synthetic queries.
+   - `src/lib/hybrid-search.ts` queries Supabase.
+   - Top results are passed through `src/lib/reranker.ts` for context-aware sorting.
+   - Final context is sent to the LLM (via `src/lib/sarvam.ts` or OpenAI) to generate the response, which is streamed back to the client.
+
+3. **Background Processing (Hierarchical Clustering)**
+   - When triggered via the Admin UI, `src/app/api/admin/raptor/route.ts` executes.
+   - It triggers `src/lib/raptor-builder.ts`, which scans the database for isolated chunks and recursively summarizes them into higher-level parent chunks, mapping the relationships in the database for broader contextual retrieval.
+
+---
+
+## Quick Start Guide
+
+### **Prerequisites**
+```bash
+# Check if you have Node.js installed
+node --version  # Should be v20 or higher
+npm --version
+```
+
+If not installed, download from [nodejs.org](https://nodejs.org)
+
+### **5-Minute Setup**
+
+```bash
+# Step 1: Clone the project
+git clone https://github.com/seple/tech-support-ai.git
+cd tech-support-ai
+
+# Step 2: Install dependencies
+npm install
+
+# Step 3: Create environment file
+cp .env.example .env.local
+# → Edit .env.local with your API keys (see section below)
+
+# Step 4: Start development server
+npm run dev
+```
+
+**Now open:** http://localhost:3000
+
+You should see the chat interface! Try typing a question like: "What is the TB1 terminal for?"
+
+---
+
+---
+
+## Environment Configuration
+
+### **Complete `.env.local` Template**
+
+Create a file called `.env.local` in the project root:
+
+```env
+# ============================================================
+# DATABASE (Supabase)
+# ============================================================
+NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI...
+SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiNiIs...
+
+# ============================================================
+# AI MODELS
+# ============================================================
+
+# OpenAI (for embeddings)
+OPENAI_API_KEY=sk-proj-VhOgwKKzwWTewI7X...
+
+# Sarvam AI (for translation & text generation)
+SARVAM_API_KEY=sk_kwtjg2l6_ZwRYYsLkNc...
+
+# Google Gemini (optional - for PDF vision)
+GEMINI_API_KEY=AIzaSyBbDibYRVRMsNsx0...
+
+# ============================================================
+# EMAIL SERVICE
+# ============================================================
+RESEND_API_KEY=re_BuqZCaaR_N4URiMf...
+
+# ============================================================
+# ADMIN DASHBOARD
+# ============================================================
+# Password to access /admin dashboard
+NEXT_PUBLIC_ADMIN_PASSWORD=Swatch360.....
+
+# ============================================================
+# FEATURE FLAGS (Optional)
+# ============================================================
+# Enable advanced RAG features
+RAG_HYDE_ENABLED=true
+RAG_USE_HYBRID_SEARCH=true
+RAG_USE_GRAPH_BOOST=false
+RAG_USE_SEMANTIC_CACHE=true
+
+# ============================================================
+# APPLICATION CONFIG
+# ============================================================
+NEXT_PUBLIC_BASE_URL=http://localhost:3000
+NODE_ENV=development
+```
+
+### **How to Get Each Key**
+
+#### **Supabase Keys**
+1. Create account at [supabase.com](https://supabase.com)
+2. Create new project
+3. Go to Settings → API → Copy keys
+
+#### **OpenAI Key**
+1. Visit [platform.openai.com](https://platform.openai.com)
+2. Create API key
+3. Copy and paste
+
+#### **Sarvam AI Key**
+1. Visit [sarvam.ai](https://sarvam.ai) (or contact support)
+2. Get API key from dashboard
+3. Copy and paste
+
+#### **Gemini API Key**
+1. Visit [makersuite.google.com](https://makersuite.google.com)
+2. Create API key
+3. Enable Generative AI API
+---
+
+---
+
+## Available Scripts & CLI
+
+### **Development Commands**
+
+```bash
+# Install dependencies
+npm install
+
+# Start development server (hot-reload)
+npm run dev
+# → Open http://localhost:3000
+
+# Build for production
+npm run build
+
+# Start production server
+npm run start
+
+# Check TypeScript errors
+npx tsc --noEmit
+
+# Check linting issues
+npm run lint
+
+# Fix linting issues
+npm run lint -- --fix
+
+# Run tests (if configured)
+npm test
+```
+
+### **Database Commands**
+
+```bash
+# Run all migrations on Supabase
+# (via Supabase dashboard or CLI)
+
+# Seed knowledge base from JSON
+npx tsx scripts/seed-supabase.ts
+
+# Ingest a single PDF
+npx tsx scripts/ingest-pdf.ts data/pdf/HMS-Manual.pdf
+
+# Ingest all PDFs in folder
+npx tsx scripts/seed-pdfs.ts data/pdf/
+
+# Audit knowledge base quality
+npx tsx scripts/audit-kb.ts
+
+# Clear all knowledge base entries (⚠️ careful!)
+npx tsx scripts/clear.ts
+
+# Check embeddings dimension
+npx tsx scripts/migrate-embeddings.ts
+
+# One at a time
+npx tsx scripts/ingest-diagram.ts --file="data/diagrams/whisper-g-block.md" --name="Whisper G Auto-Dialer" --type="block"
+npx tsx scripts/ingest-diagram.ts --file="data/diagrams/hms-architecture.md" --name="HMS Architecture" --type="panel"
+npx tsx scripts/ingest-diagram.ts --file="data/diagrams/pinnacle-fire-alarm.md" --name="Pinnacle Fire Alarm" --type="alarm"
+npx tsx scripts/ingest-diagram.ts --file="data/diagrams/dhwani-pa-console.md" --name="Dhwani PA Console" --type="block"
+npx tsx scripts/ingest-diagram.ts --file="data/diagrams/i2c-protocol-timing.md" --name="I2C Protocol" --type="communication"
+npx tsx scripts/ingest-diagram.ts --file="data/diagrams/uart-rs232-bitstream.md" --name="UART RS232" --type="communication"
+.
+.
+.
+# Or ingest ALL files in the directory at once
+npx tsx scripts/ingest-diagram.ts --dir="data/diagrams/"
+
+# Or JSONL Files (.jsonl)
+#Individual JSONL file:
+npx tsx scripts/ingest-jsonl.ts --file="data/langextract/your-file.jsonl" --name="Document Name"
+```
+
+### **Git Commands**
+
+```bash
+# Check git status
+git status
+
+# View recent commits
+git log --oneline -10
+
+# Create new branch
+git checkout -b feature/my-feature
+
+# Commit changes
+git add .
+git commit -m "Add feature: ..."
+
+# Push to GitHub
+git push origin feature/my-feature
+```
+
+### **Deployment Commands**
+
+```bash
+# Deploy to Netlify (automatic via git push)
+# → Changes on main branch → auto-deploy
+
+# Deploy to Vercel (automatic)
+# → Changes on main branch → auto-deploy
+
+# View deployment logs
+netlify logs
+vercel logs
+```
+
+---
+
+### **Knowledge Base Management**
+```bash
+# Seed Q&A from JSON file
+npx tsx scripts/seed-supabase.ts
+
+# Ingest a single PDF
+npx tsx scripts/ingest-pdf.ts data/pdf/HMS-Manual.pdf
+
+# Batch ingest all PDFs
+npx tsx scripts/seed-pdfs.ts data/pdf/
+
+# Audit knowledge base quality
+npx tsx scripts/audit-kb.ts
+
+# Clear all KB entries (⚠️ irreversible!)
+npx tsx scripts/clear.ts
+
+# Migrate embeddings (if changing dimensions)
+npx tsx scripts/migrate-embeddings.ts
+```
+
+### **Database Management**
+```bash
+# Apply all migrations (via Supabase dashboard or CLI)
+supabase migration list
+supabase db push
+
+# View database stats
+supabase db pull
+
+# Export data as JSON
+supabase db dump --data-only > backup.sql
+```
+
+---
+
+---
+
+## API Reference
 
 ### **PUBLIC ENDPOINTS** (No authentication required)
 
@@ -1076,30 +1480,217 @@ const path = await findEntityPath('E001', 'TB1');
 // Returns: E001 → caused_by → TB1_fault → connected_to → TB1
 ```
 
+### **Public Endpoints**
 
+#### **1. Chat Endpoint** (Main)
+```bash
+curl -X POST http://localhost:3000/api/chat \
+  -H "Content-Type: application/json" \
+  -d '{
+    "messages": [
+      {"role": "user", "content": "What is the TB1 terminal?"}
+    ],
+    "userId": "user-123",
+    "language": "en"
+  }'
+```
 
-## 💻 Technology Stack (What Powers It)
+**Response:** Streaming text (chunks)
+```
+Answer about TB1 terminal...
+```
 
-* **Project Type:** Full-Stack Web Application (Next.js App Router)
-* **Language:** TypeScript
-* **Frontend:** Next.js 16.1.6, React 19.2.3, Tailwind CSS v4, Lucide React, Mermaid.js (for dynamic protocol diagrams), Recharts.
-* **Backend/API:** Next.js Route Handlers (`src/app/api`).
-* **Database & Auth:** Supabase (PostgreSQL with `pgvector` for semantic search).
-* **Caching:** Upstash Redis (Tier 1 exact match cache) & Supabase pgvector (Tier 2 semantic match cache).
-* **AI / LLM Orchestration:**
-  * **LangChain** (`@langchain/openai`, `@langchain/core`, `@langchain/community`).
-  * **OpenAI** (for `text-embedding-3-small` and high-tier reasoning).
-  * **Sarvam AI** (specialized reasoning model handling, specifically stripping `<think>` tags).
-  * **HuggingFace** (for cross-encoder reranking).
-* **Infrastructure:** Hosted on Netlify (`@netlify/plugin-nextjs`).
+#### **2. Diagram Endpoint**
+```bash
+curl -X POST http://localhost:3000/api/diagram \
+  -H "Content-Type: application/json" \
+  -d '{
+    "question": "Show TB1 wiring",
+    "language": "en"
+  }'
+```
 
-**What config files tell us:**
-* `package.json`: Shows heavy reliance on the LangChain ecosystem and custom scripts for benchmarking (`run-rag-benchmark.ts`) and testing. Notably uses `ai` v4 alongside Next 16.
-* `tsconfig.json`: Standard strict TypeScript configuration using `@/*` aliases for `src/*`.
-* `next.config.ts`: Handles Next.js environment mapping and server-side rendering configurations.
-* `middleware.ts`: Implements Edge-level routing, likely handling auth session checks before users hit protected `/admin` routes.
+**Response:**
+```json
+{
+  "success": true,
+  "markdown": "```\n┌──────┐\n│ TB1  │\n└──────┘\n```",
+  "hasKBContext": true
+}
+```
+
+#### **3. User Profile Endpoint**
+```bash
+curl http://localhost:3000/api/users
+```
+
+**Response:**
+```json
+{
+  "id": "user-123",
+  "email": "operator@seple.in",
+  "name": "Rajesh",
+  "queryCount": 237,
+  "lastActive": "2024-03-10T10:00:00Z"
+}
+```
+
+### **Admin Endpoints** (Protected)
+
+#### **Analytics**
+```bash
+curl http://localhost:3000/api/admin/analytics \
+  -H "Authorization: Bearer admin-password"
+```
+
+#### **Feedback**
+```bash
+curl http://localhost:3000/api/admin/feedback
+```
+
+#### **Unknown Questions** (Manual Review)
+```bash
+curl http://localhost:3000/api/admin/questions
+
+PATCH to add admin answer:
+{
+  "questionId": "unknown_001",
+  "adminAnswer": "Here's the correct answer..."
+}
+```
+
+#### **Ingest PDFs** (Training)
+```bash
+curl -X POST http://localhost:3000/api/admin/ingest \
+  -F "file=@HMS-Manual.pdf"
+```
 
 ---
+
+---
+
+## 10. Database Schema
+
+### **Table: `hms_knowledge`** (The Knowledge Base)
+
+```sql
+CREATE TABLE hms_knowledge (
+  id TEXT PRIMARY KEY DEFAULT gen_random_uuid(),
+  
+  -- Content
+  question TEXT NOT NULL,
+  answer TEXT NOT NULL,
+  content TEXT NOT NULL,
+  
+  -- Vector Embedding (for search)
+  embedding vector(1536),      -- OpenAI text-embedding-3-large
+  
+  -- Metadata
+  category TEXT,               -- "Hardware", "Troubleshooting", etc
+  subcategory TEXT,            -- "Power", "Communication", etc
+  tags TEXT[],                 -- ["error", "E001", "troubleshooting"]
+  source TEXT DEFAULT 'json',  -- "json" or "pdf"
+  source_name TEXT,            -- "hms-dexter-qa.json"
+  
+  -- Hierarchy (for chunked content)
+  parent_id TEXT REFERENCES hms_knowledge(id),
+  chunk_level TEXT,            -- "parent" or "child"
+  chunk_type TEXT,             -- "main", "example", "summary"
+  
+  -- Relationships
+  entities TEXT[],             -- ["TB1", "24V", "E001"]
+  related_ids TEXT[],          -- IDs of related Q&A
+  
+  -- Audit
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  
+  -- Indexes for fast search
+  CONSTRAINT valid_chunk_level CHECK (chunk_level IN ('parent', 'child'))
+);
+
+-- Vector similarity search (IVFFlat - fast for <10K rows)
+CREATE INDEX hms_knowledge_embedding_idx 
+  ON hms_knowledge USING ivfflat (embedding vector_cosine_ops)
+  WITH (lists = 50);
+
+-- Full-text search (for keywords)
+CREATE INDEX hms_knowledge_fts_idx 
+  ON hms_knowledge USING GIN (to_tsvector('english', question || ' ' || content));
+
+-- Fast lookups by source
+CREATE INDEX hms_knowledge_source_idx ON hms_knowledge(source);
+
+-- Parent-child relationships
+CREATE INDEX hms_knowledge_parent_idx ON hms_knowledge(parent_id);
+```
+
+### **Table: `chat_history`** (Conversation Logs)
+
+```sql
+CREATE TABLE chat_history (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES user_profiles(id),
+  
+  -- Messages
+  user_question TEXT NOT NULL,
+  english_text TEXT,           -- Translated to English
+  bot_answer TEXT,
+  
+  -- Analysis
+  answer_mode TEXT,            -- "rag_high", "rag_medium", "general", "unknown"
+  confidence_score FLOAT,       -- 0.0 to 1.0
+  top_similarity FLOAT,         -- Best match score
+  
+  -- Query details
+  language TEXT,               -- "en", "bn", "hi"
+  query_type TEXT,            -- "factual", "diagnostic", "procedural"
+  used_iot_data BOOLEAN DEFAULT FALSE,
+  
+  -- Tracking
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  response_time_ms INTEGER     -- How long to generate answer
+);
+
+CREATE INDEX chat_history_user_idx ON chat_history(user_id, created_at);
+CREATE INDEX chat_history_mode_idx ON chat_history(answer_mode);
+```
+
+### **Table: `unknown_questions`** (QA That Needs Help)
+
+```sql
+CREATE TABLE unknown_questions (
+  id TEXT PRIMARY KEY,
+  
+  user_question TEXT NOT NULL,
+  english_text TEXT,
+  top_similarity FLOAT,        -- Best match (if < 0.45)
+  frequency INT DEFAULT 1,     -- Asked how many times
+  
+  status TEXT DEFAULT 'pending',  -- "pending", "answered", "rejected"
+  admin_answer TEXT,
+  
+  first_asked TIMESTAMPTZ DEFAULT NOW(),
+  answered_at TIMESTAMPTZ
+);
+```
+
+### **Table: `user_profiles`** (User Tracking)
+
+```sql
+CREATE TABLE user_profiles (
+  id TEXT PRIMARY KEY,
+  email TEXT UNIQUE NOT NULL,
+  name TEXT,
+  phone TEXT,
+  
+  query_count INTEGER DEFAULT 0,
+  last_active TIMESTAMPTZ,
+  language_preference TEXT DEFAULT 'en',
+  
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+```
 
 ## 🏗️ System Architecture (Technical Deep Dive)
 
