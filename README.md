@@ -14,14 +14,14 @@
 4. [How It Works (The Brain)](#-how-it-works-the-5-step-brain)
 5. [Advanced RAG Capabilities (New Features)](#-advanced-rag-capabilities-new-in-march-2026)
 6. [Technology Stack (What Powers It)](#-technology-stack)
-7. [System Architecture (Technical Deep Dive)](#-system-architecture)
+7. [System Architecture & Data Flow](#-system-architecture)
 8. [API Endpoints & Usage](#-api-endpoints--usage)
 9. [Working Commands (npm, database, deployment)](#-working-commands)
 10. [Environment Variables & Configuration](#-environment-variables)
 11. [Database Schema](#-database-schema-simplified)
 12. [Admin Dashboard Guide](#-admin-endpoints-protected)
 13. [Deployment Guide](#-deployment-guide)
-14. [Troubleshooting & FAQ](#-troubleshooting--faq)
+14. [Troubleshooting, FAQ & Tech Debt](#-troubleshooting-faq--tech-debt)
 15. [Performance Metrics](#-performance-metrics)
 16. [Latest Updates](#-latest-updates-march-12-2026---todays-changes)
 17. [Contributing & Support](#--contributing--support)
@@ -94,143 +94,73 @@ You should see the chat interface! Try typing a question like: "What is the TB1 
 
 ---
 
-## 📁 Project File Structure
+## 📁 Project File Structure (Complete Breakdown)
 
-### **Complete Folder Breakdown**
+### Configuration & Root Files
+* **`package.json`**: Project manifest, dependencies, and execution scripts (dev, build, test, benchmark).
+* **`tsconfig.json`**: TypeScript compiler options.
+* **`next.config.ts`**: Next.js framework configuration.
+* **`middleware.ts`**: Edge middleware, primarily intercepting requests for route-level authentication/authorization.
+* **`eslint.config.mjs`**: Modern flat-config ESLint rules.
+* **`postcss.config.mjs`**: Tailwind CSS integration pipeline.
+* **`.npmrc` / `.gitignore`**: Standard package management and source control ignores.
+* **`README.md`**: Project documentation (notes scaling needs like moving to Pinecone for >100K entries).
 
-```
-tech-support-ai/                              # Root folder
-│
-├── 📄 README.md                             # This file!
-├── 📄 package.json                          # Project dependencies & scripts
-├── 📄 tsconfig.json                         # TypeScript configuration
-├── 📄 next.config.ts                        # Next.js build settings
-├── 📄 middleware.ts                         # Authentication rules
-├── 📄 .env.example                          # Template for environment variables
-├── 📄 .gitignore                            # Files to ignore in git
-│
-├── 📂 src/                                  # ALL CODE LIVES HERE
-│   │
-│   ├── 📂 app/                              # Next.js pages & API routes
-│   │   ├── 📄 page.tsx                      # Main chat interface (homepage)
-│   │   ├── 📄 layout.tsx                    # HTML structure for all pages
-│   │   ├── 📄 globals.css                   # Global styles
-│   │   │
-│   │   ├── 📂 api/                          # Backend API endpoints
-│   │   │   ├── 📂 chat/
-│   │   │   │   └── 📄 route.ts              # 🔥 Main chat endpoint (POST)
-│   │   │   │                                # This is where the magic happens!
-│   │   │   ├── 📂 diagram/
-│   │   │   │   └── 📄 route.ts              # Generate diagrams (wiring, circuits)
-│   │   │   │
-│   │   │   ├── 📂 users/
-│   │   │   │   └── 📄 route.ts              # Track user info
-│   │   │   │
-│   │   │   ├── 📂 admin/                    # Admin-only endpoints
-│   │   │   │   ├── 📄 analytics/route.ts    # Dashboard statistics
-│   │   │   │   ├── 📄 feedback/route.ts     # User ratings & comments
-│   │   │   │   ├── 📄 questions/route.ts    # Unanswered questions
-│   │   │   │   ├── 📄 ingest/route.ts       # Upload PDFs/text to train AI
-│   │   │   │   ├── 📄 seed-answer/route.ts  # Add Q&A to knowledge base
-│   │   │   │   └── 📄 graph/route.ts        # Knowledge graph operations
-│   │   │   │
-│   │   │   └── 📄 test-email/route.ts       # Test email sending
-│   │   │
-│   │   ├── 📂 login/
-│   │   │   └── 📄 page.tsx                  # Login page
-│   │   │
-│   │   ├── 📂 admin/
-│   │   │   └── 📄 page.tsx                  # Admin dashboard (all tools)
-│   │   │
-│   │   └── 📂 auth/
-│   │       └── 📄 callback/route.ts         # Handle OAuth login redirect
-│   │
-│   ├── 📂 lib/                              # Reusable helper code
-│   │   ├── 📄 rag-engine.ts                 # 🧠 The RAG brain (40KB)
-│   │   │                                    # Handles: retrieval, ranking, confidence
-│   │   ├── 📄 embeddings.ts                 # Create vector embeddings
-│   │   ├── 📄 supabase.ts                   # Database connection
-│   │   ├── 📄 hybrid-search.ts              # Vector + keyword search combined
-│   │   ├── 📄 reranker.ts                   # Score & rank search results
-│   │   ├── 📄 knowledge-graph.ts            # Extract entities & relationships
-│   │   ├── 📄 query-expansion.ts            # Make queries smarter
-│   │   ├── 📄 pdf-extract.ts                # Extract text from PDFs
-│   │   ├── 📄 auth.ts                       # User authentication utilities
-│   │   ├── 📄 util.ts                       # Misc utilities
-│   │ 
-│   │
-│   └── 📂 components/                       # React UI components
-│       ├── 📄 ChatInterface.tsx             # Main chat UI
-│       ├── 📄 MessageList.tsx               # Display messages
-│       ├── 📄 InputBox.tsx                  # User input field
-│       ├── 📄 LanguageSelector.tsx          # Choose language (EN/BN/HI)
-│       ├── 📄 RAGSettingsTab.tsx            # Configure RAG parameters
-│       ├── 📄 GraphTab.tsx                  # Visualize knowledge graph
-│       ├── 📄 FeedbackTab.tsx               # User rating interface
-│       └── 📄 DiagramCard.tsx               # Display ASCII diagrams
-│
-├── 📂 supabase/                             # Database setup files
-│   ├── 📂 migrations/                       # Database version control
-│   │   ├── 📄 001_setup_pgvector.sql        # Create vector extension
-│   │   ├── 📄 002_full_schema.sql           # Create main tables
-│   │   ├── 📄 003_three_layer_modes.sql     # Add confidence levels
-│   │   ├── 📄 005_openai_migration.sql      # Upgrade embeddings
-│   │   ├── 📄 010_frontier_rag_pipeline.sql # Add advanced RAG features
-│   │   ├── 📄 013_enhanced_rag.sql          # Add hybrid search
-│   │   └── 📄 015_user_profiles.sql         # Add user tracking
-│   │
-│   └── 📂 seed/                             # Initial data to load
-│       └── 📄 seed-data.json                # Sample Q&A pairs
-│
-├── 📂 scripts/                              # Command-line utilities (run with npm)
-│   ├── 📄 seed-supabase.ts                  # Load Q&A from JSON to database
-│   ├── 📄 ingest-pdf.ts                     # Convert PDF → Q&A pairs
-│   ├── 📄 seed-pdfs.ts                      # Batch process multiple PDFs
-│   ├── 📄 audit-kb.ts                       # Check knowledge base quality
-│   ├── 📄 clear.ts                          # Erase all knowledge base data
-│   └── 📄 migrate-embeddings.ts              # Update embedding dimensions
-│
-├── 📂 data/                                 # Static data files
-│   ├── 📄 hms-dexter-qa.json                # ~200 Q&A pairs (main KB)
-│   ├── 📄 hms-dexter-qa2.json               # ~100 additional Q&A pairs
-│   ├── 📂 pdf/                              # PDF manuals (training data)
-│   │   ├── 📄 HMS-Manual-Chapter1.pdf
-│   │   ├── 📄 HMS-Manual-Chapter2.pdf
-│   │   └── 📄 Dexter-Wiring-Guide.pdf
-│   └── 📄 model-test-data.json              # Test queries for performance
-│
-├── 📂 public/                               # Static assets (images, icons)
-│   ├── 📂 icons/
-│   │   ├── logo.svg
-│   │   ├── chat-icon.svg
-│   │   └── settings-icon.svg
-│   └── 📄 manifest.json                     # PWA configuration
-│
-├── 📂 node_modules/                         # Dependencies (auto-generated, ~500MB)
-│   └── [hundreds of packages...]
-│
-├── 📂 .next/                                # Build output (auto-generated)
-│   └── [compiled JavaScript/CSS]
-│
-├── 📂 .git/                                 # Git version control
-│   └── [commit history]
-│
-└── 📂 .netlify/                             # Netlify deployment config
-    └── deployment settings
+### `scripts/` (Data Pipeline & Admin Tools)
+* **`seed.ts` & `seed-supabase.ts`**: Initial database seeding logic. `seed.ts` contains latent logic for integrating with Pinecone (a secondary vector DB).
+* **`ingest-pdf.ts` & `ingest-jsonl.ts`**: Pipelines to extract text from raw documents, chunk them, generate embeddings, and push them to Supabase.
+* **`ingest-diagram.ts`**: Specifically ingests markdown-based diagram logic into the knowledge base.
+* **`run-rag-benchmark.ts`**: Executes automated evaluation of the RAG pipeline for retrieval quality, latency, and faithfulness.
+* **`audit-kb.ts`**: Knowledge Base Audit Tool to verify chunk integrity and vector dimensions.
+* **`clear.ts`**: Utility to wipe the database/cache states during testing.
+* **`langextract-ingest.py`**: A Python companion script for specialized language/text extraction prior to Node.js ingestion.
 
-```
+### `src/app/` (Routing & Pages)
+* **`layout.tsx` & `globals.css`**: Root layout wrapper and global Tailwind CSS imports.
+* **`page.tsx`**: Main entry point UI — the primary Chat Interface for end users.
+* **`favicon.ico`**: Site icon.
+* **`admin/page.tsx`**: Administrator dashboard for monitoring RAG analytics and triggering ingestions.
+* **`login/page.tsx` & `reset-password/page.tsx`**: Authentication flows powered by Supabase Auth.
+* **`auth/callback/route.ts`**: OAuth / Magic Link callback handler for Supabase session establishment.
 
-### **Key Directories Explained**
+### `src/app/api/` (API Endpoints)
+* **`chat/route.ts`**: **CRITICAL.** Main execution pipeline for the chat application. Receives queries and triggers the RAG engine.
+* **`conversations/route.ts` & `conversations/[id]/route.ts`**: CRUD operations for user chat histories.
+* **`conversations/[id]/messages/route.ts`**: Appends or retrieves specific messages within a session.
+* **`diagram/route.ts`**: Dynamic endpoint that leverages LLMs to generate Mermaid.js diagram code based on technical context.
+* **`admin/analytics/route.ts`**: Fetches usage statistics and RAG evaluation scores for the admin dashboard.
+* **`admin/ingest/route.ts`, `admin/raptor/route.ts`, `admin/seed-*/route.ts`**: Endpoints exposing script functionalities to the admin UI.
+* **`admin/rag-settings/route.ts`**: Allows dynamic updating of RAG parameters (like retrieval counts, reranking thresholds).
+* **`users/route.ts`**: User management endpoint.
+* **`test-email/route.ts`**: Validates the Resend integration.
 
-| Folder | Contains | Purpose |
-|--------|----------|---------|
-| `src/app` | Pages & endpoints | What users see (UI) + backend logic |
-| `src/lib` | Reusable code | The "engine" (RAG, search, auth) |
-| `src/components` | React components | Building blocks of the UI |
-| `supabase/migrations` | Database setup | Schema versioning & evolution |
-| `scripts` | CLI tools | Automated tasks (training, maintenance) |
-| `data` | Training data | Q&A pairs + PDF manuals |
-| `public` | Assets | Logos, icons, static files |
+### `src/components/` (React UI)
+* **`DiagramCard.tsx` / `MermaidBlock.tsx`**: Specialized components for rendering complex technical diagrams (e.g., Ademco protocols) directly in the chat stream using Mermaid.js.
+* **`LanguageSelector.tsx`**: UI toggle for multilingual support (English, Hindi, Bengali).
+* **`FeedbackTab.tsx` / `GraphTab.tsx`**: Sub-components of the admin dashboard for viewing user feedback and system metrics (using Recharts).
+
+### `src/lib/` (Core Logic & RAG Engine)
+* **`rag-engine.ts`**: **CRITICAL.** The core orchestrator. Manages Multi-Vector Retrieval, MMR (Maximal Marginal Relevance), and invokes the reranker. Includes logic for saving tokens via contextual compression.
+* **`logical-router.ts`**: Analyzes the incoming query to determine if it needs vector search, standard DB lookups, or a hybrid approach.
+* **`hybrid-search.ts`**: Combines dense vector search with sparse BM25 keyword matching for superior recall.
+* **`raptor-builder.ts` & `raptor-retrieval.ts`**: Implements the RAPTOR methodology — clustering and summarizing leaf chunks into parent nodes for high-level conceptual retrieval.
+* **`query-decomposer.ts` & `query-expansion.ts`**: Intelligent pre-processing to break complex user questions into multiple sub-queries and generate synonyms/hypothetical answers (HYDE).
+* **`conversation-retrieval.ts`**: Rewrites user queries based on conversation history (e.g., turning "How do I fix *it*?" into "How do I fix the *Ademco sensor*?").
+* **`reranker.ts` & `feedback-reranker.ts`**: Cross-encoder logic (relying on HuggingFace) to re-score retrieved chunks.
+* **`embeddings.ts`**: Wrapper for OpenAI's `text-embedding-3-small` generation.
+* **`semantic-chunker.ts`**: Slices raw documents into semantically coherent pieces rather than arbitrary character counts.
+* **`knowledge-graph.ts`**: Logic for entity extraction and relationship mapping.
+* **`cache.ts` & `rate-limiter.ts`**: Upstash Redis implementations to prevent API abuse and cache frequent exact-match queries.
+* **`supabase.ts` / `auth.ts` / `auth-server.ts`**: Database clients and session management utilities.
+* **`sarvam.ts`**: Specialized LLM wrapper handling reasoning constraints and XML tag stripping.
+* **`rag-settings.ts`**: Shared configuration constants for retrieval thresholds.
+* **`rag-evaluator.ts`**: Logic for LLM-as-a-judge automated benchmarking.
+
+### `supabase/migrations/` (Database Schema)
+* **`013_enhanced_rag.sql`**, **`016_raptor_hierarchical_index.sql`**, etc.: SQL scripts that create the `knowledge_chunks` tables, set up HNSW/IVFFlat indexes for `pgvector`, and define RPC functions for vector similarity math.
+
+### `tests/`
+* **`admin-smoke.test.ts`**: Native Node.js `assert` based smoke tests validating the admin APIs and environment variables.
 
 ---
 
@@ -1148,201 +1078,70 @@ const path = await findEntityPath('E001', 'TB1');
 
 
 
-### **Frontend (What Users See)**
-```
-Next.js 16.1       ← Framework (React with server-side features)
-React 19           ← UI library
-Tailwind CSS 4     ← Styling (utility-first CSS)
-FontAwesome 7      ← Icons
-Lucide React       ← Additional icons
-```
+## 💻 Technology Stack (What Powers It)
 
-### **Backend (The Brain)**
-```
-Node.js (runtime) → TypeScript (type-safe code)
-  ↓
-LangChain 1.2      ← Chain AI calls together
-```
+* **Project Type:** Full-Stack Web Application (Next.js App Router)
+* **Language:** TypeScript
+* **Frontend:** Next.js 16.1.6, React 19.2.3, Tailwind CSS v4, Lucide React, Mermaid.js (for dynamic protocol diagrams), Recharts.
+* **Backend/API:** Next.js Route Handlers (`src/app/api`).
+* **Database & Auth:** Supabase (PostgreSQL with `pgvector` for semantic search).
+* **Caching:** Upstash Redis (Tier 1 exact match cache) & Supabase pgvector (Tier 2 semantic match cache).
+* **AI / LLM Orchestration:**
+  * **LangChain** (`@langchain/openai`, `@langchain/core`, `@langchain/community`).
+  * **OpenAI** (for `text-embedding-3-small` and high-tier reasoning).
+  * **Sarvam AI** (specialized reasoning model handling, specifically stripping `<think>` tags).
+  * **HuggingFace** (for cross-encoder reranking).
+* **Infrastructure:** Hosted on Netlify (`@netlify/plugin-nextjs`).
 
-### **AI Models (The Intelligence)**
-```
-OpenAI text-embedding-3-small
-  ├─ Converts text → vectors (1536 numbers)
-  ├─ Cost: $0.00002 per 1K tokens
-  └─ Accuracy: 98%
-
-Sarvam AI (sarvam-m)
-  ├─ Translation: English ↔ Bengali/Hindi
-  ├─ Answer generation: Create responses
-  └─ Cost: $0.001 per 1K tokens
-
-Gemini Vision (optional)
-  ├─ Extract diagrams from PDFs
-  └─ Recognize text in images
-```
-
-### **Database (The Memory)**
-```
-Supabase PostgreSQL
-  ├─ pgvector extension (vector search)
-  ├─ Full-text search (keyword matching)
-  ├─ Row-level security (user permissions)
-  └─ Real-time capabilities
-```
-
-### **DevOps & Deployment**
-```
-GitHub                  ← Code repository
-Netlify                 ← Hosting (primary)
-Vercel                  ← Hosting (backup)
-Git                     ← Version control
-npm                     ← Package manager
-```
+**What config files tell us:**
+* `package.json`: Shows heavy reliance on the LangChain ecosystem and custom scripts for benchmarking (`run-rag-benchmark.ts`) and testing. Notably uses `ai` v4 alongside Next 16.
+* `tsconfig.json`: Standard strict TypeScript configuration using `@/*` aliases for `src/*`.
+* `next.config.ts`: Handles Next.js environment mapping and server-side rendering configurations.
+* `middleware.ts`: Implements Edge-level routing, likely handling auth session checks before users hit protected `/admin` routes.
 
 ---
 
-## 🏗️ System Architecture
+## 🏗️ System Architecture (Technical Deep Dive)
 
-### **Complete Data Flow Diagram**
+The system follows a **Layered Monolithic Architecture** centered around a sophisticated RAG engine. 
 
-```
-┌──────────────────────────────────────────────────────────────┐
-│                     USER (Frontend)                          │
-│                   http://localhost:3000                      │
-│                   (Chat Interface)                           │
-└────────────────────────┬─────────────────────────────────────┘
-                         │
-                    POST /api/chat
-                    {question, language}
-                         │
-                         ▼
-┌─────────────────────────────────────────────────────────────┐
-│              Next.js API Route Handler                      │
-│            (app/api/chat/route.ts)                          │
-│                                                             │
-│  Responsibilities:                                          │
-│  • Validate request                                         │
-│  • Orchestrate the pipeline                                 │
-│  • Stream response                                          │
-└─────────┬───────────────────────────────────────────────────┘
-          │
-          ├─→ [1. TRANSLATE]
-          │     Sarvam AI: Bengali/Hindi → English
-          │
-          ├─→ [2. ANALYZE]
-          │     lib/rag-engine.ts: classifyQuery()
-          │     ├─ Is this IoT? (Device status, battery, etc)
-          │     ├─ Is this Knowledge? (How to, what is, etc)
-          │     └─ Is this Diagram?
-          │
-          ├─→ [3. RETRIEVE]
-          │     ├─ If IoT:
-          │     │   └─ Fetch from ThingsBoard API
-          │     │       (Real device status, this feature are currently not needed)
-          │     │
-          │     └─ If Knowledge:
-          │         ├─ Create embedding (OpenAI)
-          │         ├─ Search Supabase (pgvector)
-          │         ├─ Multi-vector search:
-          │         │   • Query vector
-          │         │   • HYDE vector (hypothetical answer)
-          │         │   • Expanded vector (synonyms)
-          │         ├─ Hybrid search:
-          │         │   • Vector similarity (55%)
-          │         │   • BM25 keyword match (15%)
-          │         │   • Cross-encoder reranking (30%)
-          │         └─ Top 4 results with scores
-          │
-          ├─→ [4. EVALUATE]
-          │     lib/rag-engine.ts: calibrateConfidence()
-          │     ├─ HIGH: >0.75 (Direct answer)
-          │     ├─ MEDIUM: 0.55-0.75 (With caveats)
-          │     ├─ LOW: <0.55 (General expert mode)
-          │     └─ Log if too uncertain
-          │
-          ├─→ [5. GENERATE]
-          │     Sarvam AI LLM with system prompt:
-          │     • Context: Top search results
-          │     • Instructions: Specific to query type
-          │     • Format: Markdown
-          │     • Language: User's original language
-          │
-          └─→ [6. STREAM]
-                AI SDK:
-                Stream response word-by-word
-                to UI in real-time
-                
-          ▼
-┌─────────────────────────────────────────────────────────────┐
-│           Supporting Services (In Parallel)                 │
-│                                                             │
-│  • Save to chat_history (Supabase)                          │
-│  • Update analytics (admin dashboard)                       │
-│  • Log unknown questions (if confidence < 0.45)             │
-│  • Collect feedback (user ratings)                          │
-└─────────────────────────────────────────────────────────────┘
-                         │
-                    Streaming Response
-                    (Chunked JSON)
-                         │
-                         ▼
-┌─────────────────────────────────────────────────────────────┐
-│                  Frontend (React)                           │
-│            Displays response in chat window                 │
-│            Renders Markdown (tables, bold, code)            │
-│            Shows loading indicator while streaming          │
-└─────────────────────────────────────────────────────────────┘
+```text
+[ User Interface (Next.js React Client) ]
+       │        │
+       ▼        ▼
+[ Next.js API Routes (Serverless Functions) ]
+       │        │
+       ▼        ▼
+[ Core Logic (src/lib) ] ───────► [ External AI Services ]
+  │  - rag-engine.ts                  - OpenAI (Embeddings)
+  │  - logical-router.ts              - Sarvam AI (LLM)
+  │  - query-decomposer.ts            - HuggingFace (Reranker)
+  │
+  ▼
+[ Data Access & State ]
+  │  - supabase.ts (pgvector database & auth)
+  │  - cache.ts (Upstash Redis)
 ```
 
-### **Database Schema (Simplified)**
+**Key Modules:**
+1. **Frontend UI Layer:** Chat interface, Markdown/Mermaid renderers, Admin dashboard.
+2. **API Layer:** Chat orchestration, Admin ingestion triggers, Diagram generation API.
+3. **Intelligence/RAG Layer:** Query expansion, vector retrieval, cross-encoder reranking, and RAPTOR hierarchical processing.
+4. **Data Layer:** Supabase for persistent memory (vectors, conversation history) and Upstash for latency-sensitive query caching.
 
-```
-┌──────────────────────────────────────────────────────────┐
-│            Supabase PostgreSQL Tables                    │
-└──────────────────────────────────────────────────────────┘
+### **Data & Control Flow**
 
-hms_knowledge (the brain's knowledge)
-├── id (TEXT)              "qa_001"
-├── question (TEXT)        "What is TB1?"
-├── answer (TEXT)          "TB1 is the primary 24V DC terminal..."
-├── embedding (vector)     [0.142, 0.867, -0.234, ..., 0.456]
-├── source (TEXT)          "pdf" or "json"
-├── created_at             2024-03-10T10:00:00Z
-└── [Indexes for fast search]
-
-chat_history (remembers conversations)
-├── id
-├── user_id                Which user asked
-├── user_question          "What is TB1?"
-├── english_text           "What is the TB1 terminal?"
-├── answer                 "TB1 is..."
-├── confidence_score       0.89
-├── answer_mode            "rag_high" or "general" or "unknown"
-└── created_at
-
-unknown_questions (tracks needs to improve)
-├── id
-├── user_question          "What is the XYZ model?"
-├── top_similarity         0.42 (too low!)
-├── frequency              5 (asked 5 times)
-├── status                 "pending_review"
-└── admin_answer (added by admin)
-
-user_profiles (tracks users)
-├── id
-├── email                  "operator@seple.in"
-├── name                   "Rajesh Kumar"
-├── query_count            237
-├── last_active            2024-03-10T09:55:00Z
-└── language_preference    "hi"
-
-feedback (user ratings)
-├── id
-├── chat_id                Which chat message
-├── rating                 5 (out of 5)
-├── comment                "Helpful answer!"
-└── created_at
-```
+**Tracing a standard Chat Request:**
+1. **Entry:** User types a question in the UI (`src/app/page.tsx`).
+2. **API:** Request hits `src/app/api/chat/route.ts`. 
+3. **Preprocessing:** The `conversation-retrieval.ts` module looks at past messages and rewrites the query so it's fully contextualized. 
+4. **Cache Check:** `cache.ts` checks Upstash Redis for an exact match. If found, it returns immediately.
+5. **Strategy:** `logical-router.ts` decides the search approach.
+6. **Expansion:** `query-expansion.ts` generates a HYDE hypothetical answer and synonym queries.
+7. **Retrieval:** `rag-engine.ts` queries Supabase via `pgvector` for chunks matching the expanded queries.
+8. **Reranking:** The top 30 chunks are sent to `reranker.ts` (HuggingFace cross-encoder) to be re-sorted by true semantic relevance. The top 5 are kept.
+9. **Generation:** The compressed context and the query are sent via `sarvam.ts` or standard LangChain OpenAI tools to generate the final answer.
+10. **Exit:** The answer is streamed back to the client, rendered as markdown (or Mermaid diagrams), and the session is logged to Supabase.
 
 ---
 
@@ -1875,7 +1674,17 @@ NEXT_PUBLIC_ADMIN_PASSWORD=YourSecurePassword
 
 ---
 
-## 🐛 Troubleshooting & FAQ
+## 🐛 Troubleshooting, FAQ & Tech Debt
+
+### **Technical Debt & Risks**
+
+1. **Vector DB Fragmentation:** The project is primarily built on Supabase `pgvector`, but files like `scripts/seed.ts` and the `package.json` import `@pinecone-database/pinecone`. The `README.md` references transitioning to Pinecone for scaling over 100k vectors. Managing dual vector DB logic is a major tech debt risk.
+2. **Environment Variable Proliferation:** The system requires an enormous amount of secrets (`OPENAI_API_KEY`, `UPSTASH_REDIS_REST_TOKEN`, `HUGGINGFACE_API_KEY`, `PINECONE_API_KEY`, `SUPABASE_SERVICE_ROLE_KEY`). Missing keys result in inconsistent error handling (some modules fail silently, others crash the app).
+3. **"Heavy" RAG by Default:** Features like RAPTOR, Knowledge Graphs, and Cross-Encoder reranking are complex. The `src/lib/` folder is overloaded with 20+ monolithic logic files. Evaluating the actual performance benefit versus the latency hit of these features is necessary.
+4. **Vercel AI SDK Version Lag:** `package.json` lists `ai: ^4.0.0` while the ecosystem is currently on `v6+`. Upgrading this later may require massive refactoring of streaming logic.
+5. **Testing Deficiencies:** There is no standard unit testing framework (Jest/Vitest). Testing relies solely on `tsx` execution of benchmark scripts and smoke tests.
+
+
 
 ### **Common Issues**
 
@@ -1947,6 +1756,12 @@ A: Yes, via Supabase Auth. Users must login with email. Admin dashboard requires
 
 **Q: Can I export chat history?**
 A: Partially. Chat data is in Supabase. Create a script using `supabase-js` to export as CSV/JSON.
+
+---
+
+## 🧭 Recommended Starting Points for New Developers
+
+
 
 ---
 
