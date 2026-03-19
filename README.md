@@ -1501,8 +1501,7 @@ npx tsx scripts/ingest-diagram.ts --file="data/diagrams/uart-rs232-bitstream.md"
 .
 .
 # Or ingest ALL files in the directory at once
-npx tsx scripts/ingest-diagram.ts --dir="data/diagrams/" --type="block"
-npx tsx scripts/ingest-diagram.ts --dir="data/diagrams" --type="wiring"
+npx tsx scripts/ingest-diagram.ts --dir="data/diagrams/"
 
 # Or JSONL Files (.jsonl)
 #Individual JSONL file:
