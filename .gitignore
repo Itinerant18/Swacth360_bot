@@ -39,11 +39,9 @@ lint-output.txt
 system-prompts-and-models-of-ai-tools/
 
 # Data files and generated output
-data/pdf/
-data/langextract/
+data/
+.claude/
 *.pdf
-data/**/*.json
-data/**/*.jsonl
 # vercel
 .vercel
 
