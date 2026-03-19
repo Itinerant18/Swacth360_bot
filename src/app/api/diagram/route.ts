@@ -74,6 +74,10 @@ const DIAGRAM_TYPE_MAP: Record<string, string[]> = {
     firmware: ['firmware', 'update', 'ota', 'software', 'version', 'upgrade', 'reboot', 'restart', 'default', 'factory reset']
 };
 
+// Strong wiring intent keywords — if the user explicitly says "wire" or "wiring"
+// alongside a protocol like RS-485, the intent is wiring, not network config.
+const STRONG_WIRING_KEYWORDS = ['wiring', 'wire ', 'wire?', 'how to wire', 'how do i wire', 'terminal'];
+
 export function isDiagramRequest(text: string): { isDiagram: boolean; diagramType: string } {
     const lower = text.toLowerCase();
     const hasDiagramIntent = DIAGRAM_KEYWORDS.some(kw => {
@@ -81,10 +85,37 @@ export function isDiagramRequest(text: string): { isDiagram: boolean; diagramTyp
         return lower.includes(kw);
     });
     if (!hasDiagramIntent) return { isDiagram: false, diagramType: '' };
+
+    // Score-based matching: count how many keywords match per type
+    const scores: Record<string, number> = {};
     for (const [type, keywords] of Object.entries(DIAGRAM_TYPE_MAP)) {
-        if (keywords.some(kw => lower.includes(kw))) return { isDiagram: true, diagramType: type };
+        let score = 0;
+        for (const kw of keywords) {
+            if (lower.includes(kw)) score++;
+        }
+        if (score > 0) scores[type] = score;
     }
-    return { isDiagram: true, diagramType: 'wiring' };
+
+    if (Object.keys(scores).length === 0) {
+        return { isDiagram: true, diagramType: 'wiring' };
+    }
+
+    // Boost wiring score if user explicitly uses wiring-intent words
+    if (scores.wiring && STRONG_WIRING_KEYWORDS.some(kw => lower.includes(kw))) {
+        scores.wiring += 3;
+    }
+
+    // Pick the type with the highest score
+    let bestType = 'wiring';
+    let bestScore = 0;
+    for (const [type, score] of Object.entries(scores)) {
+        if (score > bestScore) {
+            bestScore = score;
+            bestType = type;
+        }
+    }
+
+    return { isDiagram: true, diagramType: bestType };
 }
 
 // ─── Search KB for relevant specs ────────────────────────────
@@ -185,6 +216,8 @@ Fill every table cell. Use real values from the knowledge base where available.
 
   power: `You are a senior technical writer for HMS industrial panels at SEPLe.
 Generate a COMPLETE, PROFESSIONAL power supply wiring document for: {panelType}
+
+IMPORTANT: Use ONLY plain ASCII art inside triple-backtick code blocks. Do NOT generate \`\`\`mermaid blocks for power diagrams — use plain \`\`\` with Unicode box-drawing characters only.
 
 {kbSection}
 
@@ -572,7 +605,7 @@ Your output standards:
 3. COMPLETENESS — Fill ALL table cells. Use standard HMS reference values when KB data is unavailable.
 4. STRUCTURE — Follow the exact section order from the template. Do not add extra sections.
 5. DIAGRAM FORMAT — If the template uses \`\`\`mermaid, generate valid Mermaid flowchart/sequence syntax. If the template uses plain \`\`\`, generate ASCII art with Unicode box-drawing characters (┌┐└┘├┤─│►◄). Do NOT mix the two formats.
-6. MERMAID RULES — When generating Mermaid: use quoted labels for special chars, use <br/> for line breaks in nodes, keep node IDs simple (A, B, C...), use subgraph for grouping.
+6. MERMAID RULES — When generating Mermaid: use quoted labels "like this" for special chars, use <br/> for line breaks in nodes, keep node IDs simple (A, B, C...), use subgraph for grouping. NEVER use backticks inside edge labels or node labels — use double quotes instead. Wrong: -->|\`18 AWG Red\`| Correct: -->|"18 AWG Red"|
 7. FORMATTING — Terminal names, voltages, error codes, and measurements must be in backtick \`inline code\`.
 8. WIRE COLOURS — Use emoji circles: 🔴 Red, ⚫ Black, 🔵 Blue, ⚪ White, 🟡 Yellow, 🟢 Green, 🟠 Orange, 🟤 Brown.
 9. ACTIONABLE — Every diagram must include numbered installation/verification steps.

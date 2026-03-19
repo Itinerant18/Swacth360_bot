@@ -3,7 +3,13 @@
     "allow": [
       "Bash(npx tsc:*)",
       "mcp__supabase__list_projects",
-      "mcp__supabase__execute_sql"
+      "mcp__supabase__execute_sql",
+      "Bash(grep '\"\"ai\"\"' package.json)",
+      "Bash(npm ls:*)",
+      "Bash(node -e \"const p = require\\(''./node_modules/ai/package.json''\\); console.log\\(p.version\\)\")",
+      "Bash(node -e \":*)",
+      "Bash(npx tsx -e \":*)",
+      "Bash(npx next:*)"
     ]
   }
 }

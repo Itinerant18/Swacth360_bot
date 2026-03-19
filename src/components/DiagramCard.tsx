@@ -1,11 +1,12 @@
 /**
  * src/components/DiagramCard.tsx
  *
- * Renders text-based diagrams (markdown + ASCII art) in the chat.
- * No SVG, no Gemini — pure markdown via react-markdown + remark-gfm.
+ * Renders text-based diagrams (markdown + ASCII art + Mermaid) in the chat.
  *
- * The diagram looks like a GitHub markdown file rendered in dark mode.
- * ASCII art in code blocks, color tables, step-by-step instructions.
+ * Fixes vs previous version:
+ *  - Fixed mermaid code extraction from ReactMarkdown's pre/code tree
+ *  - code component no longer wraps in <code> when it's inside a mermaid pre
+ *  - Inline <code> (backtick spans) handled separately from block code
  */
 
 'use client';
@@ -15,7 +16,23 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import dynamic from 'next/dynamic';
 
-const MermaidBlock = dynamic(() => import('./MermaidBlock'), { ssr: false });
+const MermaidBlock = dynamic(() => import('./MermaidBlock'), {
+    ssr: false,
+    loading: () => (
+        <div style={{
+            background: '#161b22',
+            border: '1px solid #30363d',
+            borderRadius: '8px',
+            padding: '20px',
+            textAlign: 'center',
+            color: '#8b949e',
+            fontSize: '12px',
+            margin: '10px 0',
+        }}>
+            Loading diagram renderer…
+        </div>
+    ),
+});
 
 interface DiagramCardProps {
     markdown: string;
@@ -35,7 +52,20 @@ const LABELS = {
 const TYPE_ICONS: Record<string, string> = {
     wiring: '🔌', power: '⚡', network: '🌐',
     panel: '📋', block: '🔷', connector: '🔗', led: '💡',
+    alarm: '🚨', sensor: '📡', battery: '🔋',
 };
+
+// ── Helper: extract raw text from React children ───────────────
+function extractText(children: React.ReactNode): string {
+    if (typeof children === 'string') return children;
+    if (typeof children === 'number') return String(children);
+    if (Array.isArray(children)) return children.map(extractText).join('');
+    if (React.isValidElement(children)) {
+        const props = children.props as { children?: React.ReactNode };
+        return extractText(props.children);
+    }
+    return '';
+}
 
 export default function DiagramCard({
     markdown, title, diagramType, hasKBContext, language = 'en',
@@ -49,26 +79,32 @@ export default function DiagramCard({
             await navigator.clipboard.writeText(markdown);
             setCopied(true);
             setTimeout(() => setCopied(false), 2000);
-        } catch { }
+        } catch { /* noop */ }
     };
 
     return (
-        <div aria-label={`Diagram Card: ${title}`} style={{
-            background: '#0d1117',
-            border: '1px solid #21262d',
-            borderRadius: '10px',
-            marginTop: '10px',
-            overflow: 'hidden',
-            fontFamily: "'Segoe UI', system-ui, sans-serif",
-            maxWidth: '100%',
-        }}>
-            {/* ── Header ──────────────────────────────────────────── */}
+        <div
+            aria-label={`Diagram Card: ${title}`}
+            style={{
+                background: '#0d1117',
+                border: '1px solid #21262d',
+                borderRadius: '10px',
+                marginTop: '10px',
+                overflow: 'hidden',
+                fontFamily: "'Segoe UI', system-ui, sans-serif",
+                maxWidth: '100%',
+            }}
+        >
+            {/* ── Header ──────────────────────────────────────── */}
             <div style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
                 padding: '10px 14px',
                 background: '#161b22',
                 borderBottom: '1px solid #21262d',
-                flexWrap: 'wrap', gap: '8px',
+                flexWrap: 'wrap',
+                gap: '8px',
             }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                     <span style={{ fontSize: '15px' }}>{icon}</span>
@@ -79,8 +115,10 @@ export default function DiagramCard({
                         background: hasKBContext ? '#1f6feb22' : '#30363d',
                         color: hasKBContext ? '#58a6ff' : '#8b949e',
                         border: `1px solid ${hasKBContext ? '#1f6feb' : '#30363d'}`,
-                        borderRadius: '12px', padding: '1px 8px',
-                        fontSize: '10px', fontWeight: 600,
+                        borderRadius: '12px',
+                        padding: '1px 8px',
+                        fontSize: '10px',
+                        fontWeight: 600,
                     }}>
                         {hasKBContext ? `📚 ${lbl.fromManual}` : `✨ ${lbl.aiGenerated}`}
                     </span>
@@ -92,8 +130,10 @@ export default function DiagramCard({
                         background: copied ? '#238636' : '#21262d',
                         color: copied ? '#ffffff' : '#8b949e',
                         border: '1px solid #30363d',
-                        borderRadius: '6px', padding: '4px 12px',
-                        fontSize: '11px', cursor: 'pointer',
+                        borderRadius: '6px',
+                        padding: '4px 12px',
+                        fontSize: '11px',
+                        cursor: 'pointer',
                         transition: 'all 0.15s',
                         whiteSpace: 'nowrap',
                     }}
@@ -108,62 +148,91 @@ export default function DiagramCard({
                     remarkPlugins={[remarkGfm]}
                     components={{
 
-                        // ── Code blocks: Mermaid → SVG, others → ASCII art ──
-                        pre({ children }: React.HTMLAttributes<HTMLPreElement>) {
-                            // Check if the child is a <code> with mermaid class
-                            const child = React.Children.toArray(children)[0];
-                            if (
-                                React.isValidElement(child) &&
-                                typeof child.props === 'object' &&
-                                child.props !== null &&
-                                'className' in child.props
-                            ) {
-                                const className = String((child.props as { className?: string }).className || '');
+                        // ── Code blocks: detect mermaid vs ASCII art ─────
+                        pre({ children, ...rest }: React.HTMLAttributes<HTMLPreElement>) {
+                            // Look inside the pre for a <code> element with language class
+                            const childArray = React.Children.toArray(children);
+                            const codeChild = childArray[0];
+
+                            if (React.isValidElement(codeChild)) {
+                                const codeProps = codeChild.props as {
+                                    className?: string;
+                                    children?: React.ReactNode;
+                                };
+                                const className = codeProps.className ?? '';
+
+                                // ── Mermaid block → render as SVG diagram ──
                                 if (className.includes('language-mermaid')) {
-                                    const mermaidCode = String(
-                                        (child.props as { children?: React.ReactNode }).children || ''
-                                    ).trim();
-                                    return <MermaidBlock code={mermaidCode} />;
+                                    const mermaidCode = extractText(codeProps.children).trim();
+                                    if (mermaidCode) {
+                                        return <MermaidBlock code={mermaidCode} />;
+                                    }
                                 }
                             }
+
+                            // ── ASCII art / other code block ───────────────
                             return (
-                                <pre style={{
-                                    background: '#161b22',
-                                    border: '1px solid #30363d',
-                                    borderRadius: '8px',
-                                    padding: '14px 16px',
-                                    overflowX: 'auto',
-                                    margin: '10px 0',
-                                }}>
+                                <pre
+                                    {...rest}
+                                    style={{
+                                        background: '#161b22',
+                                        border: '1px solid #30363d',
+                                        borderRadius: '8px',
+                                        padding: '14px 16px',
+                                        overflowX: 'auto',
+                                        margin: '10px 0',
+                                    }}
+                                >
                                     {children}
                                 </pre>
                             );
                         },
-                        code({ children }: React.HTMLAttributes<HTMLElement>) {
+
+                        // ── Inline/block code text rendering ─────────────
+                        code({ children, className, ...rest }: React.HTMLAttributes<HTMLElement> & { className?: string }) {
+                            // Block code (inside <pre>) renders differently — this handles
+                            // the inner <code> element for non-mermaid blocks
+                            const isBlock = !!(className && className.startsWith('language-'));
+                            if (isBlock) {
+                                return (
+                                    <code
+                                        style={{
+                                            fontFamily: "'Courier New', Consolas, 'Lucida Console', monospace",
+                                            fontSize: '13px',
+                                            lineHeight: '1.65',
+                                            color: '#e6edf3',
+                                            whiteSpace: 'pre',
+                                            display: 'block',
+                                        }}
+                                    >
+                                        {children}
+                                    </code>
+                                );
+                            }
+                            // Inline code (backticks)
                             return (
-                                <code style={{
-                                    fontFamily: "'Courier New', Consolas, 'Lucida Console', monospace",
-                                    fontSize: '13px',
-                                    lineHeight: '1.65',
-                                    color: '#e6edf3',
-                                    whiteSpace: 'pre',
-                                    display: 'block',
-                                }}>
-                                    {String(children).replace(/\n$/, '')}
+                                <code
+                                    style={{
+                                        fontFamily: "'Courier New', Consolas, monospace",
+                                        fontSize: '12px',
+                                        background: '#30363d',
+                                        color: '#79c0ff',
+                                        padding: '1px 5px',
+                                        borderRadius: '4px',
+                                        border: '1px solid #21262d',
+                                    }}
+                                    {...rest}
+                                >
+                                    {children}
                                 </code>
                             );
                         },
 
-                        // ── Tables ──
+                        // ── Tables ──────────────────────────────────────
                         table({ children }: React.TableHTMLAttributes<HTMLTableElement>) {
                             return (
                                 <div style={{ overflowX: 'auto', margin: '12px 0' }}>
-                                    <table style={{
-                                        borderCollapse: 'collapse',
-                                        width: '100%',
-                                        fontSize: '12px',
-                                        lineHeight: '1.5',
-                                    }}>
+                                    <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: '12px', lineHeight: '1.5' }}>
                                         {children}
                                     </table>
                                 </div>
@@ -212,69 +281,49 @@ export default function DiagramCard({
                             );
                         },
 
-                        // â”€â”€ Headings â”€â”€
+                        // ── Headings ──────────────────────────────────────
                         h1({ children }: React.HTMLAttributes<HTMLHeadingElement>) {
                             return (
-                                <h1 style={{
-                                    color: '#e6edf3', fontSize: '17px', fontWeight: 700,
-                                    margin: '0 0 14px', paddingBottom: '8px',
-                                    borderBottom: '1px solid #21262d',
-                                }}>
+                                <h1 style={{ color: '#e6edf3', fontSize: '17px', fontWeight: 700, margin: '0 0 14px', paddingBottom: '8px', borderBottom: '1px solid #21262d' }}>
                                     {children}
                                 </h1>
                             );
                         },
                         h2({ children }: React.HTMLAttributes<HTMLHeadingElement>) {
                             return (
-                                <h2 style={{
-                                    color: '#58a6ff', fontSize: '15px', fontWeight: 700,
-                                    margin: '18px 0 10px', paddingBottom: '6px',
-                                    borderBottom: '1px solid #21262d',
-                                }}>
+                                <h2 style={{ color: '#58a6ff', fontSize: '15px', fontWeight: 700, margin: '18px 0 10px', paddingBottom: '6px', borderBottom: '1px solid #21262d' }}>
                                     {children}
                                 </h2>
                             );
                         },
                         h3({ children }: React.HTMLAttributes<HTMLHeadingElement>) {
                             return (
-                                <h3 style={{
-                                    color: '#79c0ff', fontSize: '13px', fontWeight: 600,
-                                    margin: '14px 0 7px',
-                                }}>
+                                <h3 style={{ color: '#79c0ff', fontSize: '13px', fontWeight: 600, margin: '14px 0 7px' }}>
                                     {children}
                                 </h3>
                             );
                         },
 
-                        // â”€â”€ Paragraph â”€â”€
+                        // ── Paragraph ──────────────────────────────────────
                         p({ children }: React.HTMLAttributes<HTMLParagraphElement>) {
                             return (
-                                <p style={{
-                                    color: '#c9d1d9', fontSize: '13px',
-                                    lineHeight: '1.65', margin: '7px 0',
-                                }}>
+                                <p style={{ color: '#c9d1d9', fontSize: '13px', lineHeight: '1.65', margin: '7px 0' }}>
                                     {children}
                                 </p>
                             );
                         },
 
-                        // â”€â”€ Lists â”€â”€
+                        // ── Lists ──────────────────────────────────────────
                         ul({ children }: React.HTMLAttributes<HTMLUListElement>) {
                             return (
-                                <ul style={{
-                                    color: '#c9d1d9', fontSize: '13px',
-                                    paddingLeft: '22px', margin: '8px 0', lineHeight: '1.7',
-                                }}>
+                                <ul style={{ color: '#c9d1d9', fontSize: '13px', paddingLeft: '22px', margin: '8px 0', lineHeight: '1.7' }}>
                                     {children}
                                 </ul>
                             );
                         },
                         ol({ children }: React.OlHTMLAttributes<HTMLOListElement>) {
                             return (
-                                <ol style={{
-                                    color: '#c9d1d9', fontSize: '13px',
-                                    paddingLeft: '22px', margin: '8px 0', lineHeight: '1.7',
-                                }}>
+                                <ol style={{ color: '#c9d1d9', fontSize: '13px', paddingLeft: '22px', margin: '8px 0', lineHeight: '1.7' }}>
                                     {children}
                                 </ol>
                             );
@@ -283,7 +332,7 @@ export default function DiagramCard({
                             return <li style={{ margin: '4px 0' }}>{children}</li>;
                         },
 
-                        // â”€â”€ Bold / Italic â”€â”€
+                        // ── Text styles ────────────────────────────────────
                         strong({ children }: React.HTMLAttributes<HTMLElement>) {
                             return <strong style={{ color: '#e6edf3', fontWeight: 600 }}>{children}</strong>;
                         },
@@ -291,13 +340,14 @@ export default function DiagramCard({
                             return <em style={{ color: '#a5d6ff' }}>{children}</em>;
                         },
 
-                        // â”€â”€ Blockquote = source/note attribution â”€â”€
+                        // ── Blockquote ─────────────────────────────────────
                         blockquote({ children }: React.BlockquoteHTMLAttributes<HTMLQuoteElement>) {
                             return (
                                 <blockquote style={{
                                     borderLeft: '3px solid #1f6feb',
                                     background: '#1f6feb0d',
-                                    margin: '14px 0 0', padding: '8px 14px',
+                                    margin: '14px 0 0',
+                                    padding: '8px 14px',
                                     borderRadius: '0 6px 6px 0',
                                 }}>
                                     <div style={{ color: '#8b949e', fontSize: '12px', lineHeight: '1.6' }}>
@@ -307,14 +357,10 @@ export default function DiagramCard({
                             );
                         },
 
-                        // ── HR ──
+                        // ── HR ─────────────────────────────────────────────
                         hr() {
                             return (
-                                <hr style={{
-                                    border: 'none',
-                                    borderTop: '1px solid #21262d',
-                                    margin: '16px 0',
-                                }} />
+                                <hr style={{ border: 'none', borderTop: '1px solid #21262d', margin: '16px 0' }} />
                             );
                         },
                     }}

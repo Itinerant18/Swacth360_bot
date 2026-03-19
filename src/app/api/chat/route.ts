@@ -431,7 +431,12 @@ export async function POST(req: Request) {
         // If this is a diagram request, skip cache entirely and go
         // straight to diagram generation. Otherwise cached text answers
         // for keywords like "hms panel" intercept diagram queries.
-        const { isDiagram, diagramType } = isDiagramRequest(retrievalQuestion);
+        // Check BOTH original and rewritten questions — context rewriting
+        // can strip diagram keywords like "show me", "diagram", "wiring".
+        const origDiagram = isDiagramRequest(englishQuestion);
+        const rewrittenDiagram = isDiagramRequest(retrievalQuestion);
+        const isDiagram = origDiagram.isDiagram || rewrittenDiagram.isDiagram;
+        const diagramType = origDiagram.isDiagram ? origDiagram.diagramType : rewrittenDiagram.diagramType;
 
         // Tier 1 Cache Check (exact match, no embedding needed)
         // Skip cache for diagram requests
@@ -629,7 +634,19 @@ export async function POST(req: Request) {
                     return textStreamResponse(`DIAGRAM_RESPONSE:${payload}`);
                 }
             } catch (err: unknown) {
-                console.warn(`Diagram failed: ${(err as Error).message}`);
+                console.warn(`Diagram generation failed: ${(err as Error).message}`);
+                // Return a fallback diagram response instead of silently falling through to text
+                const fallbackPayload = JSON.stringify({
+                    __type: 'diagram',
+                    markdown: `## Diagram Generation Error\n\nUnable to generate ${diagramType} diagram at this time.\n\n**Error:** ${(err as Error).message}\n\n> Please try again or contact support if the issue persists.`,
+                    title: `${diagramType} diagram — Error`,
+                    diagramType,
+                    panelType: 'HMS Panel',
+                    hasKBContext: false,
+                    generatedBy: 'fallback',
+                    success: false,
+                });
+                return textStreamResponse(`DIAGRAM_RESPONSE:${fallbackPayload}`);
             }
         }
 
