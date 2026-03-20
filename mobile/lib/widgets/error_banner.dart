@@ -1,45 +1,33 @@
 import 'package:flutter/material.dart';
-
 import '../theme/app_theme.dart';
 
 class ErrorBanner extends StatelessWidget {
-  final String message;
-  final VoidCallback onDismiss;
+  final String error;
 
-  const ErrorBanner({
-    super.key,
-    required this.message,
-    required this.onDismiss,
-  });
+  const ErrorBanner({super.key, required this.error});
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: double.infinity,
-      margin: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: AppColors.error.withOpacity(0.08),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: AppColors.error.withOpacity(0.3)),
+        color: AppColors.danger.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(color: AppColors.danger.withOpacity(0.25)),
       ),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          const Icon(Icons.error_outline_rounded, size: 16, color: AppColors.error),
+          const Icon(Icons.close, size: 14, color: AppColors.danger),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              message,
+              error,
               style: const TextStyle(
                 fontSize: 12,
-                color: AppColors.error,
-                height: 1.3,
+                color: AppColors.danger,
               ),
             ),
-          ),
-          GestureDetector(
-            onTap: onDismiss,
-            child: const Icon(Icons.close_rounded, size: 16, color: AppColors.error),
           ),
         ],
       ),

@@ -2,14 +2,15 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 enum AppLanguage {
-  en('en', 'English', 'EN'),
-  bn('bn', 'Bengali', 'BN'),
-  hi('hi', 'Hindi', 'HI');
+  en('en', 'English', 'EN', '🇺🇸'),
+  bn('bn', 'Bengali', 'BN', '🇧🇩'),
+  hi('hi', 'Hindi', 'HI', '🇮🇳');
 
   final String code;
   final String nativeName;
   final String shortCode;
-  const AppLanguage(this.code, this.nativeName, this.shortCode);
+  final String flag;
+  const AppLanguage(this.code, this.nativeName, this.shortCode, this.flag);
 }
 
 class LanguageStrings {

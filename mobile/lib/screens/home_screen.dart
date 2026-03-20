@@ -1,32 +1,36 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-
-import '../providers/chat_provider.dart';
-import '../providers/home_screen_controller.dart';
 import '../theme/app_theme.dart';
 import 'chat/chat_screen.dart';
-import 'history/history_screen.dart';
 import 'profile/profile_screen.dart';
+import 'history/history_drawer.dart';
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
-  static const _screens = [ChatScreen(), HistoryScreen(), ProfileScreen()];
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  int _tab = 0;
 
   @override
   Widget build(BuildContext context) {
-    final controller = context.watch<HomeScreenController>();
-
     return Scaffold(
-      backgroundColor: AppColors.bgDesk,
-      body: IndexedStack(index: controller.currentIndex, children: _screens),
+      drawer: const HistoryDrawer(),
+      body: IndexedStack(
+        index: _tab,
+        children: const [
+          ChatScreen(),
+          ProfileScreen(),
+        ],
+      ),
       bottomNavigationBar: _BottomNav(
-        currentIndex: controller.currentIndex,
-        onTap: (i) {
-          if (i == 0 && controller.currentIndex == 0) {
-            context.read<ChatProvider>().startNewConversation();
-          }
-          controller.setIndex(i);
+        currentIndex: _tab,
+        onTap: (index) {
+          setState(() {
+            _tab = index;
+          });
         },
       ),
     );
@@ -36,42 +40,38 @@ class HomeScreen extends StatelessWidget {
 class _BottomNav extends StatelessWidget {
   final int currentIndex;
   final ValueChanged<int> onTap;
+
   const _BottomNav({required this.currentIndex, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
     return Container(
       decoration: const BoxDecoration(
-        color: Color(0xFFD4CFC7),
-        border: Border(top: BorderSide(color: AppColors.borderStitch)),
+        gradient: LinearGradient(
+          colors: [
+            Color(0xFFE8E3DC),
+            Color(0xFFD4CFC7),
+            Color(0xFFC4BEB5),
+          ],
+        ),
+        border: Border(top: BorderSide(color: Color(0xFFB8B3AB))),
+        boxShadow: AppShadows.button,
       ),
       child: SafeArea(
         top: false,
         child: Row(
           children: [
             _NavItem(
-              icon: Icons.chat_bubble_outline_rounded,
-              activeIcon: Icons.chat_bubble_rounded,
-              label: 'Chat',
-              index: 0,
-              current: currentIndex,
-              onTap: onTap,
+              icon: Icons.chat_bubble_outline,
+              label: "Chat",
+              active: currentIndex == 0,
+              onTap: () => onTap(0),
             ),
             _NavItem(
-              icon: Icons.history_rounded,
-              activeIcon: Icons.history_rounded,
-              label: 'History',
-              index: 1,
-              current: currentIndex,
-              onTap: onTap,
-            ),
-            _NavItem(
-              icon: Icons.person_outline_rounded,
-              activeIcon: Icons.person_rounded,
-              label: 'Profile',
-              index: 2,
-              current: currentIndex,
-              onTap: onTap,
+              icon: Icons.person_outline,
+              label: "Profile",
+              active: currentIndex == 1,
+              onTap: () => onTap(1),
             ),
           ],
         ),
@@ -81,58 +81,50 @@ class _BottomNav extends StatelessWidget {
 }
 
 class _NavItem extends StatelessWidget {
-  final IconData icon, activeIcon;
+  final IconData icon;
   final String label;
-  final int index, current;
-  final ValueChanged<int> onTap;
+  final bool active;
+  final VoidCallback onTap;
 
   const _NavItem({
     required this.icon,
-    required this.activeIcon,
     required this.label,
-    required this.index,
-    required this.current,
+    required this.active,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    final active = index == current;
     return Expanded(
-      child: InkWell(
-        onTap: () => onTap(index),
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 10),
+      child: GestureDetector(
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 10.0),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              AnimatedSwitcher(
-                duration: const Duration(milliseconds: 200),
-                child: Icon(
-                  active ? activeIcon : icon,
-                  key: ValueKey(active),
-                  color: active ? AppColors.brass : AppColors.textPencil,
-                  size: 22,
-                ),
+              Icon(
+                icon,
+                size: 22,
+                color: active ? AppColors.textInk : AppColors.textPencil,
               ),
-              const SizedBox(height: 3),
+              const SizedBox(height: 4),
               Text(
-                label,
+                label.toUpperCase(),
                 style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: active ? FontWeight.w700 : FontWeight.w400,
-                  color: active ? AppColors.brass : AppColors.textPencil,
-                  letterSpacing: 0.3,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: active ? AppColors.textInk : AppColors.textPencil,
                 ),
               ),
-              const SizedBox(height: 2),
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                height: 2.5,
-                width: active ? 18 : 0,
+              const SizedBox(height: 4),
+              Container(
+                width: 24,
+                height: 3,
                 decoration: BoxDecoration(
-                  color: AppColors.brass,
-                  borderRadius: BorderRadius.circular(2),
+                  color: active ? AppColors.brass : Colors.transparent,
+                  borderRadius: BorderRadius.circular(1.5),
                 ),
               ),
             ],
