@@ -411,7 +411,7 @@ export default function AdminDashboard() {
                             <h1 className="text-base sm:text-lg font-semibold tracking-tight text-[#1C1917]">
                                 Admin <span className="text-[#CA8A04]">Dashboard</span>
                             </h1>
-                            <p className="text-[10px] sm:text-[11px] text-[#78716C]">Dexter HMS Bot - Train & Monitor</p>
+                            <p className="text-[10px] sm:text-[11px] text-[#78716C]">SAI Admin - Train & Monitor</p>
                         </div>
                     </div>
                     <div className="flex items-center gap-2">

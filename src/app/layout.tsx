@@ -15,10 +15,10 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  title: "Dexter Tech Support AI",
+  title: "SAI Tech Support",
   description: "AI-powered HMS panel technical support — by SEPLe",
   openGraph: {
-    title: "Dexter Tech Support AI",
+    title: "SAI Tech Support",
     description: "AI-powered HMS panel technical support",
     type: "website",
   },

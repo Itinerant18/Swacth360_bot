@@ -284,7 +284,7 @@ Options:
     const filesToProcess = allFiles.slice(startIdx, startIdx + limit);
 
     console.log('\n' + '═'.repeat(65));
-    console.log('📄 Dexter HMS — Batch PDF Seeder');
+    console.log('📄 SAI — Batch PDF Seeder');
     console.log('   Embedding:  OpenAI text-embedding-3-small (1536-dim)');
     console.log('   Vision:     Gemini 2.0 Flash (for image-heavy PDFs)');
     console.log('   Target:     Supabase hms_knowledge');

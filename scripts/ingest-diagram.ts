@@ -161,7 +161,7 @@ function buildEmbeddingText(
     const terminals = [...markdown.matchAll(/`?(TB\d+[+-]?|A[+-]|B[+-]|GND|PE|COM|NO|NC|SIG|EOL|Z\d+)`?/gi)].map(m => m[1]);
     const protocols = [...markdown.matchAll(/`?(RS-?485|Modbus|PROFIBUS|Ethernet|CANbus|I2C|UART|SIA|Contact.?ID|MQTT)`?/gi)].map(m => m[1]);
     const voltages = [...markdown.matchAll(/`?(\d+V\s*DC|\d+V\s*AC|\d+\.\d+V)`?/g)].map(m => m[1]);
-    const products = [...markdown.matchAll(/\b(Dexter|HMS|Jarvis|ISIS|ATUM|Pinnacle|Dhwani|Whisper|Hestia|Apollo|Chronos)\b/gi)].map(m => m[1]);
+    const products = [...markdown.matchAll(/\b(SAI|HMS|Jarvis|ISIS|ATUM|Pinnacle|Dhwani|Whisper|Hestia|Apollo|Chronos)\b/gi)].map(m => m[1]);
 
     const entities = [...new Set([...terminals, ...protocols, ...voltages, ...products])].slice(0, 20);
     const category = TYPE_CATEGORY_MAP[diagramType] || 'Technical Diagram';

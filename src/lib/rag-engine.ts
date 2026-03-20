@@ -1,7 +1,7 @@
 /**
  * src/lib/rag-engine.ts
  *
- * Frontier-Grade RAG Engine for Dexter HMS Bot
+ * Frontier-Grade RAG Engine for SAI HMS Bot
  *
  * Implements techniques used by GPT-4o, Claude, Gemini in production:
  *

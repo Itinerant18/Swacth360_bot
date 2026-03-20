@@ -297,11 +297,11 @@ function LoginContent() {
             <div className="card">
                 {/* Logo */}
                 <div className="logo-row">
-                    <div className="logo-icon">DX</div>
+                    <div className="logo-icon">S</div>
                     <div className="divider-v" />
                     <div>
-                        <div className="logo-text">Dexter HMS</div>
-                        <div className="logo-sub">Industrial Support Bot</div>
+                        <div className="logo-text">SAI</div>
+                        <div className="logo-sub">SWATCH Panel Support</div>
                     </div>
                 </div>
 

@@ -587,7 +587,7 @@ async function generateTextDiagram(
     // Build KB context section
     const kbSection = kbContext
         ? `**Knowledge Base (from uploaded manuals — use these exact specs):**\n\n${kbContext}\n\n---\n`
-        : `**Note:** No manual uploaded yet. Generate a standard HMS/Dexter panel diagram.\nAdmin can upload manuals via Admin → Train Bot for panel-specific specs.\n\n---\n`;
+        : `**Note:** No manual uploaded yet. Generate a standard HMS panel diagram.\nAdmin can upload manuals via Admin → Train Bot for panel-specific specs.\n\n---\n`;
 
     // Get the template for this diagram type
     const templateStr = DIAGRAM_PROMPTS[diagramType] || DIAGRAM_PROMPTS.wiring;
@@ -597,7 +597,7 @@ async function generateTextDiagram(
         .replace(/{panelType}/g, panelType)
         .replace(/{kbSection}/g, kbSection);
 
-    const systemPrompt = `You are a SENIOR industrial documentation specialist for HMS/Dexter panels at SEPLe.
+    const systemPrompt = `You are SAI, a SENIOR industrial documentation specialist for HMS panels at SEPLe.
 
 Your output standards:
 1. ACCURACY — Use KB data verbatim when available. Never invent terminal names or voltages.

@@ -1,7 +1,7 @@
 /**
  * src/lib/cache.ts
  *
- * Two-Tier Query Cache for Dexter HMS Bot
+ * Two-Tier Query Cache for SAI HMS Bot
  *
  * Tier 1 - Exact Match (Upstash Redis)
  *   SHA-256(normalized query) -> Redis key -> cached answer
@@ -22,7 +22,7 @@ import { getSupabase } from './supabase';
 const CACHE_CONFIG = {
     TIER1_TTL_SECONDS: parseInt(process.env.CACHE_TTL_SECONDS || '86400'),
     TIER2_THRESHOLD: parseFloat(process.env.SEMANTIC_CACHE_THRESHOLD || '0.90'),
-    REDIS_KEY_PREFIX: 'dexter:cache:v1:',
+    REDIS_KEY_PREFIX: 'sai:cache:v1:',
     MAX_ANSWER_LENGTH: 8000,
     MIN_ANSWER_LENGTH: 20,
 };

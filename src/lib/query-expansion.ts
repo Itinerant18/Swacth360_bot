@@ -9,7 +9,7 @@
 import { ChatOpenAI } from '@langchain/openai';
 import { stripThinkTags, extractJsonFromSarvam } from './sarvam';
 
-// HMS/Dexter domain-specific expansions
+// HMS/SAI domain-specific expansions
 const DOMAIN_EXPANSIONS: Record<string, string[]> = {
     error: ['fault', 'alarm', 'issue', 'problem', 'failure', 'malfunction'],
     voltage: ['V', 'power', 'supply', 'DC', 'AC', '24V', '12V'],

@@ -196,21 +196,21 @@ function formatRelativeTime(value: Date | string): string {
 const TEXT_MAP = {
     en: {
         welcome: 'Ask about HMS Panel Troubleshooting',
-        intro: 'I am your Dexter HMS support assistant. Ask me anything — troubleshooting, configuration, or installation.',
+        intro: 'I am SAI, your HMS support assistant. Ask me anything — troubleshooting, configuration, or installation.',
         placeholder: 'Ask anything...',
         footer: 'HMS Panel Expert · AI Powered · Diagrams supported',
         thinking: 'Analyzing and generating response...',
     },
     bn: {
         welcome: 'HMS প্যানেল ট্রাবলশুটিং সম্পর্কে জিজ্ঞাসা করুন',
-        intro: 'আমি আপনার Dexter HMS সাপোর্ট অ্যাসিস্ট্যান্ট। ট্রাবলশুটিং, কনফিগারেশন, বা ইন্সটলেশন সম্পর্কে জিজ্ঞাসা করুন।',
+        intro: 'আমি SAI, আপনার HMS সাপোর্ট অ্যাসিস্ট্যান্ট। ট্রাবলশুটিং, কনফিগারেশন, বা ইন্সটলেশন সম্পর্কে জিজ্ঞাসা করুন।',
         placeholder: 'যে কোনো প্রশ্ন করুন...',
         footer: 'HMS প্যানেল বিশেষজ্ঞ · AI দ্বারা চালিত · ডায়াগ্রাম সমর্থিত',
         thinking: 'বিশ্লেষণ ও উত্তর তৈরি হচ্ছে…',
     },
     hi: {
         welcome: 'HMS पैनल ट्रबलशूटिंग के बारे में पूछें',
-        intro: 'मैं आपका Dexter HMS सपोर्ट असिस्टेंट हूँ। ट्रबलशूटिंग, कॉन्फ़िगरेशन या इंस्टॉलेशन के बारे में पूछें।',
+        intro: 'मैं SAI हूँ, आपका HMS सपोर्ट असिस्टेंट। ट्रबलशूटिंग, कॉन्फ़िगरेशन या इंस्टॉलेशन के बारे में पूछें।',
         placeholder: 'कुछ भी पूछें...',
         footer: 'HMS पैनल विशेषज्ञ · AI संचालित · डायग्राम समर्थित',
         thinking: 'विश्लेषण और उत्तर तैयार किया जा रहा है...',
@@ -902,8 +902,8 @@ export default function Chat() {
                             </div>
                             <div className="min-w-0">
                                 <h1 className="text-base sm:text-lg font-semibold tracking-tight text-[#1C1917] leading-tight truncate">
-                                    <span className="hidden sm:inline">Dexter Tech Support </span>
-                                    <span className="sm:hidden">Dexter </span>
+                                    <span className="hidden sm:inline">SAI Tech Support </span>
+                                    <span className="sm:hidden">SAI </span>
                                     <span className="text-[#CA8A04]">AI</span>
                                 </h1>
                                 <p className="text-[10px] sm:text-[11px] text-[#78716C] font-medium truncate">

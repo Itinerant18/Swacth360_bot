@@ -1,7 +1,7 @@
 /**
  * src/app/api/admin/ingest/route.ts
  *
- * Frontier-Grade Training Pipeline for Dexter HMS Bot
+ * Frontier-Grade Training Pipeline for SAI HMS Bot
  *
  * How GPT/Claude/Gemini train their knowledge bases:
  *

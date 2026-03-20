@@ -1,7 +1,7 @@
 /**
  * src/app/api/chat/route.ts
  *
- * Main chat pipeline for Dexter HMS support.
+ * Main chat pipeline for SAI HMS support.
  */
 
 import dns from 'node:dns';
@@ -87,7 +87,7 @@ function buildSystemPrompt(
         return `You are an expert in HMS industrial panels, PLCs, SCADA, Modbus, PROFIBUS, EtherNet/IP, and industrial automation.\n${history}\n${confidenceNote}\n${decomposedPrefix}\nSTRICT RULES:\n1. Always answer in ${langName}\n2. Be specific and actionable\n3. Keep answers under 200 words\n4. If unrelated to HMS or industrial automation, politely redirect\n${formatInstructions}\nQuestion: ${query}\n${langName} Answer:`;
     }
 
-    return `You are an expert HMS industrial panel technical support agent for SEPLe/Dexter systems.\n${history}\n${confidenceNote}\n${decomposedPrefix}\nKNOWLEDGE BASE SOURCES:\n${context}\nSTRICT RULES:\n1. Answer from the provided sources whenever possible\n2. Always answer in ${langName}\n3. Include specific values, terminal labels, voltages, and error codes when present\n4. If sources do not fully answer the question, say what is missing and use careful expertise\n5. If no source is relevant, use this fallback: ${notFoundMsg}\n6. Keep answers under 200 words\n${formatInstructions}\nQuestion: ${query}\n${langName} Answer:`;
+    return `You are an expert HMS industrial panel technical support agent for SEPLe/SWATCH systems.\n${history}\n${confidenceNote}\n${decomposedPrefix}\nKNOWLEDGE BASE SOURCES:\n${context}\nSTRICT RULES:\n1. Answer from the provided sources whenever possible\n2. Always answer in ${langName}\n3. Include specific values, terminal labels, voltages, and error codes when present\n4. If sources do not fully answer the question, say what is missing and use careful expertise\n5. If no source is relevant, use this fallback: ${notFoundMsg}\n6. Keep answers under 200 words\n${formatInstructions}\nQuestion: ${query}\n${langName} Answer:`;
 }
 
 function textStreamResponse(text: string): Response {

@@ -47,7 +47,7 @@ function buildEmbeddingText(item: { tags: string[]; subcategory: string; product
 
 async function seed() {
     console.log('\n' + '═'.repeat(60));
-    console.log('🌱 Dexter HMS — Supabase Seeder (OpenAI Embeddings)');
+    console.log('🌱 SAI — Supabase Seeder (OpenAI Embeddings)');
     console.log('═'.repeat(60) + '\n');
 
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;

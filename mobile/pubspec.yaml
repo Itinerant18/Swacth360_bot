@@ -1,0 +1,53 @@
+name: sai_app
+description: SAI - SWATCH Panel AI Support
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.3.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+
+  # Auth + direct DB queries
+  supabase_flutter: ^2.5.6
+
+  # HTTP calls to Next.js API
+  http: ^1.2.1
+
+  # State management
+  provider: ^6.1.2
+
+  # Markdown rendering (chat messages + diagrams)
+  flutter_markdown: ^0.7.3
+
+  # Mermaid diagram rendering in WebView
+  webview_flutter: ^4.8.0
+
+  # Google Fonts
+  google_fonts: ^6.2.1
+
+  # Animations
+  flutter_animate: ^4.5.0
+
+  # Persistent language preference
+  shared_preferences: ^2.3.2
+
+  # Date formatting
+  intl: ^0.19.0
+
+  # Share / open URLs
+  url_launcher: ^6.3.1
+
+  # SVG assets
+  flutter_svg: ^2.0.10+1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true

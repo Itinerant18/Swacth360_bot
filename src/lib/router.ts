@@ -181,7 +181,7 @@ const ROUTE_CONFIGS: Record<string, RouteConfig> = {
 
 // ─── System Prompt Templates ───────────────────────────────────────────────────
 
-const BASE_ROLE = `You are Dexter, an expert HMS industrial panel technical support agent for SEPLe systems.
+const BASE_ROLE = `You are SAI, an expert HMS industrial panel technical support agent for SEPLe systems.
 Your knowledge covers: Anybus gateways, HMS panels, RS-485/Modbus/PROFIBUS/EtherNet/IP protocols, wiring, error codes, and commissioning.`;
 
 const SYSTEM_PROMPTS: Record<string, (langName: string, notFoundMsg: string, answerMode: string) => string> = {
