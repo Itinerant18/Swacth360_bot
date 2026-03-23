@@ -98,7 +98,7 @@ function fixMermaidSyntax(code: string): string {
     // Fix 4: duplicate node definitions in different subgraphs
     // Mermaid doesn't allow redefining a node — remove duplicate labels
     const definedNodes = new Set<string>();
-    fixed = fixed.replace(/^(\s*)(\w+)\["([^"]+)"\]/gm, (match, indent, nodeId, _label) => {
+    fixed = fixed.replace(/^(\s*)(\w+)\["([^"]+)"\]/gm, (match, indent, nodeId) => {
         if (definedNodes.has(nodeId)) {
             return `${indent}${nodeId}`;
         }
@@ -128,16 +128,23 @@ export default function MermaidBlock({ code }: MermaidBlockProps) {
 
     // Generate a stable, unique ID for this instance
     // Use a ref so it doesn't change on re-render
-    const idRef = useRef(
-        `mermaid-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`
-    );
+    const idRef = useRef<string | null>(null);
+    const [currentId, setCurrentId] = useState<string | null>(null);
+
+    useEffect(() => {
+        if (!idRef.current) {
+            idRef.current = `mermaid-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`;
+            setCurrentId(idRef.current);
+        }
+    }, []);
 
     useEffect(() => {
         let cancelled = false;
-        const currentId = idRef.current;
+        if (!currentId) return;
 
         async function renderDiagram() {
             try {
+                if (!currentId) return;
                 const mermaid = await getMermaid();
 
                 // Clean up any previous render's DOM artifact for this ID
@@ -184,7 +191,7 @@ export default function MermaidBlock({ code }: MermaidBlockProps) {
             cancelled = true;
             cleanupMermaidElement(currentId);
         };
-    }, [code]);
+    }, [code, currentId]);
 
     const handleZoomIn = useCallback(() => setZoom(z => Math.min(z + 0.25, 3)), []);
     const handleZoomOut = useCallback(() => setZoom(z => Math.max(z - 0.25, 0.5)), []);

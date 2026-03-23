@@ -1067,6 +1067,7 @@ export default function Chat() {
                                                                 disabled={feedbackSubmitted.has(m.id)}
                                                                 className={`p-1.5 rounded transition-colors ${feedbackSubmitted.has(m.id) ? 'opacity-40 cursor-not-allowed text-[#A8A29E]' : 'hover:bg-[#E8E0D4] hover:text-[#0D9488] text-[#A8A29E]'}`}
                                                                 title="Helpful"
+                                                                aria-label="Mark response as helpful"
                                                             >
                                                                 <FontAwesomeIcon icon={faThumbsUp} className="w-3 h-3" />
                                                             </button>
@@ -1075,6 +1076,7 @@ export default function Chat() {
                                                                 disabled={feedbackSubmitted.has(m.id)}
                                                                 className={`p-1.5 rounded transition-colors ${feedbackSubmitted.has(m.id) ? 'opacity-40 cursor-not-allowed text-[#A8A29E]' : 'hover:bg-[#E8E0D4] hover:text-red-600 text-[#A8A29E]'}`}
                                                                 title="Not helpful"
+                                                                aria-label="Mark response as not helpful"
                                                             >
                                                                 <FontAwesomeIcon icon={faThumbsDown} className="w-3 h-3" />
                                                             </button>
@@ -1152,6 +1154,7 @@ export default function Chat() {
                                                                 disabled={feedbackSubmitted.has(m.id)}
                                                                 className={`p-1.5 rounded transition-colors ${feedbackSubmitted.has(m.id) ? 'opacity-40 cursor-not-allowed' : 'hover:bg-[#E8E0D4] hover:text-[#0D9488]'}`}
                                                                 title="Helpful"
+                                                                aria-label="Mark response as helpful"
                                                             >
                                                                 <FontAwesomeIcon icon={faThumbsUp} className="w-3 h-3" />
                                                             </button>
@@ -1160,6 +1163,7 @@ export default function Chat() {
                                                                 disabled={feedbackSubmitted.has(m.id)}
                                                                 className={`p-1.5 rounded transition-colors ${feedbackSubmitted.has(m.id) ? 'opacity-40 cursor-not-allowed' : 'hover:bg-[#E8E0D4] hover:text-red-600'}`}
                                                                 title="Not helpful"
+                                                                aria-label="Mark response as not helpful"
                                                             >
                                                                 <FontAwesomeIcon icon={faThumbsDown} className="w-3 h-3" />
                                                             </button>
