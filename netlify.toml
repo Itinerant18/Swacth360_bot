@@ -18,11 +18,19 @@
 [build.processing]
   skip_processing = false
 
+[[headers]]
+  for = "/api/*"
+  [headers.values]
+    Access-Control-Allow-Origin = "*"
+    Access-Control-Allow-Methods = "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+    Access-Control-Allow-Headers = "Content-Type, Authorization, X-Requested-With, Accept"
+
 # ── Security headers ─────────────────────────────────────────
 [[headers]]
   for = "/*"
   [headers.values]
     X-Frame-Options        = "DENY"
+    X-XSS-Protection       = "1; mode=block"
     X-Content-Type-Options = "nosniff"
     Referrer-Policy        = "strict-origin-when-cross-origin"
 

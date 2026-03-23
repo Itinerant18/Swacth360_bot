@@ -1,15 +1,18 @@
-import 'dart:async';
-import 'dart:convert';
 import 'dart:io';
+import 'dart:convert';
+import 'dart:async';
 import 'dart:math';
-
 import 'package:flutter/foundation.dart';
-import 'package:http/http.dart' as http;
-
 import '../config/app_config.dart';
+import '../models/message_model.dart';
 
 class ChatService {
-  Future<({String text, String? conversationId, bool isDiagram, Map<String, dynamic>? diagramJson})> sendMessage({
+  Future<({
+    String text,
+    String? conversationId,
+    bool isDiagram,
+    Map<String, dynamic>? diagramJson
+  })> sendMessage({
     required List<Map<String, dynamic>> messages,
     required String language,
     String? conversationId,
@@ -18,58 +21,65 @@ class ChatService {
   }) async {
     final uri = Uri.parse('${AppConfig.apiBaseUrl}/api/chat');
 
-    final body = <String, dynamic>{
+    final bodyMap = <String, dynamic>{
       'messages': messages,
       'language': language,
     };
-    if (conversationId != null) body['conversationId'] = conversationId;
-    if (userId != null) body['userId'] = userId;
+    if (conversationId != null) bodyMap['conversationId'] = conversationId;
+    if (userId != null) bodyMap['userId'] = userId;
 
-    final headers = <String, String>{
-      'Content-Type': 'application/json',
-      'Accept': '*/*',
-      'User-Agent': 'SAI-Mobile/1.0',
-    };
-    if (accessToken != null) {
-      headers['Authorization'] = 'Bearer $accessToken';
-    }
+    final bodyStr = jsonEncode(bodyMap);
+
+    debugPrint('[ChatService] POST ${uri.toString()}');
+    debugPrint('[ChatService] Body: ${bodyStr.substring(0, min(150, bodyStr.length))}');
 
     try {
-      debugPrint('[ChatService] POST ${uri.toString()}');
-      debugPrint('[ChatService] Body: ${jsonEncode(body).substring(0, min(100, jsonEncode(body).length))}');
+      final client = HttpClient();
+      client.connectionTimeout = const Duration(seconds: 30);
 
-      final response = await http.post(
-        uri,
-        headers: headers,
-        body: jsonEncode(body),
-      ).timeout(const Duration(seconds: 90));
+      final request = await client.postUrl(uri);
+
+      request.headers.set('Content-Type', 'application/json');
+      request.headers.set('Accept', '*/*');
+      request.headers.set('User-Agent', 'SAI-Mobile/1.0 Dart/HttpClient');
+      if (accessToken != null) {
+        request.headers.set('Authorization', 'Bearer $accessToken');
+      }
+
+      request.write(bodyStr);
+
+      final response = await request.close()
+          .timeout(const Duration(seconds: 90));
 
       debugPrint('[ChatService] Status: ${response.statusCode}');
-      debugPrint('[ChatService] Body preview: ${response.body.substring(0, min(300, response.body.length))}');
 
-      if (response.statusCode == 405) {
-        throw Exception('API method not allowed. Check endpoint URL.');
-      }
+      final responseBody = await response
+          .transform(utf8.decoder)
+          .join();
+
+      debugPrint('[ChatService] Body preview: ${responseBody.substring(0, min(300, responseBody.length))}');
+
+      client.close();
+
       if (response.statusCode == 429) {
         throw Exception('Rate limit reached. Please wait a moment.');
       }
       if (response.statusCode != 200) {
-        throw Exception('Server error (${response.statusCode}): ${response.body.substring(0, min(200, response.body.length))}');
+        throw Exception('Server error (${response.statusCode})');
       }
 
-      final respConvId = response.headers['x-conversation-id'];
-      final text = _parseBody(response.body);
+      final convId = response.headers.value('x-conversation-id');
+      final text = _parseBody(responseBody);
 
-      debugPrint('[ChatService] Parsed text: ${text.substring(0, min(100, text.length))}');
+      debugPrint('[ChatService] Parsed: ${text.substring(0, min(100, text.length))}');
 
-      // Check for diagram response
       if (text.startsWith('DIAGRAM_RESPONSE:')) {
         try {
           final jsonStr = text.substring('DIAGRAM_RESPONSE:'.length);
           final diagramJson = jsonDecode(jsonStr) as Map<String, dynamic>;
           return (
             text: text,
-            conversationId: respConvId ?? conversationId,
+            conversationId: convId ?? conversationId,
             isDiagram: true,
             diagramJson: diagramJson,
           );
@@ -80,7 +90,7 @@ class ChatService {
 
       return (
         text: text,
-        conversationId: respConvId ?? conversationId,
+        conversationId: convId ?? conversationId,
         isDiagram: false,
         diagramJson: null,
       );
@@ -89,19 +99,23 @@ class ChatService {
       debugPrint('[ChatService] SocketException: $e');
       throw Exception('No internet connection. Check your network.');
     } on TimeoutException {
+      debugPrint('[ChatService] Timeout');
       throw Exception('Request timed out. Please try again.');
-    } on http.ClientException catch (e) {
-      debugPrint('[ChatService] ClientException: $e');
+    } on TlsException catch (e) {
+      debugPrint('[ChatService] TLS Error: $e');
+      throw Exception('SSL error. Please check your connection.');
+    } on HttpException catch (e) {
+      debugPrint('[ChatService] HttpException: $e');
       throw Exception('Connection failed: ${e.message}');
     } catch (e) {
-      debugPrint('[ChatService] Unknown error: $e');
+      debugPrint('[ChatService] Unknown: $e');
       rethrow;
     }
   }
 
   String _parseBody(String body) {
-    // Method 1: Vercel AI SDK stream format  0:"text"\n
     final buffer = StringBuffer();
+
     for (final line in body.split('\n')) {
       final trimmed = line.trim();
       if (trimmed.startsWith('0:')) {
@@ -112,7 +126,6 @@ class ChatService {
             buffer.write(decoded);
           }
         } catch (_) {
-          // Method 2: manual strip quotes
           final raw = trimmed.substring(2);
           if (raw.startsWith('"') && raw.endsWith('"') && raw.length > 2) {
             buffer.write(raw
@@ -126,23 +139,16 @@ class ChatService {
     }
 
     final result = buffer.toString().trim();
+    if (result.isNotEmpty) return result;
 
-    // Method 3: if parsing failed, try raw body as JSON string
-    if (result.isEmpty) {
-      try {
-        final decoded = jsonDecode(body);
-        if (decoded is String) return decoded;
-        if (decoded is Map && decoded.containsKey('text')) {
-          return decoded['text'] as String;
-        }
-        if (decoded is Map && decoded.containsKey('content')) {
-          return decoded['content'] as String;
-        }
-      } catch (_) {}
-      // Method 4: return raw body as last resort
-      return body.trim();
-    }
+    try {
+      final decoded = jsonDecode(body);
+      if (decoded is String) return decoded;
+      if (decoded is Map) {
+        return (decoded['text'] ?? decoded['content'] ?? body) as String;
+      }
+    } catch (_) {}
 
-    return result;
+    return body.trim();
   }
 }
