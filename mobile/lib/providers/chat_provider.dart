@@ -12,6 +12,7 @@ class ChatProvider extends ChangeNotifier {
   bool _isLoading = false;
   String? _error;
   String? _activeConversationId;
+  String? _sessionTitle;
   bool _sessionSaved = false;
 
   List<ChatMessage> get messages => _messages;
@@ -19,6 +20,7 @@ class ChatProvider extends ChangeNotifier {
   bool get hasMessages => _messages.isNotEmpty;
   String? get error => _error;
   String? get activeConversationId => _activeConversationId;
+  String? get sessionTitle => _sessionTitle;
   bool get sessionSaved => _sessionSaved;
 
   void clearError() {
@@ -29,6 +31,7 @@ class ChatProvider extends ChangeNotifier {
   void startNewConversation() {
     _messages = [];
     _activeConversationId = null;
+    _sessionTitle = null;
     _error = null;
     _isLoading = false;
     _sessionSaved = false;
@@ -48,7 +51,10 @@ class ChatProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final apiMessages = _messages.map((m) => m.toApiJson()).toList();
+      final apiMessages = _messages
+          .where((m) => m.diagram == null) // exclude diagram messages from history
+          .map((m) => m.toApiJson())
+          .toList();
 
       final result = await _chatService.sendMessage(
         messages: apiMessages,
@@ -58,9 +64,14 @@ class ChatProvider extends ChangeNotifier {
         accessToken: accessToken,
       );
 
-      final assistantMsg = ChatMessage.assistant(result.text);
-      _messages = [..._messages, assistantMsg];
       _activeConversationId = result.conversationId ?? _activeConversationId;
+
+      if (result.isDiagram && result.diagramJson != null) {
+        final diagramData = DiagramData.fromJson(result.diagramJson!);
+        _messages = [..._messages, ChatMessage.diagram(diagramData)];
+      } else {
+        _messages = [..._messages, ChatMessage.assistant(result.text)];
+      }
 
       // Auto-save after first exchange if authenticated
       if (_messages.length == 2 && accessToken != null && !_sessionSaved) {
@@ -111,6 +122,18 @@ class ChatProvider extends ChangeNotifier {
         conversationId: _activeConversationId,
       );
       _activeConversationId = convId;
+      _sessionSaved = true;
+      notifyListeners();
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  Future<void> saveSessionWithTitle(String title) async {
+    if (_activeConversationId == null) return;
+    try {
+      await _convService.renameConversation(_activeConversationId!, title);
+      _sessionTitle = title;
       _sessionSaved = true;
       notifyListeners();
     } catch (e) {

@@ -48,6 +48,16 @@ class ConversationService {
         .eq('id', conversationId);
   }
 
+  Future<void> renameConversation(String conversationId, String newTitle) async {
+    final userId = _client.auth.currentUser?.id;
+    if (userId == null) throw Exception('Not authenticated');
+
+    await _client.from('conversations').update({
+      'title': newTitle,
+      'updated_at': DateTime.now().toIso8601String(),
+    }).eq('id', conversationId).eq('user_id', userId);
+  }
+
   Future<String> saveConversation({
     required String title,
     required List<ChatMessage> messages,

@@ -80,7 +80,7 @@ class AppTheme {
         backgroundColor: Colors.transparent,
       ),
 
-      cardTheme: const CardTheme(elevation: 0, color: Colors.white),
+      cardTheme: const CardThemeData(elevation: 0, color: Colors.white),
 
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(

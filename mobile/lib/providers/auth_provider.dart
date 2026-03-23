@@ -45,7 +45,7 @@ class AuthProvider extends ChangeNotifier {
       notifyListeners();
       return false;
     } catch (e) {
-      _error = 'Sign in failed. Please try again.';
+      _error = 'Sign in failed. Check your internet connection.';
       _loading = false;
       notifyListeners();
       return false;

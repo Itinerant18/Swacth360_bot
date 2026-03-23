@@ -5,12 +5,14 @@ class AuthInputField extends StatefulWidget {
   final String hint;
   final bool isPassword;
   final TextInputType? type;
+  final TextEditingController? controller;
 
   const AuthInputField({
     super.key,
     required this.hint,
     this.isPassword = false,
     this.type,
+    this.controller,
   });
 
   @override
@@ -52,9 +54,17 @@ class _AuthInputFieldState extends State<AuthInputField> {
         ] : [],
       ),
       child: TextField(
+        controller: widget.controller,
         focusNode: _focusNode,
         obscureText: widget.isPassword,
-        keyboardType: widget.type,
+        keyboardType: widget.isPassword
+            ? TextInputType.visiblePassword
+            : widget.type ?? TextInputType.text,
+        autocorrect: false,
+        enableSuggestions: false,
+        textCapitalization: TextCapitalization.none,
+        smartDashesType: SmartDashesType.disabled,
+        smartQuotesType: SmartQuotesType.disabled,
         style: const TextStyle(
           fontFamily: 'monospace', 
           fontSize: 13,
