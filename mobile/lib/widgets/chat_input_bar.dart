@@ -24,6 +24,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
   final _focusNode = FocusNode();
   bool _hasText = false;
   bool _isFocused = false;
+  bool _sendPressed = false;
 
   @override
   void initState() {
@@ -65,7 +66,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
           ),
         ],
       ),
-      padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
       child: SafeArea(
         top: false,
         child: Column(
@@ -73,12 +74,12 @@ class _ChatInputBarState extends State<ChatInputBar> {
           children: [
             // ── Info strip ─────────────────────────────
             Padding(
-              padding: const EdgeInsets.symmetric(vertical: 5),
+              padding: const EdgeInsets.symmetric(vertical: 4),
               child: widget.isAuthenticated
                   ? const Text(
                       'HMS Panel Expert  ·  AI Powered  ·  Diagrams supported',
                       style: TextStyle(
-                          fontSize: 9.5, color: AppColors.textFaint),
+                          fontSize: 9, color: AppColors.textFaint),
                       textAlign: TextAlign.center,
                     )
                   : Row(
@@ -87,14 +88,14 @@ class _ChatInputBarState extends State<ChatInputBar> {
                         const Text(
                           'HMS Panel Expert  ·  AI Powered  ·  ',
                           style: TextStyle(
-                              fontSize: 9.5,
+                              fontSize: 9,
                               color: AppColors.textFaint),
                         ),
                         Container(
                           padding: const EdgeInsets.symmetric(
                               horizontal: 6, vertical: 2),
                           decoration: BoxDecoration(
-                            color: AppColors.brass.withOpacity(0.1),
+                            color: AppColors.brass.withOpacity(0.12),
                             borderRadius: BorderRadius.circular(8),
                             border: Border.all(
                                 color: AppColors.brass.withOpacity(0.3)),
@@ -102,7 +103,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
                           child: Text(
                             '${widget.guestRemaining} left',
                             style: const TextStyle(
-                              fontSize: 9.5,
+                              fontSize: 9,
                               color: AppColors.brass,
                               fontWeight: FontWeight.w700,
                             ),
@@ -118,10 +119,10 @@ class _ChatInputBarState extends State<ChatInputBar> {
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 200),
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 4),
+                        horizontal: 18, vertical: 10),
                     decoration: BoxDecoration(
                       color: AppColors.bgPaperInset,
-                      borderRadius: BorderRadius.circular(24),
+                      borderRadius: BorderRadius.circular(26),
                       border: Border.all(
                         color: _isFocused
                             ? AppColors.brass
@@ -135,12 +136,12 @@ class _ChatInputBarState extends State<ChatInputBar> {
                       onSubmitted: (_) => _send(),
                       textInputAction: TextInputAction.send,
                       style: const TextStyle(
-                          fontSize: 14, color: AppColors.textInk),
+                          fontSize: 13, color: AppColors.textInk),
                       decoration: const InputDecoration(
                         hintText:
-                            "Describe your panel issue...",
+                            "Ask anything about your panel...",
                         hintStyle: TextStyle(
-                          fontSize: 14,
+                          fontSize: 13,
                           color: AppColors.textFaint,
                         ),
                         border: InputBorder.none,
@@ -152,8 +153,16 @@ class _ChatInputBarState extends State<ChatInputBar> {
                 ),
                 const SizedBox(width: 8),
                 GestureDetector(
-                  onTap: _send,
-                  child: Container(
+                  onTapDown: (_) => setState(() => _sendPressed = true),
+                  onTapUp: (_) {
+                    setState(() => _sendPressed = false);
+                    _send();
+                  },
+                  onTapCancel: () => setState(() => _sendPressed = false),
+                  child: AnimatedScale(
+                    scale: _sendPressed ? 0.92 : 1.0,
+                    duration: const Duration(milliseconds: 150),
+                    child: Container(
                     width: 44,
                     height: 44,
                     decoration: BoxDecoration(
@@ -173,7 +182,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
                               ],
                         stops: const [0.0, 0.6, 1.0],
                       ),
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(10),
                       border: Border.all(color: AppColors.brassDark),
                       boxShadow: AppShadows.button,
                     ),
@@ -188,6 +197,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
                           )
                         : const Icon(Icons.send,
                             color: Colors.white, size: 18),
+                  ),
                   ),
                 ),
               ],

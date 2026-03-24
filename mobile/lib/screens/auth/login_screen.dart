@@ -35,7 +35,7 @@ class _LoginScreenState extends State<LoginScreen>
     super.initState();
     _cardAnimCtrl = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 600),
+      duration: const Duration(milliseconds: 500),
     );
     _cardFade =
         CurvedAnimation(parent: _cardAnimCtrl, curve: Curves.easeOut);
@@ -114,7 +114,25 @@ class _LoginScreenState extends State<LoginScreen>
     if (!mounted) return;
     if (ok) {
       Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => const HomeScreen()),
+        PageRouteBuilder(
+          transitionDuration: const Duration(milliseconds: 300),
+          pageBuilder: (_, __, ___) => const HomeScreen(),
+          transitionsBuilder: (_, animation, __, child) {
+            return FadeTransition(
+              opacity: animation,
+              child: SlideTransition(
+                position: Tween<Offset>(
+                  begin: const Offset(0, 0.05),
+                  end: Offset.zero,
+                ).animate(CurvedAnimation(
+                  parent: animation,
+                  curve: Curves.easeOutCubic,
+                )),
+                child: child,
+              ),
+            );
+          },
+        ),
         (r) => false,
       );
     } else {
@@ -291,8 +309,8 @@ class _LoginScreenState extends State<LoginScreen>
                         Row(
                           children: [
                             Container(
-                              width: 34,
-                              height: 34,
+                              width: 36,
+                              height: 36,
                               decoration: BoxDecoration(
                                 color: AppColors.brass,
                                 borderRadius: BorderRadius.circular(6),
@@ -321,10 +339,10 @@ class _LoginScreenState extends State<LoginScreen>
                                 Text(
                                   'SAI',
                                   style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w700,
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w800,
                                     color: AppColors.textInk,
-                                    letterSpacing: 0.8,
+                                    letterSpacing: 1.0,
                                   ),
                                 ),
                                 Text(
@@ -333,7 +351,7 @@ class _LoginScreenState extends State<LoginScreen>
                                     fontSize: 9,
                                     fontWeight: FontWeight.w500,
                                     color: AppColors.textPencil,
-                                    letterSpacing: 0.9,
+                                    letterSpacing: 1.2,
                                   ),
                                 ),
                               ],
@@ -394,9 +412,9 @@ class _LoginScreenState extends State<LoginScreen>
           "EMAIL",
           style: TextStyle(
             fontSize: 10,
-            fontWeight: FontWeight.w500,
+            fontWeight: FontWeight.w600,
             color: AppColors.textPencil,
-            letterSpacing: 1.2,
+            letterSpacing: 1.4,
           ),
         ),
         const SizedBox(height: 6),
@@ -410,9 +428,9 @@ class _LoginScreenState extends State<LoginScreen>
           "PASSWORD",
           style: TextStyle(
             fontSize: 10,
-            fontWeight: FontWeight.w500,
+            fontWeight: FontWeight.w600,
             color: AppColors.textPencil,
-            letterSpacing: 1.2,
+            letterSpacing: 1.4,
           ),
         ),
         const SizedBox(height: 6),
@@ -444,56 +462,60 @@ class _LoginScreenState extends State<LoginScreen>
           ),
         ),
         const SizedBox(height: 8),
-        if (error != null) ...[
-          Container(
-            margin: const EdgeInsets.only(bottom: 12),
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: AppColors.danger.withOpacity(0.08),
-              borderRadius: BorderRadius.circular(8),
-              border:
-                  Border.all(color: AppColors.danger.withOpacity(0.25)),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(children: [
-                  const Icon(Icons.error_outline,
-                      size: 14, color: AppColors.danger),
-                  const SizedBox(width: 8),
-                  Expanded(
-                      child: Text(error!,
-                          style: const TextStyle(
-                              fontSize: 12,
-                              color: AppColors.danger))),
-                ]),
-                if (error!.toLowerCase().contains('confirm')) ...[
-                  const SizedBox(height: 10),
-                  GestureDetector(
-                    onTap: _resendConfirmation,
-                    child: Text(
-                      _resendStatus == 'sent'
-                          ? 'Confirmation email sent. Check your inbox.'
-                          : _resendStatus == 'sending'
-                              ? 'Sending...'
-                              : 'Resend confirmation email',
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: _resendStatus == 'sent'
-                            ? AppColors.teal
-                            : AppColors.brass,
-                        decoration: _resendStatus == null
-                            ? TextDecoration.underline
-                            : null,
-                        fontFamily: 'monospace',
-                      ),
-                    ),
+        AnimatedSwitcher(
+          duration: const Duration(milliseconds: 250),
+          child: error != null
+              ? Container(
+                  key: const ValueKey('error'),
+                  margin: const EdgeInsets.only(bottom: 12),
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: AppColors.danger.withOpacity(0.08),
+                    borderRadius: BorderRadius.circular(8),
+                    border:
+                        Border.all(color: AppColors.danger.withOpacity(0.25)),
                   ),
-                ],
-              ],
-            ),
-          ),
-        ],
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(children: [
+                        const Icon(Icons.error_outline,
+                            size: 14, color: AppColors.danger),
+                        const SizedBox(width: 8),
+                        Expanded(
+                            child: Text(error!,
+                                style: const TextStyle(
+                                    fontSize: 12,
+                                    color: AppColors.danger))),
+                      ]),
+                      if (error!.toLowerCase().contains('confirm')) ...[
+                        const SizedBox(height: 10),
+                        GestureDetector(
+                          onTap: _resendConfirmation,
+                          child: Text(
+                            _resendStatus == 'sent'
+                                ? 'Confirmation email sent. Check your inbox.'
+                                : _resendStatus == 'sending'
+                                    ? 'Sending...'
+                                    : 'Resend confirmation email',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: _resendStatus == 'sent'
+                                  ? AppColors.teal
+                                  : AppColors.brass,
+                              decoration: _resendStatus == null
+                                  ? TextDecoration.underline
+                                  : null,
+                              fontFamily: 'monospace',
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                )
+              : const SizedBox.shrink(key: ValueKey('no-error')),
+        ),
         DarkButton(
           label: "Sign In",
           onPressed: _signIn,
@@ -582,11 +604,16 @@ class _LoginScreenState extends State<LoginScreen>
           ],
         ),
         const SizedBox(height: 8),
-        if (error != null)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 12.0),
-            child: ErrorBanner(error: error!),
-          ),
+        AnimatedSwitcher(
+          duration: const Duration(milliseconds: 250),
+          child: error != null
+              ? Padding(
+                  key: const ValueKey('reg-error'),
+                  padding: const EdgeInsets.only(bottom: 12.0),
+                  child: ErrorBanner(error: error!),
+                )
+              : const SizedBox.shrink(key: ValueKey('no-reg-error')),
+        ),
         DarkButton(
           label: "Create Account",
           onPressed: _register,
@@ -647,9 +674,9 @@ class _Tab extends StatelessWidget {
                 label.toUpperCase(),
                 style: TextStyle(
                   fontSize: 12,
-                  fontWeight: FontWeight.w700,
+                  fontWeight: active ? FontWeight.w700 : FontWeight.w500,
                   color:
-                      active ? AppColors.textInk : AppColors.textPencil,
+                      active ? AppColors.textInk : AppColors.textFaint,
                   letterSpacing: 0.96,
                 ),
               ),

@@ -1,179 +1,141 @@
-# SAI -- Flutter Mobile App
+# 🎨 SAI: Swatch Panel Support AI
 
-Cross-platform mobile app for the SAI (SWATCH Panel AI) support bot.
-Works alongside the existing Next.js website -- **no backend changes required**.
-
----
-
-## First Run Checklist
-
-- [ ] Fill in `lib/config/app_config.dart` (3 values from your `.env.local`)
-- [ ] `flutter pub get`
-- [ ] For iOS: `cd ios && pod install && cd ..`
-- [ ] `flutter run`
+> **Expert Technical Support at Your Fingertips** — A sophisticated Flutter-based mobile companion for the SAI ecosystem, designed to provide instant AI-powered guidance for Swatch Panel systems with integrated diagramming and multi-language support.
 
 ---
 
-## Architecture
+<div align="center">
 
-```
-Mobile App (Flutter)
-      |
-      +-- POST /api/chat          -> Sarvam AI / RAG answers
-      +-- POST /api/diagram       -> Mermaid diagram generation
-      +-- POST /api/feedback      -> Message feedback (thumbs up/down)
-      +-- Supabase SDK direct     -> Auth, conversations, messages
-```
+![Flutter](https://img.shields.io/badge/Flutter-3.3.0%2B-02569B?style=for-the-badge&logo=flutter)
+![Dart](https://img.shields.io/badge/Dart-3.3.0%2B-0175C2?style=for-the-badge&logo=dart)
+![Supabase](https://img.shields.io/badge/Supabase-Auth%20%26%20DB-3ECF8E?style=for-the-badge&logo=supabase)
+![OpenAI](https://img.shields.io/badge/AI-OpenAI%20%2F%20RAG-412991?style=for-the-badge&logo=openai)
+![License](https://img.shields.io/badge/license-MIT-ff6b6b?style=for-the-badge)
 
-The Next.js API routes are HTTP endpoints -- the mobile app calls them exactly
-as the browser does, passing the Supabase JWT as `Authorization: Bearer <token>`.
+</div>
 
 ---
 
-## Prerequisites
+## 🚀 Overview
 
-```
-Flutter SDK  >= 3.3.0
-Dart SDK     >= 3.3.0
-Xcode        >= 15        (iOS)
-Android SDK  API 24+      (Android 7.0+)
-```
+**SAI (Swatch Panel Support AI)** is a high-performance cross-platform mobile application that brings the power of the SAI web ecosystem to mobile devices. It leverages a modern **Research-Augmented Generation (RAG)** backend to provide technical support for HMS Panel systems, complete with interactive Mermaid.js diagrams and a unique "Pencil and Paper" aesthetic.
 
----
+### ✨ Key Features
 
-## 1 -- Install Flutter
-
-```bash
-# macOS
-brew install flutter
-
-# Or download from: https://docs.flutter.dev/get-started/install
-flutter doctor   # check everything is configured
-```
+*   **🤖 Intelligent Chat**: Real-time technical support powered by OpenAI and custom RAG pipelines.
+*   **📊 Dynamic Diagramming**: On-the-fly generation and rendering of Mermaid.js diagrams (flowcharts, sequences, entity-relationship).
+*   **🌐 Multi-Language Support**: Seamlessly switch between **English**, **Hindi**, and **Bengali** with localized prompts and UI.
+*   **🛡️ Flexible Access**: 
+    *   **Guest Mode**: 3 free questions for immediate help without an account.
+    *   **Authenticated Mode**: Full session history, saved conversations, and profile management via Supabase.
+*   **📱 Modern UX**: Animated typing indicators, message feedback (thumbs up/down), swipe-to-delete history, and a distinct aesthetic theme.
 
 ---
 
-## 2 -- Set your config values
+## 🛠️ Tech Stack & Architecture
 
-Edit `lib/config/app_config.dart`:
+### Core Technologies
+- **Frontend Framework**: [Flutter](https://flutter.dev/) (Dart)
+- **State Management**: [Provider](https://pub.dev/packages/provider) (ChangeNotifier pattern)
+- **Backend-as-a-Service**: [Supabase](https://supabase.com/) (Authentication & PostgreSQL)
+- **AI Integration**: Custom REST API calling OpenAI/Sarvam AI RAG models.
+- **Rendering**: `webview_flutter` for high-fidelity Mermaid.js diagram rendering.
 
-```dart
-static const String apiBaseUrl    = 'https://YOUR_APP.netlify.app';
-static const String supabaseUrl   = 'https://YOUR_PROJECT.supabase.co';
-static const String supabaseAnonKey = 'YOUR_SUPABASE_ANON_KEY';
-```
-
-Copy these from your Next.js `.env.local` file:
-- `apiBaseUrl`  -> your Netlify deployment URL
-- `supabaseUrl` -> `NEXT_PUBLIC_SUPABASE_URL`
-- `supabaseAnonKey` -> `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-
----
-
-## 3 -- Install dependencies
-
-```bash
-cd mobile
-flutter pub get
-```
+### System Architecture
+The app follows a clean, service-oriented architecture:
+1.  **UI Layer**: Custom widgets and screens using a cohesive "Paper & Brass" theme.
+2.  **Provider Layer**: Orchestrates state (Auth, Chat, Language, Guest limits).
+3.  **Service Layer**: Handles API communication (Supabase SDK, Chat REST API, Diagram API).
+4.  **Model Layer**: Type-safe Dart classes for Messages, Conversations, and Diagrams.
 
 ---
 
-## 4 -- Run
+## 📁 Directory Structure
 
-```bash
-# Android emulator or device
-flutter run
-
-# iOS simulator (macOS only)
-cd ios && pod install && cd ..
-flutter run -d ios
-
-# Specific device
-flutter devices              # list connected devices
-flutter run -d <device-id>
-```
-
----
-
-## 5 -- Build release
-
-```bash
-# Android APK
-flutter build apk --release
-
-# Android App Bundle (Play Store)
-flutter build appbundle --release
-
-# iOS (requires Mac + Xcode)
-flutter build ios --release
-```
-
----
-
-## Project Structure
-
-```
+```text
 lib/
-+-- main.dart                     <- App entry point, providers
-+-- config/
-|   +-- app_config.dart           <- API URL + Supabase keys (fill in!)
-+-- theme/
-|   +-- app_theme.dart            <- Colors + Material theme
-+-- models/
-|   +-- message_model.dart        <- ChatMessage, DiagramData, MessageRole
-|   +-- conversation_model.dart   <- ConversationModel
-+-- services/
-|   +-- auth_service.dart         <- Supabase auth wrapper
-|   +-- chat_service.dart         <- POST /api/chat
-|   +-- conversation_service.dart <- Supabase conversations/messages
-|   +-- diagram_service.dart      <- POST /api/diagram
-|   +-- feedback_service.dart     <- POST /api/feedback
-+-- providers/
-|   +-- auth_provider.dart        <- ChangeNotifier auth state
-|   +-- chat_provider.dart        <- ChangeNotifier chat + diagram state
-|   +-- language_provider.dart    <- EN / BN / HI with SharedPrefs
-|   +-- guest_provider.dart       <- Guest 3-chat limit
-|   +-- home_screen_controller.dart <- Tab navigation controller
-+-- screens/
-|   +-- splash_screen.dart
-|   +-- home_screen.dart          <- Bottom nav (Chat / History / Profile)
-|   +-- auth/
-|   |   +-- login_screen.dart
-|   |   +-- register_screen.dart
-|   +-- chat/
-|   |   +-- chat_screen.dart      <- Main chat UI
-|   +-- history/
-|   |   +-- history_screen.dart   <- Grouped conversation list
-|   +-- profile/
-|       +-- profile_screen.dart   <- User info, language, sign out
-+-- widgets/
-    +-- message_bubble.dart       <- User/assistant bubbles + feedback + typing
-    +-- chat_input_bar.dart       <- Text input + language + diagram button
-    +-- diagram_card.dart         <- Mermaid WebView diagram renderer
-    +-- error_banner.dart         <- Dismissible error widget
+├── config/           # API Endpoints & Supabase Configuration
+├── models/           # Data entities (Message, Conversation, etc.)
+├── providers/        # State management (Auth, Chat, UI controllers)
+├── screens/          # Primary application views (Chat, History, Auth)
+│   ├── auth/         # Login & Registration
+│   ├── chat/         # The main SAI interface
+│   ├── history/      # Past conversation management
+│   └── profile/      # User settings & Language preferences
+├── services/         # API & External Integration logic
+├── theme/            # Global AppTheme (Colors, Typography, Shadows)
+└── widgets/          # Reusable UI components (Bubbles, Inputs, Cards)
 ```
 
 ---
 
-## Features
+## 🏁 Getting Started
 
-| Feature | Status |
-|---------|--------|
-| Chat with Sarvam AI / RAG | Done (via /api/chat) |
-| Mermaid diagram rendering | Done (WebView + mermaid.js) |
-| Diagram request from chat | Done (bottom sheet type picker) |
-| Bengali / Hindi / English | Done (localized prompts) |
-| Sign in / Register | Done (Supabase Auth) |
-| Guest mode (3 free chats) | Done (client-side gate) |
-| Conversation history | Done (Supabase SDK) |
-| Save conversation dialog | Done (bookmark icon) |
-| Auto-save first exchange | Done |
-| Swipe to delete conversation | Done |
-| Message feedback (thumbs) | Done |
-| Typing indicator | Done (animated) |
-| Quick prompt chips | Done (localized) |
-| Connection error handling | Done (error banner) |
-| Offline fallback (diagrams) | Done (raw markdown) |
-| Dark mode | Planned |
-| Push notifications | Planned |
+### Prerequisites
+- **Flutter SDK**: `>= 3.3.0`
+- **Dart SDK**: `>= 3.3.0`
+- **Supabase Account**: For Auth and Database hosting.
+- **SAI Web Backend**: The mobile app calls the Next.js API routes of the SAI web project.
+
+### Installation
+
+1.  **Clone the repository**:
+    ```bash
+    git clone https://github.com/your-repo/tech-support-ai.git
+    cd tech-support-ai/mobile
+    ```
+
+2.  **Configure Environment**:
+    Edit `lib/config/app_config.dart` with your specific keys:
+    ```dart
+    static const String apiBaseUrl      = 'https://your-netlify-app.netlify.app';
+    static const String supabaseUrl     = 'https://your-project.supabase.co';
+    static const String supabaseAnonKey = 'your-public-anon-key';
+    ```
+
+3.  **Install Dependencies**:
+    ```bash
+    flutter pub get
+    ```
+
+4.  **Run the Application**:
+    ```bash
+    # For Android
+    flutter run
+    
+    # For iOS (macOS required)
+    cd ios && pod install && cd ..
+    flutter run
+    ```
+
+---
+
+## 🎨 Design Language: "Paper & Brass"
+
+SAI features a bespoke visual identity:
+- **Backgrounds**: Textured `PaperBackground` with a subtle grid.
+- **Colors**: 
+    - `AppColors.brass`: For primary actions and highlights.
+    - `AppColors.textInk`: For deep, readable text.
+    - `AppColors.textPencil`: For secondary annotations.
+- **Interactive**: Custom-built `MessageBubble` with gradient fills and smooth entry animations.
+
+---
+
+## 🧪 Testing & Quality
+
+- **Linting**: Strict Dart analysis rules via `analysis_options.yaml`.
+- **Testing**: Basic smoke tests in `test/widget_test.dart`. 
+- **Validation**: Manual verification across Android and iOS platforms for responsive design.
+
+---
+
+## 📜 License
+
+Distributed under the MIT License. See `LICENSE` for more information.
+
+---
+
+<div align="center">
+  <p>Built with ❤️ by the SAI Team</p>
+</div>

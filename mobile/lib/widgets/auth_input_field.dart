@@ -40,16 +40,16 @@ class _AuthInputFieldState extends State<AuthInputField> {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(4),
+        borderRadius: BorderRadius.circular(3),
         border: Border.all(
           color: _focused ? AppColors.brass : AppColors.borderStitch,
           width: _focused ? 1.5 : 1.0,
         ),
         boxShadow: _focused ? [
           BoxShadow(
-            color: AppColors.brass.withOpacity(0.12),
-            blurRadius: 0, 
-            spreadRadius: 3,
+            color: AppColors.brass.withOpacity(0.15),
+            blurRadius: 8,
+            spreadRadius: 2,
           )
         ] : [],
       ),
@@ -67,17 +67,17 @@ class _AuthInputFieldState extends State<AuthInputField> {
         smartQuotesType: SmartQuotesType.disabled,
         style: const TextStyle(
           fontFamily: 'monospace', 
-          fontSize: 13,
+          fontSize: 12,
           color: Color(0xFF1C1917),
         ),
         decoration: InputDecoration(
           hintText: widget.hint,
           hintStyle: const TextStyle(
             color: AppColors.textFaint, 
-            fontSize: 13,
+            fontSize: 12,
             fontFamily: 'monospace',
           ),
-          contentPadding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           border: InputBorder.none,
           enabledBorder: InputBorder.none,
           focusedBorder: InputBorder.none,

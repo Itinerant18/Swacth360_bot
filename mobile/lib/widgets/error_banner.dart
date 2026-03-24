@@ -11,14 +11,14 @@ class ErrorBanner extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: AppColors.danger.withOpacity(0.08),
-        borderRadius: BorderRadius.circular(4),
+        borderRadius: BorderRadius.circular(6),
         border: Border.all(color: AppColors.danger.withOpacity(0.25)),
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          const Icon(Icons.close, size: 14, color: AppColors.danger),
+          const Icon(Icons.error_outline, size: 14, color: AppColors.danger),
           const SizedBox(width: 8),
           Expanded(
             child: Text(

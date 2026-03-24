@@ -31,7 +31,7 @@ class _ChatScreenState extends State<ChatScreen>
     super.initState();
     _welcomeCtrl = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 600),
+      duration: const Duration(milliseconds: 400),
     );
     _welcomeFade =
         CurvedAnimation(parent: _welcomeCtrl, curve: Curves.easeOut);
@@ -168,10 +168,26 @@ class _ChatScreenState extends State<ChatScreen>
                 child: ElevatedButton(
                   onPressed: () {
                     Navigator.pop(context);
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                          builder: (_) => const LoginScreen()),
+                    Navigator.of(context).push(
+                      PageRouteBuilder(
+                        transitionDuration: const Duration(milliseconds: 300),
+                        pageBuilder: (_, __, ___) => const LoginScreen(),
+                        transitionsBuilder: (_, animation, __, child) {
+                          return FadeTransition(
+                            opacity: animation,
+                            child: SlideTransition(
+                              position: Tween<Offset>(
+                                begin: const Offset(0, 0.05),
+                                end: Offset.zero,
+                              ).animate(CurvedAnimation(
+                                parent: animation,
+                                curve: Curves.easeOutCubic,
+                              )),
+                              child: child,
+                            ),
+                          );
+                        },
+                      ),
                     );
                   },
                   style: ElevatedButton.styleFrom(
@@ -285,27 +301,31 @@ class _ChatScreenState extends State<ChatScreen>
         padding: const EdgeInsets.symmetric(horizontal: 20),
         child: Column(
           children: [
-            const SizedBox(height: 48),
+            const SizedBox(height: 40),
             _PulsingIcon(),
             const SizedBox(height: 22),
             Text(
               lang.strings.welcomeTitle,
               style: const TextStyle(
                 fontSize: 24,
-                fontWeight: FontWeight.w700,
+                fontWeight: FontWeight.w800,
                 color: AppColors.textInk,
+                letterSpacing: -0.3,
               ),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 12),
-            Text(
-              lang.strings.welcomeSubtitle,
-              style: const TextStyle(
-                fontSize: 13,
-                color: AppColors.textPencil,
-                height: 1.6,
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 300),
+              child: Text(
+                lang.strings.welcomeSubtitle,
+                style: const TextStyle(
+                  fontSize: 13,
+                  color: AppColors.textPencil,
+                  height: 1.7,
+                ),
+                textAlign: TextAlign.center,
               ),
-              textAlign: TextAlign.center,
             ),
             const SizedBox(height: 28),
             ...prompts.map((q) => _SuggestionCard(
@@ -347,9 +367,9 @@ class _PulsingIconState extends State<_PulsingIcon>
     super.initState();
     _ctrl = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 2000),
+      duration: const Duration(milliseconds: 3000),
     )..repeat(reverse: true);
-    _scale = Tween<double>(begin: 1.0, end: 1.08).animate(
+    _scale = Tween<double>(begin: 1.0, end: 1.04).animate(
       CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut),
     );
   }
@@ -365,15 +385,15 @@ class _PulsingIconState extends State<_PulsingIcon>
     return ScaleTransition(
       scale: _scale,
       child: Container(
-        width: 60,
-        height: 60,
+        width: 64,
+        height: 64,
         decoration: BoxDecoration(
           color: AppColors.teal.withOpacity(0.1),
           border: Border.all(color: AppColors.teal.withOpacity(0.2)),
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(20),
         ),
         child: const Icon(Icons.smart_toy_outlined,
-            size: 30, color: AppColors.teal),
+            size: 32, color: AppColors.teal),
       ),
     );
   }
@@ -398,7 +418,7 @@ class _SuggestionCard extends StatelessWidget {
             end: Alignment.bottomCenter,
             colors: [Color(0xFFFAF7F2), Color(0xFFF0EBE3)],
           ),
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(14),
           border: Border.all(color: AppColors.borderStitch),
           boxShadow: AppShadows.raised,
         ),
@@ -409,7 +429,7 @@ class _SuggestionCard extends StatelessWidget {
               style: TextStyle(
                 fontSize: 13,
                 color: AppColors.brass,
-                fontWeight: FontWeight.w600,
+                fontWeight: FontWeight.w700,
               ),
             ),
             Expanded(
@@ -446,7 +466,7 @@ class _TopicChip extends StatelessWidget {
             end: Alignment.bottomCenter,
             colors: [Color(0xFFFAF7F2), Color(0xFFF0EBE3)],
           ),
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(24),
           border: Border.all(color: AppColors.borderStitch),
           boxShadow: AppShadows.raised,
         ),

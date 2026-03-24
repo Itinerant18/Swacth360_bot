@@ -19,9 +19,9 @@ class _GridPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color = const Color(0xFFD6CFC4).withOpacity(0.6)
+      ..color = const Color(0xFFD6CFC4).withOpacity(0.4)
       ..strokeWidth = 1.0;
-    const step = 40.0;
+    const step = 48.0;
     for (double x = 0; x <= size.width; x += step) {
       canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
     }

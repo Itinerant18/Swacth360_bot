@@ -19,13 +19,13 @@ class AuthCard extends StatelessWidget {
             BoxShadow(color: Color(0x0D000000),
               blurRadius: 25, offset: Offset(0, 10)),
           ]),
-        padding: const EdgeInsets.fromLTRB(28, 28, 28, 32),
+        padding: const EdgeInsets.fromLTRB(24, 24, 24, 28),
         child: child,
       ),
 
       // Top-left brass corner
       Positioned(top: -1, left: -1,
-        child: SizedBox(width: 40, height: 40,
+        child: SizedBox(width: 36, height: 36,
           child: DecoratedBox(decoration: BoxDecoration(
             border: const Border(
               top: BorderSide(color: AppColors.brass, width: 2),
@@ -35,7 +35,7 @@ class AuthCard extends StatelessWidget {
 
       // Bottom-right brass corner
       Positioned(bottom: -1, right: -1,
-        child: SizedBox(width: 40, height: 40,
+        child: SizedBox(width: 36, height: 36,
           child: DecoratedBox(decoration: BoxDecoration(
             border: const Border(
               bottom: BorderSide(color: AppColors.brass, width: 2),

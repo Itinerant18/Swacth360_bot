@@ -88,7 +88,7 @@ class _SaveSessionSheetState extends State<SaveSessionSheet> {
               child: Text(
                 "Save Conversation",
                 style: TextStyle(
-                  fontSize: 18,
+                  fontSize: 17,
                   fontWeight: FontWeight.w700,
                   color: AppColors.textInk,
                 ),
@@ -97,9 +97,9 @@ class _SaveSessionSheetState extends State<SaveSessionSheet> {
             const Padding(
               padding: EdgeInsets.symmetric(horizontal: 20.0),
               child: Text(
-                "Give this conversation a name to find it later",
+                "Give this session a name to find it in history",
                 style: TextStyle(
-                  fontSize: 12,
+                  fontSize: 11,
                   color: AppColors.textPencil,
                   height: 1.5,
                 ),
@@ -111,7 +111,7 @@ class _SaveSessionSheetState extends State<SaveSessionSheet> {
               child: TextField(
                 controller: _controller,
                 autofocus: true,
-                maxLength: 80,
+                maxLength: 60,
                 style: const TextStyle(
                   fontSize: 14,
                   color: AppColors.textInk,
@@ -121,13 +121,13 @@ class _SaveSessionSheetState extends State<SaveSessionSheet> {
                   hintStyle:
                       const TextStyle(color: AppColors.textPencil),
                   errorText: _error,
-                  counterText: '$charCount / 80',
+                  counterText: '$charCount / 60',
                   counterStyle: const TextStyle(
                     fontSize: 10,
                     color: AppColors.textFaint,
                   ),
                   contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 14, vertical: 14),
+                      horizontal: 14, vertical: 18),
                   fillColor: AppColors.bgWhite,
                   filled: true,
                   border: OutlineInputBorder(

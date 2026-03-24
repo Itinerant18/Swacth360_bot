@@ -175,7 +175,7 @@ class _HistoryDrawerState extends State<HistoryDrawer> {
     }
 
     return Drawer(
-      width: MediaQuery.of(context).size.width * 0.78,
+      width: MediaQuery.of(context).size.width * 0.75,
       child: PaperBackground(
         child: Column(
           children: [
@@ -213,16 +213,16 @@ class _HistoryDrawerState extends State<HistoryDrawer> {
                             const Text(
                               "HISTORY",
                               style: TextStyle(
-                                fontSize: 12,
+                                fontSize: 11,
                                 fontWeight: FontWeight.w700,
                                 color: AppColors.textInk,
-                                letterSpacing: 1.5,
+                                letterSpacing: 2.0,
                               ),
                             ),
                             Text(
                               "${_conversations.length} conversations",
                               style: const TextStyle(
-                                fontSize: 10,
+                                fontSize: 9,
                                 color: AppColors.textFaint,
                               ),
                             ),
@@ -295,14 +295,14 @@ class _HistoryDrawerState extends State<HistoryDrawer> {
                   child: Row(
                     children: [
                       CircleAvatar(
-                        radius: 20,
+                        radius: 18,
                         backgroundColor: auth.isAuthenticated
                             ? AppColors.brass
                             : AppColors.textGraphite,
                         child: Text(
                           initials,
                           style: const TextStyle(
-                            fontSize: 13,
+                            fontSize: 12,
                             fontWeight: FontWeight.w700,
                             color: Colors.white,
                           ),
@@ -316,7 +316,7 @@ class _HistoryDrawerState extends State<HistoryDrawer> {
                           Text(
                             displayName,
                             style: const TextStyle(
-                              fontSize: 13,
+                              fontSize: 12,
                               fontWeight: FontWeight.w600,
                               color: AppColors.textInk,
                             ),
@@ -324,7 +324,7 @@ class _HistoryDrawerState extends State<HistoryDrawer> {
                           Text(
                             "${_conversations.length} saved conversations",
                             style: const TextStyle(
-                              fontSize: 11,
+                              fontSize: 10,
                               color: AppColors.textFaint,
                             ),
                           ),
@@ -353,36 +353,33 @@ class _HistoryDrawerState extends State<HistoryDrawer> {
 
     if (!auth.isAuthenticated) {
       return Center(
-        child: Container(
-          margin: const EdgeInsets.all(16),
-          padding: const EdgeInsets.all(24),
-          decoration: BoxDecoration(
-            color: AppColors.bgPaper,
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: AppColors.borderStitch),
-            boxShadow: AppShadows.card,
-          ),
-          child: const Column(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.lock_outline,
-                  size: 32, color: AppColors.textFaint),
-              SizedBox(height: 12),
-              Text(
-                "Sign in to view history",
+              Icon(
+                Icons.lock_outline,
+                size: 48,
+                color: AppColors.textFaint.withOpacity(0.4),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Sign in to view history',
                 style: TextStyle(
-                  fontSize: 14,
+                  fontSize: 15,
                   fontWeight: FontWeight.w600,
                   color: AppColors.textInk,
                 ),
                 textAlign: TextAlign.center,
               ),
-              SizedBox(height: 4),
-              Text(
-                "Your recent chats will appear here.",
+              const SizedBox(height: 8),
+              const Text(
+                'Your saved conversations\nwill appear here.',
                 style: TextStyle(
                   fontSize: 12,
                   color: AppColors.textPencil,
+                  height: 1.6,
                 ),
                 textAlign: TextAlign.center,
               ),
@@ -394,36 +391,33 @@ class _HistoryDrawerState extends State<HistoryDrawer> {
 
     if (_conversations.isEmpty) {
       return Center(
-        child: Container(
-          margin: const EdgeInsets.all(16),
-          padding: const EdgeInsets.all(24),
-          decoration: BoxDecoration(
-            color: AppColors.bgPaper,
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: AppColors.borderStitch),
-            boxShadow: AppShadows.card,
-          ),
-          child: const Column(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.chat_bubble_outline,
-                  size: 32, color: AppColors.textFaint),
-              SizedBox(height: 12),
-              Text(
-                "No conversations yet",
+              Icon(
+                Icons.history_edu_outlined,
+                size: 48,
+                color: AppColors.textFaint.withOpacity(0.4),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'No saved conversations',
                 style: TextStyle(
-                  fontSize: 14,
+                  fontSize: 15,
                   fontWeight: FontWeight.w600,
                   color: AppColors.textInk,
                 ),
                 textAlign: TextAlign.center,
               ),
-              SizedBox(height: 4),
-              Text(
-                "Your recent chats will appear here.",
+              const SizedBox(height: 8),
+              const Text(
+                'Tap the bookmark icon after\na chat to save it here.',
                 style: TextStyle(
                   fontSize: 12,
                   color: AppColors.textPencil,
+                  height: 1.6,
                 ),
                 textAlign: TextAlign.center,
               ),
@@ -455,7 +449,7 @@ class _HistoryDrawerState extends State<HistoryDrawer> {
                 child: Text(
                   group.toUpperCase(),
                   style: const TextStyle(
-                    fontSize: 9,
+                    fontSize: 8,
                     fontWeight: FontWeight.w600,
                     color: AppColors.textFaint,
                     letterSpacing: 1.2,
@@ -479,8 +473,9 @@ class _HistoryDrawerState extends State<HistoryDrawer> {
                 _confirmDelete(conv.id, conv.title);
                 return false;
               },
-              child: GestureDetector(
+              child: InkWell(
                 onTap: () => _openConversation(conv),
+                borderRadius: BorderRadius.circular(8),
                 child: Container(
                   width: double.infinity,
                   margin: const EdgeInsets.only(bottom: 6),
@@ -489,12 +484,12 @@ class _HistoryDrawerState extends State<HistoryDrawer> {
                   decoration: BoxDecoration(
                     color: AppColors.bgPaper,
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color: isActive
-                          ? AppColors.brass
-                          : AppColors.borderStitch.withOpacity(0.5),
-                      width: isActive ? 1.5 : 1.0,
-                    ),
+                    border: isActive
+                        ? const Border(
+                            left: BorderSide(color: AppColors.brass, width: 3),
+                          )
+                        : Border.all(
+                            color: AppColors.borderStitch.withOpacity(0.3)),
                   ),
                   child: Row(
                     children: [
@@ -516,7 +511,7 @@ class _HistoryDrawerState extends State<HistoryDrawer> {
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
-                                fontSize: 13,
+                                fontSize: 12,
                                 fontWeight: isActive
                                     ? FontWeight.w600
                                     : FontWeight.w500,
@@ -526,7 +521,7 @@ class _HistoryDrawerState extends State<HistoryDrawer> {
                             Text(
                               conv.relativeTime,
                               style: const TextStyle(
-                                fontSize: 10,
+                                fontSize: 9,
                                 color: AppColors.textFaint,
                               ),
                             ),

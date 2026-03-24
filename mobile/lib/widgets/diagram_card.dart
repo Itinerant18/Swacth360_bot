@@ -72,7 +72,7 @@ class _DiagramCardState extends State<DiagramCard> {
           child: Text(
             '${widget.diagram.diagramType.toUpperCase()} DIAGRAM',
             style: const TextStyle(
-              fontSize: 9,
+              fontSize: 8,
               fontWeight: FontWeight.w700,
               color: AppColors.brass,
               letterSpacing: 0.8,
@@ -84,7 +84,7 @@ class _DiagramCardState extends State<DiagramCard> {
           child: Text(
             widget.diagram.title,
             style: const TextStyle(
-              fontSize: 12,
+              fontSize: 11,
               fontWeight: FontWeight.w600,
               color: AppColors.textGraphite,
             ),
@@ -95,7 +95,7 @@ class _DiagramCardState extends State<DiagramCard> {
           onTap: () => setState(() => _expanded = !_expanded),
           child: Icon(
             _expanded ? Icons.fullscreen_exit : Icons.fullscreen,
-            size: 18,
+            size: 16,
             color: AppColors.textPencil,
           ),
         ),
@@ -103,7 +103,7 @@ class _DiagramCardState extends State<DiagramCard> {
       const SizedBox(height: 8),
       AnimatedContainer(
         duration: const Duration(milliseconds: 300),
-        height: _expanded ? 420 : 220,
+        height: _expanded ? 400 : 200,
         decoration: BoxDecoration(
           color: AppColors.bgPaper,
           borderRadius: BorderRadius.circular(4),

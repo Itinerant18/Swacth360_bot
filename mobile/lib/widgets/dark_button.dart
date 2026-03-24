@@ -31,7 +31,7 @@ class _DarkButtonState extends State<DarkButton>
       lowerBound: 0.0,
       upperBound: 1.0,
     );
-    _scaleAnim = Tween<double>(begin: 1.0, end: 0.97).animate(
+    _scaleAnim = Tween<double>(begin: 1.0, end: 0.98).animate(
       CurvedAnimation(parent: _scaleCtrl, curve: Curves.easeInOut),
     );
   }
@@ -52,7 +52,7 @@ class _DarkButtonState extends State<DarkButton>
         scale: _scaleAnim,
         child: SizedBox(
           width: double.infinity,
-          height: 50,
+          height: 46,
           child: ElevatedButton(
             onPressed: widget.isLoading ? null : widget.onPressed,
             style: ElevatedButton.styleFrom(
@@ -61,10 +61,10 @@ class _DarkButtonState extends State<DarkButton>
               elevation: 0,
               shadowColor: Colors.transparent,
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(6),
               ),
               textStyle: const TextStyle(
-                fontSize: 13,
+                fontSize: 12,
                 fontWeight: FontWeight.w700,
                 letterSpacing: 1.0,
                 fontFamily: 'monospace',
@@ -72,8 +72,8 @@ class _DarkButtonState extends State<DarkButton>
             ),
             child: widget.isLoading
                 ? const SizedBox(
-                    width: 14,
-                    height: 14,
+                    width: 12,
+                    height: 12,
                     child: CircularProgressIndicator(
                       strokeWidth: 2,
                       color: Colors.white,

@@ -79,7 +79,7 @@ class MessageBubble extends StatelessWidget {
   Widget _buildUserBubble(BuildContext context) {
     final bubbleContainer = Container(
       padding:
-          const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
+          const EdgeInsets.symmetric(horizontal: 14.0, vertical: 10.0),
       decoration: const BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topCenter,
@@ -113,7 +113,7 @@ class MessageBubble extends StatelessWidget {
         style: const TextStyle(
           fontSize: 14,
           color: Color(0xFFFAF7F2),
-          height: 1.45,
+          height: 1.5,
         ),
       ),
     );
@@ -133,10 +133,10 @@ class MessageBubble extends StatelessWidget {
           ),
           const SizedBox(width: 8),
           const CircleAvatar(
-            radius: 16,
+            radius: 14,
             backgroundColor: Color(0xFF4B2E22),
             child:
-                Icon(Icons.person, size: 16, color: Color(0xFFFAF7F2)),
+                Icon(Icons.person, size: 14, color: Color(0xFFFAF7F2)),
           ),
         ],
       ),
@@ -216,8 +216,8 @@ class MessageBubble extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Container(
-                width: 32,
-                height: 32,
+                width: 30,
+                height: 30,
                 decoration: BoxDecoration(
                   color: AppColors.brass,
                   borderRadius: BorderRadius.circular(6),
@@ -243,15 +243,23 @@ class MessageBubble extends StatelessWidget {
             ],
           ),
           // Feedback row for assistant text messages (not diagrams)
-          if (!isUser && diagram == null)
+          if (!isUser && diagram == null) ...[
             Padding(
-              padding: const EdgeInsets.only(top: 6),
+              padding: const EdgeInsets.only(left: 36, top: 6, bottom: 4),
+              child: Divider(
+                height: 1,
+                thickness: 0.5,
+                color: AppColors.borderStitch.withOpacity(0.5),
+              ),
+            ),
+            Padding(
+              padding: EdgeInsets.zero,
               child: Row(children: [
                 const SizedBox(width: 40), // offset to align under bubble
                 Text(
                   'Helpful?',
                   style: TextStyle(
-                    fontSize: 11,
+                    fontSize: 10,
                     color: AppColors.textFaint,
                   ),
                 ),
@@ -259,7 +267,7 @@ class MessageBubble extends StatelessWidget {
                 IconButton(
                   icon: Icon(
                     Icons.thumb_up_outlined,
-                    size: 14,
+                    size: 13,
                     color: feedbackRating == 1
                         ? AppColors.teal
                         : AppColors.textFaint,
@@ -274,7 +282,7 @@ class MessageBubble extends StatelessWidget {
                 IconButton(
                   icon: Icon(
                     Icons.thumb_down_outlined,
-                    size: 14,
+                    size: 13,
                     color: feedbackRating == -1
                         ? AppColors.danger
                         : AppColors.textFaint,
@@ -287,6 +295,7 @@ class MessageBubble extends StatelessWidget {
                 ),
               ]),
             ),
+          ],
         ],
       ),
     );
@@ -306,8 +315,8 @@ class TypingIndicatorBubble extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
-            width: 32,
-            height: 32,
+            width: 28,
+            height: 28,
             decoration: BoxDecoration(
               color: AppColors.brass,
               borderRadius: BorderRadius.circular(6),
@@ -375,7 +384,7 @@ class _TypingDotState extends State<_TypingDot>
     super.initState();
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1400),
+      duration: const Duration(milliseconds: 1200),
     );
     _animation = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(
@@ -403,12 +412,12 @@ class _TypingDotState extends State<_TypingDot>
       animation: _animation,
       builder: (context, child) {
         return Transform.translate(
-          offset: Offset(0, -5 * _animation.value),
+          offset: Offset(0, -4 * _animation.value),
           child: Opacity(
             opacity: 0.5 + (0.5 * _animation.value),
             child: Container(
-              width: 8,
-              height: 8,
+              width: 7,
+              height: 7,
               decoration: const BoxDecoration(
                 color: AppColors.brass,
                 shape: BoxShape.circle,

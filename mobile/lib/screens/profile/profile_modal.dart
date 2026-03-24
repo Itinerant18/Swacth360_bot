@@ -43,9 +43,9 @@ class ProfileModal extends StatelessWidget {
     }
 
     return DraggableScrollableSheet(
-      initialChildSize: 0.9,
+      initialChildSize: 0.85,
       minChildSize: 0.5,
-      maxChildSize: 0.95,
+      maxChildSize: 0.92,
       expand: false,
       builder: (_, scrollController) {
         return Column(
@@ -61,7 +61,7 @@ class ProfileModal extends StatelessWidget {
                     child: Text(
                       'PROFILE',
                       style: TextStyle(
-                        fontSize: 12,
+                        fontSize: 13,
                         fontWeight: FontWeight.w700,
                         color: AppColors.textInk,
                         letterSpacing: 1.5,
@@ -99,7 +99,7 @@ class ProfileModal extends StatelessWidget {
                           Border.all(color: AppColors.borderStitch),
                       boxShadow: AppShadows.card,
                     ),
-                    padding: const EdgeInsets.all(18),
+                    padding: const EdgeInsets.all(20),
                     child: Row(
                       children: [
                         CircleAvatar(
@@ -110,7 +110,7 @@ class ProfileModal extends StatelessWidget {
                           child: Text(
                             initials,
                             style: const TextStyle(
-                              fontSize: 20,
+                              fontSize: 18,
                               fontWeight: FontWeight.w700,
                               color: Colors.white,
                             ),
@@ -125,7 +125,7 @@ class ProfileModal extends StatelessWidget {
                               Text(
                                 displayName,
                                 style: const TextStyle(
-                                  fontSize: 17,
+                                  fontSize: 18,
                                   fontWeight: FontWeight.w700,
                                   color: AppColors.textInk,
                                 ),
@@ -296,7 +296,7 @@ class ProfileModal extends StatelessWidget {
                       height: 52,
                       margin: const EdgeInsets.only(bottom: 24),
                       decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(10),
+                        borderRadius: BorderRadius.circular(12),
                         border: Border.all(
                             color: AppColors.danger, width: 1.5),
                       ),
@@ -307,7 +307,7 @@ class ProfileModal extends StatelessWidget {
                           foregroundColor: AppColors.danger,
                           shape: RoundedRectangleBorder(
                               borderRadius:
-                                  BorderRadius.circular(10)),
+                                  BorderRadius.circular(12)),
                         ),
                         child: const Row(
                           mainAxisAlignment: MainAxisAlignment.center,
@@ -388,16 +388,16 @@ class _SectionHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(4, 4, 0, 8),
+      padding: const EdgeInsets.fromLTRB(0, 16, 0, 8),
       child: Row(
         children: [
           Text(
             title.toUpperCase(),
             style: const TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
               color: AppColors.textFaint,
-              letterSpacing: 1.5,
+              letterSpacing: 2.0,
             ),
           ),
           const SizedBox(width: 8),
