@@ -27,7 +27,7 @@
 *   **🌐 Multi-Language Support**: Seamlessly switch between **English**, **Hindi**, and **Bengali** with localized prompts and UI.
 *   **🛡️ Flexible Access**: 
     *   **Guest Mode**: 3 free questions for immediate help without an account.
-    *   **Authenticated Mode**: Full session history, saved conversations, and profile management via Supabase.
+    *   **Authenticated Mode**: Full session history, saved conversations, and profile management.
 *   **📱 Modern UX**: Animated typing indicators, message feedback (thumbs up/down), swipe-to-delete history, and a distinct aesthetic theme.
 
 ---
@@ -137,5 +137,5 @@ Distributed under the MIT License. See `LICENSE` for more information.
 ---
 
 <div align="center">
-  <p>Built with ❤️ by the SAI Team</p>
+  <p>Built with ❤️ by Aniket</p>
 </div>
