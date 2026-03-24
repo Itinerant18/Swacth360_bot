@@ -1,4 +1,4 @@
-# 🎨 SAI: Swatch Panel Support AI
+# SAI: Swatch Panel Support AI
 
 > **Expert Technical Support at Your Fingertips** — A sophisticated Flutter-based mobile companion for the SAI ecosystem, designed to provide instant AI-powered guidance for Swatch Panel systems with integrated diagramming and multi-language support.
 
@@ -16,7 +16,7 @@
 
 ---
 
-## 🚀 Overview
+## Overview
 
 **SAI (Swatch Panel Support AI)** is a high-performance cross-platform mobile application that brings the power of the SAI web ecosystem to mobile devices. It leverages a modern **Research-Augmented Generation (RAG)** backend to provide technical support for HMS Panel systems, complete with interactive Mermaid.js diagrams and a unique "Pencil and Paper" aesthetic.
 
@@ -32,7 +32,7 @@
 
 ---
 
-## 🛠️ Tech Stack & Architecture
+## Tech Stack & Architecture
 
 ### Core Technologies
 - **Frontend Framework**: [Flutter](https://flutter.dev/) (Dart)
@@ -69,7 +69,7 @@ lib/
 
 ---
 
-## 🏁 Getting Started
+## Getting Started
 
 ### Prerequisites
 - **Flutter SDK**: `>= 3.3.0`
@@ -110,7 +110,7 @@ lib/
 
 ---
 
-## 🎨 Design Language: "Paper & Brass"
+## Design Language: "Paper & Brass"
 
 SAI features a bespoke visual identity:
 - **Backgrounds**: Textured `PaperBackground` with a subtle grid.
@@ -122,7 +122,7 @@ SAI features a bespoke visual identity:
 
 ---
 
-## 🧪 Testing & Quality
+## Testing & Quality
 
 - **Linting**: Strict Dart analysis rules via `analysis_options.yaml`.
 - **Testing**: Basic smoke tests in `test/widget_test.dart`. 
@@ -130,7 +130,7 @@ SAI features a bespoke visual identity:
 
 ---
 
-## 📜 License
+## License
 
 Distributed under the MIT License. See `LICENSE` for more information.
 
