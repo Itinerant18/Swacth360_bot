@@ -1332,7 +1332,7 @@ export default function Chat() {
                                         disabled={isLoading || isLoadingHistory}
                                         autoComplete="off"
                                     />
-                                    <button type="submit" disabled={isLoading || isLoadingHistory || !input.trim()}
+                                    <button type="submit" aria-label="Send message" disabled={isLoading || isLoadingHistory || !input.trim()}
                                         className="absolute right-1.5 sm:right-2 p-2 sm:p-2.5 skeuo-brass rounded-lg sm:rounded-xl disabled:opacity-30">
                                         {isLoading || isLoadingHistory
                                             ? <FontAwesomeIcon icon={faSpinner} className="w-3.5 h-3.5 sm:w-4 sm:h-4 animate-spin" />
