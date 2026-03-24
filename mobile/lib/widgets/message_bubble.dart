@@ -23,6 +23,50 @@ class MessageBubble extends StatelessWidget {
     this.feedbackRating,
   });
 
+  void _showCopySheet(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppColors.bgPaper,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
+      ),
+      builder: (_) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 40,
+              height: 4,
+              margin: const EdgeInsets.only(top: 8, bottom: 12),
+              decoration: BoxDecoration(
+                color: AppColors.borderStitch,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.copy,
+                  size: 20, color: AppColors.textGraphite),
+              title: const Text('Copy message',
+                  style:
+                      TextStyle(fontSize: 14, color: AppColors.textInk)),
+              onTap: () {
+                Clipboard.setData(ClipboardData(text: content));
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Copied to clipboard'),
+                    duration: Duration(seconds: 2),
+                  ),
+                );
+              },
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (isUser) {
@@ -34,23 +78,34 @@ class MessageBubble extends StatelessWidget {
 
   Widget _buildUserBubble(BuildContext context) {
     final bubbleContainer = Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14.0, vertical: 10.0),
+      padding:
+          const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
       decoration: const BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [Color(0xFF5F473A), Color(0xFF4B2E22), Color(0xFF3A2118)],
+          colors: [
+            Color(0xFF5F473A),
+            Color(0xFF4B2E22),
+            Color(0xFF3A2118)
+          ],
           stops: [0.0, 0.4, 1.0],
         ),
         borderRadius: BorderRadius.only(
-          topLeft: Radius.circular(14),
-          topRight: Radius.circular(14),
-          bottomLeft: Radius.circular(14),
+          topLeft: Radius.circular(16),
+          topRight: Radius.circular(16),
+          bottomLeft: Radius.circular(16),
           bottomRight: Radius.circular(4),
         ),
         boxShadow: [
-          BoxShadow(color: Color(0x4D000000), blurRadius: 4, offset: Offset(0, 2)),
-          BoxShadow(color: Color(0x14FFFFFF), blurRadius: 0, offset: Offset(0, 1)),
+          BoxShadow(
+              color: Color(0x4D000000),
+              blurRadius: 4,
+              offset: Offset(0, 2)),
+          BoxShadow(
+              color: Color(0x14FFFFFF),
+              blurRadius: 0,
+              offset: Offset(0, 1)),
         ],
       ),
       child: Text(
@@ -64,30 +119,24 @@ class MessageBubble extends StatelessWidget {
     );
 
     return Padding(
-      padding: const EdgeInsets.only(bottom: 16.0, left: 32.0, right: 16.0),
+      padding:
+          const EdgeInsets.only(bottom: 16.0, left: 40.0, right: 16.0),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.end,
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           Flexible(
             child: GestureDetector(
-              onLongPress: () {
-                Clipboard.setData(ClipboardData(text: content));
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Copied'),
-                    duration: Duration(seconds: 2),
-                  ),
-                );
-              },
+              onLongPress: () => _showCopySheet(context),
               child: bubbleContainer,
             ),
           ),
           const SizedBox(width: 8),
           const CircleAvatar(
-            radius: 14,
+            radius: 16,
             backgroundColor: Color(0xFF4B2E22),
-            child: Icon(Icons.person, size: 14, color: Color(0xFFFAF7F2)),
+            child:
+                Icon(Icons.person, size: 16, color: Color(0xFFFAF7F2)),
           ),
         ],
       ),
@@ -104,7 +153,8 @@ class MessageBubble extends StatelessWidget {
         data: content,
         selectable: true,
         styleSheet: MarkdownStyleSheet(
-          p: const TextStyle(fontSize: 14, color: AppColors.textInk, height: 1.45),
+          p: const TextStyle(
+              fontSize: 14, color: AppColors.textInk, height: 1.45),
           code: const TextStyle(
             fontSize: 12,
             fontFamily: 'monospace',
@@ -113,15 +163,28 @@ class MessageBubble extends StatelessWidget {
           ),
           codeblockDecoration: BoxDecoration(
             color: const Color(0xFFF0EBE3),
-            borderRadius: BorderRadius.circular(4),
+            borderRadius: BorderRadius.circular(6),
             border: Border.all(color: AppColors.borderStitch),
           ),
-          h1: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textInk),
-          h2: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.textInk),
-          h3: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.textInk),
-          listBullet: const TextStyle(fontSize: 14, color: AppColors.textInk),
-          strong: const TextStyle(fontWeight: FontWeight.w700, color: AppColors.textInk),
-          em: const TextStyle(fontStyle: FontStyle.italic, color: AppColors.textGraphite),
+          h1: const TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+              color: AppColors.textInk),
+          h2: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+              color: AppColors.textInk),
+          h3: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              color: AppColors.textInk),
+          listBullet: const TextStyle(
+              fontSize: 14, color: AppColors.textInk),
+          strong: const TextStyle(
+              fontWeight: FontWeight.w700, color: AppColors.textInk),
+          em: const TextStyle(
+              fontStyle: FontStyle.italic,
+              color: AppColors.textGraphite),
         ),
       );
     }
@@ -131,19 +194,20 @@ class MessageBubble extends StatelessWidget {
         color: AppColors.bgPaper,
         borderRadius: const BorderRadius.only(
           topLeft: Radius.circular(4),
-          topRight: Radius.circular(14),
-          bottomLeft: Radius.circular(14),
-          bottomRight: Radius.circular(14),
+          topRight: Radius.circular(16),
+          bottomLeft: Radius.circular(16),
+          bottomRight: Radius.circular(16),
         ),
         border: Border.all(color: AppColors.borderStitch),
         boxShadow: AppShadows.card,
       ),
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(16),
       child: bubbleContent,
     );
 
     return Padding(
-      padding: const EdgeInsets.only(bottom: 16.0, left: 16.0, right: 32.0),
+      padding:
+          const EdgeInsets.only(bottom: 16.0, left: 16.0, right: 40.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -152,17 +216,17 @@ class MessageBubble extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Container(
-                width: 28,
-                height: 28,
+                width: 32,
+                height: 32,
                 decoration: BoxDecoration(
                   color: AppColors.brass,
-                  borderRadius: BorderRadius.circular(4),
+                  borderRadius: BorderRadius.circular(6),
                 ),
                 child: const Center(
                   child: Text(
                     'S',
                     style: TextStyle(
-                      fontSize: 12,
+                      fontSize: 14,
                       fontWeight: FontWeight.w800,
                       color: Colors.white,
                     ),
@@ -172,15 +236,7 @@ class MessageBubble extends StatelessWidget {
               const SizedBox(width: 8),
               Flexible(
                 child: GestureDetector(
-                  onLongPress: () {
-                    Clipboard.setData(ClipboardData(text: content));
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Copied'),
-                        duration: Duration(seconds: 2),
-                      ),
-                    );
-                  },
+                  onLongPress: () => _showCopySheet(context),
                   child: bubbleContainer,
                 ),
               ),
@@ -189,14 +245,24 @@ class MessageBubble extends StatelessWidget {
           // Feedback row for assistant text messages (not diagrams)
           if (!isUser && diagram == null)
             Padding(
-              padding: const EdgeInsets.only(top: 4),
+              padding: const EdgeInsets.only(top: 6),
               child: Row(children: [
-                const SizedBox(width: 36), // offset to align under bubble
+                const SizedBox(width: 40), // offset to align under bubble
+                Text(
+                  'Helpful?',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: AppColors.textFaint,
+                  ),
+                ),
+                const SizedBox(width: 8),
                 IconButton(
                   icon: Icon(
                     Icons.thumb_up_outlined,
                     size: 14,
-                    color: feedbackRating == 1 ? AppColors.teal : AppColors.textFaint,
+                    color: feedbackRating == 1
+                        ? AppColors.teal
+                        : AppColors.textFaint,
                   ),
                   padding: EdgeInsets.zero,
                   constraints: const BoxConstraints(),
@@ -209,7 +275,9 @@ class MessageBubble extends StatelessWidget {
                   icon: Icon(
                     Icons.thumb_down_outlined,
                     size: 14,
-                    color: feedbackRating == -1 ? AppColors.danger : AppColors.textFaint,
+                    color: feedbackRating == -1
+                        ? AppColors.danger
+                        : AppColors.textFaint,
                   ),
                   padding: EdgeInsets.zero,
                   constraints: const BoxConstraints(),
@@ -231,23 +299,24 @@ class TypingIndicatorBubble extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 16.0, left: 16.0, right: 32.0),
+      padding:
+          const EdgeInsets.only(bottom: 16.0, left: 16.0, right: 40.0),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.start,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
-            width: 28,
-            height: 28,
+            width: 32,
+            height: 32,
             decoration: BoxDecoration(
               color: AppColors.brass,
-              borderRadius: BorderRadius.circular(4),
+              borderRadius: BorderRadius.circular(6),
             ),
             child: const Center(
               child: Text(
                 'S',
                 style: TextStyle(
-                  fontSize: 12,
+                  fontSize: 14,
                   fontWeight: FontWeight.w800,
                   color: Colors.white,
                 ),
@@ -261,21 +330,21 @@ class TypingIndicatorBubble extends StatelessWidget {
                 color: AppColors.bgPaper,
                 borderRadius: const BorderRadius.only(
                   topLeft: Radius.circular(4),
-                  topRight: Radius.circular(14),
-                  bottomLeft: Radius.circular(14),
-                  bottomRight: Radius.circular(14),
+                  topRight: Radius.circular(16),
+                  bottomLeft: Radius.circular(16),
+                  bottomRight: Radius.circular(16),
                 ),
                 border: Border.all(color: AppColors.borderStitch),
                 boxShadow: AppShadows.card,
               ),
-              padding: const EdgeInsets.all(14),
+              padding: const EdgeInsets.all(16),
               child: const Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   _TypingDot(delay: 0),
-                  SizedBox(width: 4),
+                  SizedBox(width: 5),
                   _TypingDot(delay: 200),
-                  SizedBox(width: 4),
+                  SizedBox(width: 5),
                   _TypingDot(delay: 400),
                 ],
               ),
@@ -296,7 +365,8 @@ class _TypingDot extends StatefulWidget {
   State<_TypingDot> createState() => _TypingDotState();
 }
 
-class _TypingDotState extends State<_TypingDot> with SingleTickerProviderStateMixin {
+class _TypingDotState extends State<_TypingDot>
+    with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<double> _animation;
 
@@ -337,8 +407,8 @@ class _TypingDotState extends State<_TypingDot> with SingleTickerProviderStateMi
           child: Opacity(
             opacity: 0.5 + (0.5 * _animation.value),
             child: Container(
-              width: 7,
-              height: 7,
+              width: 8,
+              height: 8,
               decoration: const BoxDecoration(
                 color: AppColors.brass,
                 shape: BoxShape.circle,

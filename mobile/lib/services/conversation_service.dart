@@ -16,7 +16,17 @@ class ConversationService {
         .eq('user_id', userId)
         .order('updated_at', ascending: false);
 
-    return (response as List).map((row) {
+    final allConvs = List<dynamic>.from(response);
+
+    if (allConvs.length > 5) {
+      final excess = allConvs.skip(5).toList();
+      for (final conv in excess) {
+        await _client.from('conversations').delete().eq('id', conv['id']);
+      }
+      allConvs.removeRange(5, allConvs.length);
+    }
+
+    return allConvs.map((row) {
       final count = row['messages'] is List
           ? (row['messages'] as List).isNotEmpty
               ? (row['messages'][0]['count'] as int? ?? 0)

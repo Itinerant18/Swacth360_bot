@@ -21,8 +21,12 @@ class _SaveSessionSheetState extends State<SaveSessionSheet> {
     // Use the first user message or 'New Session' as default title
     final chat = context.read<ChatProvider>();
     final title = chat.sessionTitle ??
-        (chat.messages.isNotEmpty ? chat.messages.first.content : 'New Session');
-    _controller = TextEditingController(text: title.length > 50 ? '${title.substring(0, 50)}...' : title);
+        (chat.messages.isNotEmpty
+            ? chat.messages.first.content
+            : 'New Session');
+    _controller = TextEditingController(
+        text: title.length > 50 ? '${title.substring(0, 50)}...' : title);
+    _controller.addListener(() => setState(() {}));
   }
 
   @override
@@ -57,8 +61,8 @@ class _SaveSessionSheetState extends State<SaveSessionSheet> {
 
   @override
   Widget build(BuildContext context) {
-    // Add padding to avoid keyboard covering the sheet
-    // and make the sheet rounded
+    final charCount = _controller.text.length;
+
     return Padding(
       padding: EdgeInsets.only(
         bottom: MediaQuery.of(context).viewInsets.bottom,
@@ -84,9 +88,20 @@ class _SaveSessionSheetState extends State<SaveSessionSheet> {
               child: Text(
                 "Save Conversation",
                 style: TextStyle(
-                  fontSize: 16,
+                  fontSize: 18,
                   fontWeight: FontWeight.w700,
                   color: AppColors.textInk,
+                ),
+              ),
+            ),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 20.0),
+              child: Text(
+                "Give this conversation a name to find it later",
+                style: TextStyle(
+                  fontSize: 12,
+                  color: AppColors.textPencil,
+                  height: 1.5,
                 ),
               ),
             ),
@@ -96,87 +111,110 @@ class _SaveSessionSheetState extends State<SaveSessionSheet> {
               child: TextField(
                 controller: _controller,
                 autofocus: true,
+                maxLength: 80,
                 style: const TextStyle(
                   fontSize: 14,
                   color: AppColors.textInk,
                 ),
                 decoration: InputDecoration(
                   hintText: 'Enter a name...',
-                  hintStyle: const TextStyle(color: AppColors.textPencil),
+                  hintStyle:
+                      const TextStyle(color: AppColors.textPencil),
                   errorText: _error,
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  counterText: '$charCount / 80',
+                  counterStyle: const TextStyle(
+                    fontSize: 10,
+                    color: AppColors.textFaint,
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 14, vertical: 14),
                   fillColor: AppColors.bgWhite,
                   filled: true,
                   border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(4),
-                    borderSide: const BorderSide(color: AppColors.borderStitch),
+                    borderRadius: BorderRadius.circular(10),
+                    borderSide: const BorderSide(
+                        color: AppColors.borderStitch),
                   ),
                   enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(4),
-                    borderSide: const BorderSide(color: AppColors.borderStitch),
+                    borderRadius: BorderRadius.circular(10),
+                    borderSide: const BorderSide(
+                        color: AppColors.borderStitch),
                   ),
                   focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(4),
-                    borderSide: const BorderSide(color: AppColors.brass),
+                    borderRadius: BorderRadius.circular(10),
+                    borderSide:
+                        const BorderSide(color: AppColors.brass),
                   ),
                   errorBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(4),
-                    borderSide: const BorderSide(color: AppColors.danger),
+                    borderRadius: BorderRadius.circular(10),
+                    borderSide:
+                        const BorderSide(color: AppColors.danger),
                   ),
                   focusedErrorBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(4),
-                    borderSide: const BorderSide(color: AppColors.danger),
+                    borderRadius: BorderRadius.circular(10),
+                    borderSide:
+                        const BorderSide(color: AppColors.danger),
                   ),
                 ),
                 onSubmitted: (_) => _save(),
               ),
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 20),
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 8.0),
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 20.0, vertical: 8.0),
               child: Row(
                 children: [
                   Expanded(
-                    child: OutlinedButton(
-                      onPressed: _isSaving ? null : () => Navigator.pop(context),
-                      style: OutlinedButton.styleFrom(
-                        side: const BorderSide(color: AppColors.borderStitch),
-                        foregroundColor: AppColors.textGraphite,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(4),
+                    child: SizedBox(
+                      height: 48,
+                      child: OutlinedButton(
+                        onPressed: _isSaving
+                            ? null
+                            : () => Navigator.pop(context),
+                        style: OutlinedButton.styleFrom(
+                          side: const BorderSide(
+                              color: AppColors.borderStitch),
+                          foregroundColor: AppColors.textGraphite,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
                         ),
+                        child: const Text("Cancel"),
                       ),
-                      child: const Text("Cancel"),
                     ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
-                    child: ElevatedButton(
-                      onPressed: _isSaving ? null : _save,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.textInk,
-                        foregroundColor: Colors.white,
-                        elevation: 0,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(4),
+                    child: SizedBox(
+                      height: 48,
+                      child: ElevatedButton(
+                        onPressed: _isSaving ? null : _save,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.textInk,
+                          foregroundColor: Colors.white,
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
                         ),
+                        child: _isSaving
+                            ? const SizedBox(
+                                height: 16,
+                                width: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Text(
+                                "SAVE",
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: 0.8,
+                                ),
+                              ),
                       ),
-                      child: _isSaving
-                          ? const SizedBox(
-                              height: 16,
-                              width: 16,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
-                              ),
-                            )
-                          : const Text(
-                              "SAVE",
-                              style: TextStyle(
-                                fontWeight: FontWeight.w700,
-                                letterSpacing: 0.8,
-                              ),
-                            ),
                     ),
                   ),
                 ],

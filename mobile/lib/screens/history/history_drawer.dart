@@ -57,6 +57,100 @@ class _HistoryDrawerState extends State<HistoryDrawer> {
     } catch (_) {}
   }
 
+  void _confirmDelete(String id, String title) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppColors.bgPaper,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppColors.borderStitch,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 20),
+              const Icon(Icons.delete_outline,
+                  size: 32, color: AppColors.danger),
+              const SizedBox(height: 12),
+              const Text(
+                'Delete conversation?',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textInk,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                '"$title"',
+                style: const TextStyle(
+                  fontSize: 13,
+                  color: AppColors.textPencil,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 20),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.pop(ctx),
+                      style: OutlinedButton.styleFrom(
+                        side: const BorderSide(
+                            color: AppColors.borderStitch),
+                        foregroundColor: AppColors.textGraphite,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                      child: const Text('Cancel'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: () {
+                        Navigator.pop(ctx);
+                        _deleteConversation(id);
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.danger,
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                      child: const Text(
+                        'DELETE',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 0.8,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   void _newConversation() {
     Navigator.pop(context);
     context.read<ChatProvider>().startNewConversation();
@@ -97,35 +191,75 @@ class _HistoryDrawerState extends State<HistoryDrawer> {
                     Color(0xFFC4BEB5),
                   ],
                 ),
-                border:
-                    Border(bottom: BorderSide(color: AppColors.borderStitch)),
+                border: Border(
+                    bottom:
+                        BorderSide(color: AppColors.borderStitch)),
               ),
               child: SafeArea(
                 bottom: false,
                 child: Padding(
                   padding: const EdgeInsets.symmetric(
-                      horizontal: 16.0, vertical: 12.0),
+                      horizontal: 16.0, vertical: 14.0),
                   child: Row(
                     children: [
                       const Icon(Icons.view_sidebar,
-                          size: 18, color: AppColors.textGraphite),
-                      const SizedBox(width: 8),
-                      const Text(
-                        "HISTORY",
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                          color: AppColors.textInk,
-                          letterSpacing: 1.5,
+                          size: 20, color: AppColors.textGraphite),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment:
+                              CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              "HISTORY",
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.textInk,
+                                letterSpacing: 1.5,
+                              ),
+                            ),
+                            Text(
+                              "${_conversations.length} conversations",
+                              style: const TextStyle(
+                                fontSize: 10,
+                                color: AppColors.textFaint,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                      const Spacer(),
-                      IconButton(
-                        icon: const Icon(Icons.add,
-                            size: 20, color: AppColors.brass),
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(),
-                        onPressed: _newConversation,
+                      GestureDetector(
+                        onTap: _newConversation,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: AppColors.brass.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                                color:
+                                    AppColors.brass.withOpacity(0.3)),
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.add,
+                                  size: 16,
+                                  color: AppColors.brass),
+                              SizedBox(width: 4),
+                              Text(
+                                'NEW',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppColors.brass,
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
                     ],
                   ),
@@ -150,8 +284,8 @@ class _HistoryDrawerState extends State<HistoryDrawer> {
                     Color(0xFFC4BEB5),
                   ],
                 ),
-                border:
-                    Border(top: BorderSide(color: AppColors.borderStitch)),
+                border: Border(
+                    top: BorderSide(color: AppColors.borderStitch)),
               ),
               child: SafeArea(
                 top: false,
@@ -161,14 +295,14 @@ class _HistoryDrawerState extends State<HistoryDrawer> {
                   child: Row(
                     children: [
                       CircleAvatar(
-                        radius: 18,
+                        radius: 20,
                         backgroundColor: auth.isAuthenticated
                             ? AppColors.brass
                             : AppColors.textGraphite,
                         child: Text(
                           initials,
                           style: const TextStyle(
-                            fontSize: 12,
+                            fontSize: 13,
                             fontWeight: FontWeight.w700,
                             color: Colors.white,
                           ),
@@ -176,7 +310,8 @@ class _HistoryDrawerState extends State<HistoryDrawer> {
                       ),
                       const SizedBox(width: 10),
                       Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                        crossAxisAlignment:
+                            CrossAxisAlignment.start,
                         children: [
                           Text(
                             displayName,
@@ -220,16 +355,19 @@ class _HistoryDrawerState extends State<HistoryDrawer> {
       return Center(
         child: Container(
           margin: const EdgeInsets.all(16),
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.all(24),
           decoration: BoxDecoration(
             color: AppColors.bgPaper,
-            borderRadius: BorderRadius.circular(4),
+            borderRadius: BorderRadius.circular(8),
             border: Border.all(color: AppColors.borderStitch),
             boxShadow: AppShadows.card,
           ),
           child: const Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              Icon(Icons.lock_outline,
+                  size: 32, color: AppColors.textFaint),
+              SizedBox(height: 12),
               Text(
                 "Sign in to view history",
                 style: TextStyle(
@@ -258,16 +396,19 @@ class _HistoryDrawerState extends State<HistoryDrawer> {
       return Center(
         child: Container(
           margin: const EdgeInsets.all(16),
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.all(24),
           decoration: BoxDecoration(
             color: AppColors.bgPaper,
-            borderRadius: BorderRadius.circular(4),
+            borderRadius: BorderRadius.circular(8),
             border: Border.all(color: AppColors.borderStitch),
             boxShadow: AppShadows.card,
           ),
           child: const Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              Icon(Icons.chat_bubble_outline,
+                  size: 32, color: AppColors.textFaint),
+              SizedBox(height: 12),
               Text(
                 "No conversations yet",
                 style: TextStyle(
@@ -293,6 +434,7 @@ class _HistoryDrawerState extends State<HistoryDrawer> {
     }
 
     // Group conversations by time period
+    final chat = context.watch<ChatProvider>();
     String? lastGroup;
     return ListView.builder(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -302,6 +444,7 @@ class _HistoryDrawerState extends State<HistoryDrawer> {
         final group = conv.groupLabel;
         final showHeader = group != lastGroup;
         lastGroup = group;
+        final isActive = chat.activeConversationId == conv.id;
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -325,40 +468,58 @@ class _HistoryDrawerState extends State<HistoryDrawer> {
               background: Container(
                 alignment: Alignment.centerRight,
                 padding: const EdgeInsets.only(right: 16),
-                color: AppColors.danger.withOpacity(0.1),
+                decoration: BoxDecoration(
+                  color: AppColors.danger.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
                 child: const Icon(Icons.delete_outline,
                     color: AppColors.danger, size: 18),
               ),
-              onDismissed: (_) => _deleteConversation(conv.id),
+              confirmDismiss: (_) async {
+                _confirmDelete(conv.id, conv.title);
+                return false;
+              },
               child: GestureDetector(
                 onTap: () => _openConversation(conv),
                 child: Container(
                   width: double.infinity,
-                  margin: const EdgeInsets.only(bottom: 4),
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  margin: const EdgeInsets.only(bottom: 6),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 12, vertical: 12),
                   decoration: BoxDecoration(
                     color: AppColors.bgPaper,
-                    borderRadius: BorderRadius.circular(4),
+                    borderRadius: BorderRadius.circular(8),
                     border: Border.all(
-                        color: AppColors.borderStitch.withOpacity(0.5)),
+                      color: isActive
+                          ? AppColors.brass
+                          : AppColors.borderStitch.withOpacity(0.5),
+                      width: isActive ? 1.5 : 1.0,
+                    ),
                   ),
                   child: Row(
                     children: [
-                      const Icon(Icons.chat_bubble_outline,
-                          size: 14, color: AppColors.textPencil),
+                      Icon(
+                        Icons.chat_bubble_outline,
+                        size: 14,
+                        color: isActive
+                            ? AppColors.brass
+                            : AppColors.textPencil,
+                      ),
                       const SizedBox(width: 10),
                       Expanded(
                         child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                          crossAxisAlignment:
+                              CrossAxisAlignment.start,
                           children: [
                             Text(
                               conv.title,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 13,
-                                fontWeight: FontWeight.w500,
+                                fontWeight: isActive
+                                    ? FontWeight.w600
+                                    : FontWeight.w500,
                                 color: AppColors.textInk,
                               ),
                             ),
@@ -371,6 +532,15 @@ class _HistoryDrawerState extends State<HistoryDrawer> {
                             ),
                           ],
                         ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.delete_outline,
+                            size: 16,
+                            color: AppColors.textPencil),
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                        onPressed: () =>
+                            _confirmDelete(conv.id, conv.title),
                       ),
                     ],
                   ),

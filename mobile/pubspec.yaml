@@ -14,9 +14,6 @@ dependencies:
   # Auth + direct DB queries
   supabase_flutter: ^2.5.6
 
-  # HTTP calls to Next.js API
-  http: ^1.2.1
-
   # State management
   provider: ^6.1.2
 

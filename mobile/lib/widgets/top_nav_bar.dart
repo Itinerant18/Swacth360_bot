@@ -1,8 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../providers/auth_provider.dart';
-import '../providers/chat_provider.dart';
-import '../providers/guest_provider.dart';
 import '../providers/language_provider.dart';
 import '../screens/auth/login_screen.dart';
 import '../theme/app_theme.dart';
@@ -26,14 +23,14 @@ class TopNavBar extends StatelessWidget implements PreferredSizeWidget {
   });
 
   @override
-  Size get preferredSize => const Size.fromHeight(56.0);
+  Size get preferredSize => const Size.fromHeight(60.0);
 
   @override
   Widget build(BuildContext context) {
     final lang = context.watch<LanguageProvider>();
 
     return Container(
-      height: 56 + MediaQuery.of(context).padding.top,
+      height: 60 + MediaQuery.of(context).padding.top,
       padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top),
       decoration: const BoxDecoration(
         gradient: LinearGradient(
@@ -61,7 +58,8 @@ class TopNavBar extends StatelessWidget implements PreferredSizeWidget {
             if (isAuth) ...[
               Builder(
                 builder: (ctx) => IconButton(
-                  icon: const Icon(Icons.menu, color: AppColors.textGraphite),
+                  icon:
+                      const Icon(Icons.menu, color: AppColors.textGraphite),
                   padding: EdgeInsets.zero,
                   constraints: const BoxConstraints(),
                   onPressed: () {
@@ -72,17 +70,17 @@ class TopNavBar extends StatelessWidget implements PreferredSizeWidget {
               const SizedBox(width: 8),
             ],
             Container(
-              width: 32,
-              height: 32,
+              width: 34,
+              height: 34,
               decoration: BoxDecoration(
                 color: AppColors.brass,
-                borderRadius: BorderRadius.circular(4),
+                borderRadius: BorderRadius.circular(6),
               ),
               child: const Center(
                 child: Text(
                   'S',
                   style: TextStyle(
-                    fontSize: 14,
+                    fontSize: 15,
                     fontWeight: FontWeight.w800,
                     color: Colors.white,
                   ),
@@ -90,32 +88,36 @@ class TopNavBar extends StatelessWidget implements PreferredSizeWidget {
               ),
             ),
             const SizedBox(width: 12),
-            Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'SAI AI',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.textInk,
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'SAI AI',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textInk,
+                    ),
                   ),
-                ),
-                Text(
-                  isAuth ? 'Hi, $userName' : 'Guest session',
-                  style: const TextStyle(
-                    fontSize: 10,
-                    color: AppColors.textPencil,
+                  Text(
+                    isAuth ? 'Hi, $userName' : 'Guest session',
+                    style: const TextStyle(
+                      fontSize: 10,
+                      color: AppColors.textPencil,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-            const Spacer(),
             GestureDetector(
               onTap: () => _showLanguagePicker(context, lang),
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
                   color: AppColors.bgPaperInset,
                   borderRadius: BorderRadius.circular(12),
@@ -133,61 +135,61 @@ class TopNavBar extends StatelessWidget implements PreferredSizeWidget {
             ),
             const SizedBox(width: 12),
             if (isAuth && showSaveButton) ...[
-              IconButton(
-                icon: Icon(
-                  sessionSaved ? Icons.bookmark : Icons.bookmark_border,
-                  color: sessionSaved ? AppColors.brass : AppColors.textGraphite,
-                  size: 22,
+              AnimatedSwitcher(
+                duration: const Duration(milliseconds: 250),
+                transitionBuilder: (child, animation) => ScaleTransition(
+                  scale: animation,
+                  child: child,
                 ),
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(),
-                onPressed: onSave,
+                child: IconButton(
+                  key: ValueKey(sessionSaved),
+                  icon: Icon(
+                    sessionSaved ? Icons.bookmark : Icons.bookmark_border,
+                    color: sessionSaved
+                        ? AppColors.brass
+                        : AppColors.textGraphite,
+                    size: 22,
+                  ),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  onPressed: onSave,
+                ),
               ),
               const SizedBox(width: 12),
             ],
             if (isAuth) ...[
               IconButton(
-                icon: const Icon(Icons.person_outline, color: AppColors.textGraphite, size: 24),
+                icon: const Icon(Icons.person_outline,
+                    color: AppColors.textGraphite, size: 24),
                 padding: EdgeInsets.zero,
                 constraints: const BoxConstraints(),
                 onPressed: onProfileTap,
               ),
               const SizedBox(width: 8),
             ],
-            isAuth
-                ? IconButton(
-                    icon: const Icon(Icons.logout, color: AppColors.textGraphite),
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(),
-                    onPressed: () async {
-                      await context.read<AuthProvider>().signOut();
-                      if (context.mounted) {
-                        context.read<ChatProvider>().startNewConversation();
-                        context.read<GuestProvider>().reset();
-                      }
-                    },
-                  )
-                : TextButton(
-                    onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (_) => const LoginScreen()),
-                      );
-                    },
-                    style: TextButton.styleFrom(
-                      padding: EdgeInsets.zero,
-                      minimumSize: const Size(0, 0),
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    ),
-                    child: const Text(
-                      'SIGN IN',
-                      style: TextStyle(
-                        color: AppColors.brass,
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
+            if (!isAuth)
+              TextButton(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (_) => const LoginScreen()),
+                  );
+                },
+                style: TextButton.styleFrom(
+                  padding: EdgeInsets.zero,
+                  minimumSize: const Size(0, 0),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                child: const Text(
+                  'SIGN IN',
+                  style: TextStyle(
+                    color: AppColors.brass,
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
                   ),
+                ),
+              ),
           ],
         ),
       ),
@@ -215,12 +217,14 @@ class TopNavBar extends StatelessWidget implements PreferredSizeWidget {
               ),
             ),
             ...AppLanguage.values.map((l) => ListTile(
-                  leading: Text(l.flag, style: const TextStyle(fontSize: 20)),
+                  leading:
+                      Text(l.flag, style: const TextStyle(fontSize: 20)),
                   title: Text(l.nativeName,
                       style: const TextStyle(
                           fontSize: 14, color: AppColors.textInk)),
                   trailing: lang.language == l
-                      ? const Icon(Icons.check, color: AppColors.brass, size: 18)
+                      ? const Icon(Icons.check,
+                          color: AppColors.brass, size: 18)
                       : null,
                   onTap: () {
                     lang.set(l);

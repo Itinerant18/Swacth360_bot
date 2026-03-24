@@ -56,7 +56,18 @@ class ProfileModal extends StatelessWidget {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const SizedBox(width: 48), // Padding balancer
+                  const Padding(
+                    padding: EdgeInsets.only(left: 8),
+                    child: Text(
+                      'PROFILE',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textInk,
+                        letterSpacing: 1.5,
+                      ),
+                    ),
+                  ),
                   Container(
                     width: 40,
                     height: 4,
@@ -66,7 +77,8 @@ class ProfileModal extends StatelessWidget {
                     ),
                   ),
                   IconButton(
-                    icon: const Icon(Icons.close, color: AppColors.textGraphite),
+                    icon: const Icon(
+                        Icons.close, color: AppColors.textGraphite),
                     onPressed: () => Navigator.pop(context),
                   ),
                 ],
@@ -75,42 +87,45 @@ class ProfileModal extends StatelessWidget {
             Expanded(
               child: ListView(
                 controller: scrollController,
-                padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 16.0, vertical: 8.0),
                 children: [
                   // Avatar Section
                   Container(
                     decoration: BoxDecoration(
                       color: AppColors.bgWhite,
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: AppColors.borderStitch),
+                      borderRadius: BorderRadius.circular(12),
+                      border:
+                          Border.all(color: AppColors.borderStitch),
                       boxShadow: AppShadows.card,
                     ),
-                    padding: const EdgeInsets.all(16),
+                    padding: const EdgeInsets.all(18),
                     child: Row(
                       children: [
                         CircleAvatar(
-                          radius: 28,
+                          radius: 32,
                           backgroundColor: auth.isAuthenticated
                               ? AppColors.brass
                               : AppColors.textGraphite,
                           child: Text(
                             initials,
                             style: const TextStyle(
-                              fontSize: 18,
+                              fontSize: 20,
                               fontWeight: FontWeight.w700,
                               color: Colors.white,
                             ),
                           ),
                         ),
-                        const SizedBox(width: 14),
+                        const SizedBox(width: 16),
                         Expanded(
                           child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                            crossAxisAlignment:
+                                CrossAxisAlignment.start,
                             children: [
                               Text(
                                 displayName,
                                 style: const TextStyle(
-                                  fontSize: 16,
+                                  fontSize: 17,
                                   fontWeight: FontWeight.w700,
                                   color: AppColors.textInk,
                                 ),
@@ -124,48 +139,74 @@ class ProfileModal extends StatelessWidget {
                                   ),
                                 ),
                               if (auth.isAuthenticated) ...[
-                                const SizedBox(height: 4),
+                                const SizedBox(height: 6),
                                 Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 6, vertical: 3),
                                   decoration: BoxDecoration(
-                                    color: AppColors.teal.withOpacity(0.1),
-                                    border: Border.all(color: AppColors.teal),
-                                    borderRadius: BorderRadius.circular(4),
+                                    color: AppColors.teal
+                                        .withOpacity(0.1),
+                                    border: Border.all(
+                                        color: AppColors.teal),
+                                    borderRadius:
+                                        BorderRadius.circular(4),
                                   ),
-                                  child: const Text(
-                                    "VERIFIED",
-                                    style: TextStyle(
-                                      fontSize: 9,
-                                      fontWeight: FontWeight.w700,
-                                      color: AppColors.teal,
-                                    ),
+                                  child: const Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.check,
+                                          size: 10,
+                                          color: AppColors.teal),
+                                      SizedBox(width: 3),
+                                      Text(
+                                        "VERIFIED",
+                                        style: TextStyle(
+                                          fontSize: 9,
+                                          fontWeight: FontWeight.w700,
+                                          color: AppColors.teal,
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
                               ],
                               if (!auth.isAuthenticated) ...[
-                                const SizedBox(height: 8),
-                                GestureDetector(
-                                  onTap: () {
-                                    Navigator.pop(context);
-                                    Navigator.push(
-                                      context,
-                                      MaterialPageRoute(builder: (_) => const LoginScreen()),
-                                    );
-                                  },
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                                    decoration: BoxDecoration(
-                                      color: AppColors.brass.withOpacity(0.1),
-                                      border: Border.all(color: AppColors.brass),
-                                      borderRadius: BorderRadius.circular(4),
-                                    ),
-                                    child: const Text(
-                                      "SIGN IN",
-                                      style: TextStyle(
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.w700,
-                                        color: AppColors.brass,
-                                        letterSpacing: 0.8,
+                                const SizedBox(height: 10),
+                                SizedBox(
+                                  width: double.infinity,
+                                  child: GestureDetector(
+                                    onTap: () {
+                                      Navigator.pop(context);
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                            builder: (_) =>
+                                                const LoginScreen()),
+                                      );
+                                    },
+                                    child: Container(
+                                      padding:
+                                          const EdgeInsets.symmetric(
+                                              vertical: 10),
+                                      decoration: BoxDecoration(
+                                        color: AppColors.brass
+                                            .withOpacity(0.1),
+                                        border: Border.all(
+                                            color: AppColors.brass),
+                                        borderRadius:
+                                            BorderRadius.circular(8),
+                                      ),
+                                      child: const Center(
+                                        child: Text(
+                                          "SIGN IN",
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            fontWeight:
+                                                FontWeight.w700,
+                                            color: AppColors.brass,
+                                            letterSpacing: 0.8,
+                                          ),
+                                        ),
                                       ),
                                     ),
                                   ),
@@ -177,78 +218,103 @@ class ProfileModal extends StatelessWidget {
                       ],
                     ),
                   ),
-                  const SizedBox(height: 16),
-                  
+                  const SizedBox(height: 20),
+
                   const _SectionHeader("PREFERENCES"),
                   Container(
                     decoration: BoxDecoration(
                       color: AppColors.bgWhite,
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: AppColors.borderStitch),
+                      borderRadius: BorderRadius.circular(12),
+                      border:
+                          Border.all(color: AppColors.borderStitch),
                       boxShadow: AppShadows.card,
                     ),
-                    padding: const EdgeInsets.all(12),
+                    padding: const EdgeInsets.all(14),
                     child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      mainAxisAlignment:
+                          MainAxisAlignment.spaceBetween,
                       children: [
                         const Text(
                           "Language",
-                          style: TextStyle(fontSize: 14, color: AppColors.textInk),
+                          style: TextStyle(
+                              fontSize: 14,
+                              color: AppColors.textInk),
                         ),
                         Row(
-                          children: AppLanguage.values.map((l) => Padding(
-                                padding: const EdgeInsets.only(left: 8),
-                                child: _LangPill(
-                                  label: l == AppLanguage.en ? 'EN' : l.nativeName,
-                                  active: lang.language == l,
-                                  onTap: () => lang.set(l),
-                                ),
-                              )).toList(),
+                          children: AppLanguage.values
+                              .map((l) => Padding(
+                                    padding: const EdgeInsets.only(
+                                        left: 8),
+                                    child: _LangPill(
+                                      label: l == AppLanguage.en
+                                          ? 'EN'
+                                          : l.nativeName,
+                                      active: lang.language == l,
+                                      onTap: () => lang.set(l),
+                                    ),
+                                  ))
+                              .toList(),
                         ),
                       ],
                     ),
                   ),
-                  
-                  const SizedBox(height: 16),
+
+                  const SizedBox(height: 20),
                   const _SectionHeader("ABOUT"),
                   Container(
                     decoration: BoxDecoration(
                       color: AppColors.bgWhite,
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: AppColors.borderStitch),
+                      borderRadius: BorderRadius.circular(12),
+                      border:
+                          Border.all(color: AppColors.borderStitch),
                       boxShadow: AppShadows.card,
                     ),
                     child: Column(
                       children: [
-                        _InfoRow("Version", AppConfig.appVersion),
-                        const Divider(height: 1, thickness: 1, color: AppColors.borderStitch),
-                        const _InfoRow("Platform", "Cross-Platform"),
+                        _InfoRow(
+                            "Version",
+                            AppConfig.appVersion,
+                            Icons.info_outline),
+                        const Divider(
+                            height: 1,
+                            thickness: 1,
+                            color: AppColors.borderStitch),
+                        const _InfoRow(
+                            "Platform",
+                            "Cross-Platform",
+                            Icons.devices_outlined),
                       ],
                     ),
                   ),
-                  
+
                   const SizedBox(height: 32),
-                  
+
                   // Sign out button for authenticated users
                   if (auth.isAuthenticated)
                     Container(
                       width: double.infinity,
-                      height: 48,
+                      height: 52,
                       margin: const EdgeInsets.only(bottom: 24),
                       decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: AppColors.danger, width: 1.5),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                            color: AppColors.danger, width: 1.5),
                       ),
                       child: TextButton(
-                        onPressed: () => _showSignOutConfirmation(context),
+                        onPressed: () =>
+                            _showSignOutConfirmation(context),
                         style: TextButton.styleFrom(
                           foregroundColor: AppColors.danger,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                          shape: RoundedRectangleBorder(
+                              borderRadius:
+                                  BorderRadius.circular(10)),
                         ),
                         child: const Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Icon(Icons.logout, size: 18, color: AppColors.danger),
+                            Icon(Icons.logout,
+                                size: 18,
+                                color: AppColors.danger),
                             SizedBox(width: 8),
                             Text(
                               "SIGN OUT",
@@ -277,12 +343,19 @@ class ProfileModal extends StatelessWidget {
       builder: (ctx) {
         return AlertDialog(
           backgroundColor: AppColors.bgPaper,
-          title: const Text("Sign Out", style: TextStyle(color: AppColors.textInk, fontWeight: FontWeight.w700)),
-          content: const Text("Are you sure you want to sign out?", style: TextStyle(color: AppColors.textGraphite)),
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12)),
+          title: const Text("Sign Out",
+              style: TextStyle(
+                  color: AppColors.textInk,
+                  fontWeight: FontWeight.w700)),
+          content: const Text("Are you sure you want to sign out?",
+              style: TextStyle(color: AppColors.textGraphite)),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx),
-              child: const Text("Cancel", style: TextStyle(color: AppColors.textPencil)),
+              child: const Text("Cancel",
+                  style: TextStyle(color: AppColors.textPencil)),
             ),
             TextButton(
               onPressed: () async {
@@ -290,11 +363,16 @@ class ProfileModal extends StatelessWidget {
                 Navigator.pop(context); // close modal
                 await context.read<AuthProvider>().signOut();
                 if (context.mounted) {
-                  context.read<ChatProvider>().startNewConversation();
+                  context
+                      .read<ChatProvider>()
+                      .startNewConversation();
                   context.read<GuestProvider>().reset();
                 }
               },
-              child: const Text("Sign Out", style: TextStyle(color: AppColors.danger, fontWeight: FontWeight.w700)),
+              child: const Text("Sign Out",
+                  style: TextStyle(
+                      color: AppColors.danger,
+                      fontWeight: FontWeight.w700)),
             ),
           ],
         );
@@ -311,14 +389,25 @@ class _SectionHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(4, 4, 0, 8),
-      child: Text(
-        title.toUpperCase(),
-        style: const TextStyle(
-          fontSize: 11,
-          fontWeight: FontWeight.w600,
-          color: AppColors.textFaint,
-          letterSpacing: 1.5,
-        ),
+      child: Row(
+        children: [
+          Text(
+            title.toUpperCase(),
+            style: const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: AppColors.textFaint,
+              letterSpacing: 1.5,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Container(
+              height: 1,
+              color: AppColors.borderStitch.withOpacity(0.5),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -327,17 +416,25 @@ class _SectionHeader extends StatelessWidget {
 class _InfoRow extends StatelessWidget {
   final String title;
   final String value;
-  const _InfoRow(this.title, this.value);
+  final IconData icon;
+  const _InfoRow(this.title, this.value, this.icon);
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 14.0),
+      padding: const EdgeInsets.symmetric(
+          horizontal: 16.0, vertical: 14.0),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(title, style: const TextStyle(fontSize: 14, color: AppColors.textInk)),
-          Text(value, style: const TextStyle(fontSize: 14, color: AppColors.textPencil)),
+          Icon(icon, size: 16, color: AppColors.textPencil),
+          const SizedBox(width: 10),
+          Text(title,
+              style: const TextStyle(
+                  fontSize: 14, color: AppColors.textInk)),
+          const Spacer(),
+          Text(value,
+              style: const TextStyle(
+                  fontSize: 14, color: AppColors.textPencil)),
         ],
       ),
     );
@@ -348,16 +445,22 @@ class _LangPill extends StatelessWidget {
   final String label;
   final bool active;
   final VoidCallback onTap;
-  const _LangPill({required this.label, required this.active, required this.onTap});
+  const _LangPill(
+      {required this.label,
+      required this.active,
+      required this.onTap});
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        padding:
+            const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         decoration: BoxDecoration(
-          color: active ? AppColors.brass.withOpacity(0.12) : AppColors.bgPaperInset,
+          color: active
+              ? AppColors.brass.withOpacity(0.12)
+              : AppColors.bgPaperInset,
           border: Border.all(
             color: active ? AppColors.brass : AppColors.borderStitch,
             width: active ? 1.5 : 1.0,

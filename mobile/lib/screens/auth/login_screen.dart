@@ -19,11 +19,32 @@ class LoginScreen extends StatefulWidget {
   State<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> {
+class _LoginScreenState extends State<LoginScreen>
+    with SingleTickerProviderStateMixin {
   int tab = 0;
   String? error;
   bool isLoading = false;
   String? _resendStatus; // null | 'sending' | 'sent' | 'error'
+
+  late final AnimationController _cardAnimCtrl;
+  late final Animation<double> _cardFade;
+  late final Animation<Offset> _cardSlide;
+
+  @override
+  void initState() {
+    super.initState();
+    _cardAnimCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 600),
+    );
+    _cardFade =
+        CurvedAnimation(parent: _cardAnimCtrl, curve: Curves.easeOut);
+    _cardSlide = Tween<Offset>(
+      begin: const Offset(0, 0.08),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(parent: _cardAnimCtrl, curve: Curves.easeOut));
+    _cardAnimCtrl.forward();
+  }
 
   Future<void> _resendConfirmation() async {
     if (_emailCtrl.text.isEmpty) return;
@@ -52,6 +73,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   void dispose() {
+    _cardAnimCtrl.dispose();
     _emailCtrl.dispose();
     _passCtrl.dispose();
     _rNameCtrl.dispose();
@@ -167,7 +189,7 @@ class _LoginScreenState extends State<LoginScreen> {
       context: context,
       backgroundColor: AppColors.bgPaper,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(8)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
       ),
       builder: (_) => Padding(
         padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
@@ -221,7 +243,7 @@ class _LoginScreenState extends State<LoginScreen> {
             const SizedBox(height: 24),
             SizedBox(
               width: double.infinity,
-              height: 44,
+              height: 48,
               child: ElevatedButton(
                 onPressed: () => Navigator.pop(context),
                 style: ElevatedButton.styleFrom(
@@ -229,7 +251,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   foregroundColor: Colors.white,
                   elevation: 0,
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(4),
+                    borderRadius: BorderRadius.circular(8),
                   ),
                 ),
                 child: const Text(
@@ -256,92 +278,104 @@ class _LoginScreenState extends State<LoginScreen> {
           child: SingleChildScrollView(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24.0),
-              child: AuthCard(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    // Logo row
-                    Row(
+              child: FadeTransition(
+                opacity: _cardFade,
+                child: SlideTransition(
+                  position: _cardSlide,
+                  child: AuthCard(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        Container(
-                          width: 32,
-                          height: 32,
-                          decoration: BoxDecoration(
-                            color: AppColors.brass,
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: const Center(
-                            child: Text(
-                              'S',
-                              style: TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w800,
-                                color: Colors.white,
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 14),
-                        Container(
-                          width: 1,
-                          height: 28,
-                          color: AppColors.borderStitch,
-                        ),
-                        const SizedBox(width: 14),
-                        const Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                        // Logo row
+                        Row(
                           children: [
-                            Text(
-                              'SAI',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w700,
-                                color: AppColors.textInk,
-                                letterSpacing: 0.8,
+                            Container(
+                              width: 34,
+                              height: 34,
+                              decoration: BoxDecoration(
+                                color: AppColors.brass,
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: const Center(
+                                child: Text(
+                                  'S',
+                                  style: TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w800,
+                                    color: Colors.white,
+                                  ),
+                                ),
                               ),
                             ),
-                            Text(
-                              'SWATCH PANEL SUPPORT',
-                              style: TextStyle(
-                                fontSize: 9,
-                                fontWeight: FontWeight.w500,
-                                color: AppColors.textPencil,
-                                letterSpacing: 0.9,
-                              ),
+                            const SizedBox(width: 14),
+                            Container(
+                              width: 1,
+                              height: 28,
+                              color: AppColors.borderStitch,
+                            ),
+                            const SizedBox(width: 14),
+                            const Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'SAI',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w700,
+                                    color: AppColors.textInk,
+                                    letterSpacing: 0.8,
+                                  ),
+                                ),
+                                Text(
+                                  'SWATCH PANEL SUPPORT',
+                                  style: TextStyle(
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.w500,
+                                    color: AppColors.textPencil,
+                                    letterSpacing: 0.9,
+                                  ),
+                                ),
+                              ],
                             ),
                           ],
                         ),
+                        const SizedBox(height: 28),
+
+                        // Tabs
+                        Row(
+                          children: [
+                            _Tab(
+                              label: "Sign In",
+                              active: tab == 0,
+                              onTap: () => setState(() {
+                                tab = 0;
+                                error = null;
+                              }),
+                            ),
+                            _Tab(
+                              label: "Register",
+                              active: tab == 1,
+                              onTap: () => setState(() {
+                                tab = 1;
+                                error = null;
+                              }),
+                            ),
+                          ],
+                        ),
+                        Container(
+                            height: 1, color: AppColors.borderStitch),
+                        const SizedBox(height: 24),
+
+                        AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 250),
+                          child: tab == 0
+                              ? _buildSignInForm()
+                              : _buildRegisterForm(),
+                        ),
                       ],
                     ),
-                    const SizedBox(height: 28),
-
-                    // Tabs
-                    Row(
-                      children: [
-                        _Tab(
-                          label: "Sign In",
-                          active: tab == 0,
-                          onTap: () => setState(() {
-                            tab = 0;
-                            error = null;
-                          }),
-                        ),
-                        _Tab(
-                          label: "Register",
-                          active: tab == 1,
-                          onTap: () => setState(() {
-                            tab = 1;
-                            error = null;
-                          }),
-                        ),
-                      ],
-                    ),
-                    Container(height: 1, color: AppColors.borderStitch),
-                    const SizedBox(height: 24),
-
-                    if (tab == 0) _buildSignInForm() else _buildRegisterForm(),
-                  ],
+                  ),
                 ),
               ),
             ),
@@ -353,6 +387,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Widget _buildSignInForm() {
     return Column(
+      key: const ValueKey('signin'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const Text(
@@ -370,7 +405,7 @@ class _LoginScreenState extends State<LoginScreen> {
           type: TextInputType.emailAddress,
           controller: _emailCtrl,
         ),
-        const SizedBox(height: 14),
+        const SizedBox(height: 16),
         const Text(
           "PASSWORD",
           style: TextStyle(
@@ -408,23 +443,29 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
           ),
         ),
-        const SizedBox(height: 6),
-        if (error != null) ...[          Container(
+        const SizedBox(height: 8),
+        if (error != null) ...[
+          Container(
             margin: const EdgeInsets.only(bottom: 12),
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
               color: AppColors.danger.withOpacity(0.08),
-              borderRadius: BorderRadius.circular(4),
-              border: Border.all(color: AppColors.danger.withOpacity(0.25)),
+              borderRadius: BorderRadius.circular(8),
+              border:
+                  Border.all(color: AppColors.danger.withOpacity(0.25)),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(children: [
-                  const Icon(Icons.error_outline, size: 14, color: AppColors.danger),
+                  const Icon(Icons.error_outline,
+                      size: 14, color: AppColors.danger),
                   const SizedBox(width: 8),
-                  Expanded(child: Text(error!,
-                    style: const TextStyle(fontSize: 12, color: AppColors.danger))),
+                  Expanded(
+                      child: Text(error!,
+                          style: const TextStyle(
+                              fontSize: 12,
+                              color: AppColors.danger))),
                 ]),
                 if (error!.toLowerCase().contains('confirm')) ...[
                   const SizedBox(height: 10),
@@ -432,18 +473,18 @@ class _LoginScreenState extends State<LoginScreen> {
                     onTap: _resendConfirmation,
                     child: Text(
                       _resendStatus == 'sent'
-                        ? '✓ Confirmation email sent. Check your inbox.'
-                        : _resendStatus == 'sending'
-                          ? 'Sending...'
-                          : 'Resend confirmation email →',
+                          ? 'Confirmation email sent. Check your inbox.'
+                          : _resendStatus == 'sending'
+                              ? 'Sending...'
+                              : 'Resend confirmation email',
                       style: TextStyle(
                         fontSize: 11,
                         color: _resendStatus == 'sent'
-                          ? AppColors.teal
-                          : AppColors.brass,
+                            ? AppColors.teal
+                            : AppColors.brass,
                         decoration: _resendStatus == null
-                          ? TextDecoration.underline
-                          : null,
+                            ? TextDecoration.underline
+                            : null,
                         fontFamily: 'monospace',
                       ),
                     ),
@@ -459,13 +500,16 @@ class _LoginScreenState extends State<LoginScreen> {
           isLoading: isLoading,
         ),
         const SizedBox(height: 20),
-        Container(height: 1, color: AppColors.borderStitch.withOpacity(0.5)),
+        Container(
+            height: 1,
+            color: AppColors.borderStitch.withOpacity(0.5)),
         const SizedBox(height: 14),
         Center(
           child: RichText(
             text: TextSpan(
               text: "No account yet? ",
-              style: const TextStyle(fontSize: 12, color: AppColors.textGraphite),
+              style: const TextStyle(
+                  fontSize: 12, color: AppColors.textGraphite),
               children: [
                 TextSpan(
                   text: "Register here",
@@ -490,6 +534,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Widget _buildRegisterForm() {
     return Column(
+      key: const ValueKey('register'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Row(
@@ -536,7 +581,7 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
           ],
         ),
-        const SizedBox(height: 6),
+        const SizedBox(height: 8),
         if (error != null)
           Padding(
             padding: const EdgeInsets.only(bottom: 12.0),
@@ -552,7 +597,8 @@ class _LoginScreenState extends State<LoginScreen> {
           child: RichText(
             text: TextSpan(
               text: "Already have an account? ",
-              style: const TextStyle(fontSize: 12, color: AppColors.textGraphite),
+              style: const TextStyle(
+                  fontSize: 12, color: AppColors.textGraphite),
               children: [
                 TextSpan(
                   text: "Sign in here",
@@ -602,12 +648,14 @@ class _Tab extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w700,
-                  color: active ? AppColors.textInk : AppColors.textPencil,
+                  color:
+                      active ? AppColors.textInk : AppColors.textPencil,
                   letterSpacing: 0.96,
                 ),
               ),
             ),
-            Container(
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
               height: 2,
               color: active ? AppColors.brass : Colors.transparent,
             ),

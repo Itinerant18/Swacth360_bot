@@ -21,7 +21,9 @@ class ChatInputBar extends StatefulWidget {
 
 class _ChatInputBarState extends State<ChatInputBar> {
   final _ctrl = TextEditingController();
+  final _focusNode = FocusNode();
   bool _hasText = false;
+  bool _isFocused = false;
 
   @override
   void initState() {
@@ -30,11 +32,15 @@ class _ChatInputBarState extends State<ChatInputBar> {
       final h = _ctrl.text.trim().isNotEmpty;
       if (h != _hasText) setState(() => _hasText = h);
     });
+    _focusNode.addListener(() {
+      setState(() => _isFocused = _focusNode.hasFocus);
+    });
   }
 
   @override
   void dispose() {
     _ctrl.dispose();
+    _focusNode.dispose();
     super.dispose();
   }
 
@@ -51,6 +57,13 @@ class _ChatInputBarState extends State<ChatInputBar> {
       decoration: const BoxDecoration(
         color: AppColors.bgWhite,
         border: Border(top: BorderSide(color: AppColors.borderStitch)),
+        boxShadow: [
+          BoxShadow(
+            color: Color(0x0A000000),
+            blurRadius: 8,
+            offset: Offset(0, -2),
+          ),
+        ],
       ),
       padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
       child: SafeArea(
@@ -63,46 +76,69 @@ class _ChatInputBarState extends State<ChatInputBar> {
               padding: const EdgeInsets.symmetric(vertical: 5),
               child: widget.isAuthenticated
                   ? const Text(
-                      'HMS Panel Expert · AI Powered · Diagrams supported',
-                      style: TextStyle(fontSize: 9, color: AppColors.textFaint),
+                      'HMS Panel Expert  ·  AI Powered  ·  Diagrams supported',
+                      style: TextStyle(
+                          fontSize: 9.5, color: AppColors.textFaint),
                       textAlign: TextAlign.center,
                     )
-                  : RichText(
-                      textAlign: TextAlign.center,
-                      text: TextSpan(
-                        style: const TextStyle(fontSize: 9, color: AppColors.textFaint),
-                        children: [
-                          const TextSpan(text: 'HMS Panel Expert · AI Powered  ·  '),
-                          TextSpan(
-                            text: '${widget.guestRemaining} free questions left',
+                  : Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Text(
+                          'HMS Panel Expert  ·  AI Powered  ·  ',
+                          style: TextStyle(
+                              fontSize: 9.5,
+                              color: AppColors.textFaint),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: AppColors.brass.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                                color: AppColors.brass.withOpacity(0.3)),
+                          ),
+                          child: Text(
+                            '${widget.guestRemaining} left',
                             style: const TextStyle(
+                              fontSize: 9.5,
                               color: AppColors.brass,
-                              fontWeight: FontWeight.w600,
+                              fontWeight: FontWeight.w700,
                             ),
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
             ),
             // ── Input row ──────────────────────────────
             Row(
               children: [
                 Expanded(
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 4),
                     decoration: BoxDecoration(
                       color: AppColors.bgPaperInset,
                       borderRadius: BorderRadius.circular(24),
-                      border: Border.all(color: AppColors.borderStitch),
+                      border: Border.all(
+                        color: _isFocused
+                            ? AppColors.brass
+                            : AppColors.borderStitch,
+                      ),
                       boxShadow: AppShadows.inset,
                     ),
                     child: TextField(
                       controller: _ctrl,
+                      focusNode: _focusNode,
                       onSubmitted: (_) => _send(),
                       textInputAction: TextInputAction.send,
-                      style: const TextStyle(fontSize: 14, color: AppColors.textInk),
+                      style: const TextStyle(
+                          fontSize: 14, color: AppColors.textInk),
                       decoration: const InputDecoration(
-                        hintText: "Ask anything...",
+                        hintText:
+                            "Describe your panel issue...",
                         hintStyle: TextStyle(
                           fontSize: 14,
                           color: AppColors.textFaint,
@@ -118,30 +154,40 @@ class _ChatInputBarState extends State<ChatInputBar> {
                 GestureDetector(
                   onTap: _send,
                   child: Container(
-                    width: 40,
-                    height: 40,
+                    width: 44,
+                    height: 44,
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
                         begin: Alignment.topCenter,
                         end: Alignment.bottomCenter,
                         colors: (_hasText && !widget.isLoading)
-                            ? const [AppColors.brassGlow, AppColors.brass, AppColors.brassDark]
-                            : [AppColors.brassGlow.withOpacity(0.4), AppColors.brass.withOpacity(0.4), AppColors.brassDark.withOpacity(0.4)],
+                            ? const [
+                                AppColors.brassGlow,
+                                AppColors.brass,
+                                AppColors.brassDark
+                              ]
+                            : [
+                                AppColors.brassGlow.withOpacity(0.4),
+                                AppColors.brass.withOpacity(0.4),
+                                AppColors.brassDark.withOpacity(0.4)
+                              ],
                         stops: const [0.0, 0.6, 1.0],
                       ),
-                      borderRadius: BorderRadius.circular(10),
+                      borderRadius: BorderRadius.circular(12),
                       border: Border.all(color: AppColors.brassDark),
                       boxShadow: AppShadows.button,
                     ),
                     child: widget.isLoading
                         ? const Padding(
-                            padding: EdgeInsets.all(10),
+                            padding: EdgeInsets.all(12),
                             child: CircularProgressIndicator(
                               strokeWidth: 2,
-                              valueColor: AlwaysStoppedAnimation(Colors.white),
+                              valueColor:
+                                  AlwaysStoppedAnimation(Colors.white),
                             ),
                           )
-                        : const Icon(Icons.send, color: Colors.white, size: 16),
+                        : const Icon(Icons.send,
+                            color: Colors.white, size: 18),
                   ),
                 ),
               ],

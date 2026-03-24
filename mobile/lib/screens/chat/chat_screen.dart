@@ -20,12 +20,28 @@ class ChatScreen extends StatefulWidget {
   State<ChatScreen> createState() => _ChatScreenState();
 }
 
-class _ChatScreenState extends State<ChatScreen> {
+class _ChatScreenState extends State<ChatScreen>
+    with SingleTickerProviderStateMixin {
   final _scrollCtrl = ScrollController();
+  late final AnimationController _welcomeCtrl;
+  late final Animation<double> _welcomeFade;
+
+  @override
+  void initState() {
+    super.initState();
+    _welcomeCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 600),
+    );
+    _welcomeFade =
+        CurvedAnimation(parent: _welcomeCtrl, curve: Curves.easeOut);
+    _welcomeCtrl.forward();
+  }
 
   @override
   void dispose() {
     _scrollCtrl.dispose();
+    _welcomeCtrl.dispose();
     super.dispose();
   }
 
@@ -85,7 +101,8 @@ class _ChatScreenState extends State<ChatScreen> {
           content: Text('Session saved as "$title"'),
           backgroundColor: AppColors.textInk,
           behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         ),
       );
     }
@@ -136,10 +153,11 @@ class _ChatScreenState extends State<ChatScreen> {
                 child: OutlinedButton(
                   onPressed: () => Navigator.pop(context),
                   style: OutlinedButton.styleFrom(
-                    side: const BorderSide(color: AppColors.borderStitch),
+                    side:
+                        const BorderSide(color: AppColors.borderStitch),
                     foregroundColor: AppColors.textGraphite,
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(4),
+                      borderRadius: BorderRadius.circular(8),
                     ),
                   ),
                   child: const Text('Cancel'),
@@ -152,7 +170,8 @@ class _ChatScreenState extends State<ChatScreen> {
                     Navigator.pop(context);
                     Navigator.push(
                       context,
-                      MaterialPageRoute(builder: (_) => const LoginScreen()),
+                      MaterialPageRoute(
+                          builder: (_) => const LoginScreen()),
                     );
                   },
                   style: ElevatedButton.styleFrom(
@@ -160,7 +179,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     foregroundColor: Colors.white,
                     elevation: 0,
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(4),
+                      borderRadius: BorderRadius.circular(8),
                     ),
                   ),
                   child: const Text(
@@ -190,7 +209,9 @@ class _ChatScreenState extends State<ChatScreen> {
         TopNavBar(
           isAuth: auth.isAuthenticated,
           userName: auth.userName,
-          showSaveButton: auth.isAuthenticated && chat.hasMessages && !chat.isLoading,
+          showSaveButton: auth.isAuthenticated &&
+              chat.hasMessages &&
+              !chat.isLoading,
           sessionSaved: chat.sessionSaved,
           onSave: _showSaveSheet,
           onProfileTap: () => ProfileModal.show(context),
@@ -258,66 +279,104 @@ class _ChatScreenState extends State<ChatScreen> {
       "Network Topology"
     ];
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: Column(
-        children: [
-          const SizedBox(height: 48),
-          Container(
-            width: 56,
-            height: 56,
-            decoration: BoxDecoration(
-              color: AppColors.teal.withOpacity(0.1),
-              border: Border.all(color: AppColors.teal.withOpacity(0.2)),
-              borderRadius: BorderRadius.circular(16),
+    return FadeTransition(
+      opacity: _welcomeFade,
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        child: Column(
+          children: [
+            const SizedBox(height: 48),
+            _PulsingIcon(),
+            const SizedBox(height: 22),
+            Text(
+              lang.strings.welcomeTitle,
+              style: const TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.w700,
+                color: AppColors.textInk,
+              ),
+              textAlign: TextAlign.center,
             ),
-            child: const Icon(Icons.smart_toy_outlined,
-                size: 28, color: AppColors.teal),
-          ),
-          const SizedBox(height: 22),
-          Text(
-            lang.strings.welcomeTitle,
-            style: const TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.w700,
-              color: AppColors.textInk,
+            const SizedBox(height: 12),
+            Text(
+              lang.strings.welcomeSubtitle,
+              style: const TextStyle(
+                fontSize: 13,
+                color: AppColors.textPencil,
+                height: 1.6,
+              ),
+              textAlign: TextAlign.center,
             ),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 12),
-          Text(
-            lang.strings.welcomeSubtitle,
-            style: const TextStyle(
-              fontSize: 13,
-              color: AppColors.textPencil,
-              height: 1.6,
+            const SizedBox(height: 28),
+            ...prompts.map((q) => _SuggestionCard(
+                  text: q,
+                  onTap: () => _sendMessage(q),
+                )),
+            const SizedBox(height: 20),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              alignment: WrapAlignment.center,
+              children: topics
+                  .map((t) => _TopicChip(
+                        text: t,
+                        onTap: () => _sendMessage(t),
+                      ))
+                  .toList(),
             ),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 24),
-          ...prompts.map((q) => _SuggestionCard(
-                text: q,
-                onTap: () => _sendMessage(q),
-              )),
-          const SizedBox(height: 20),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            alignment: WrapAlignment.center,
-            children: topics
-                .map((t) => _TopicChip(
-                      text: t,
-                      onTap: () => _sendMessage(t),
-                    ))
-                .toList(),
-          ),
-          const SizedBox(height: 32),
-        ],
+            const SizedBox(height: 32),
+          ],
+        ),
       ),
     );
   }
+}
 
+class _PulsingIcon extends StatefulWidget {
+  @override
+  State<_PulsingIcon> createState() => _PulsingIconState();
+}
 
+class _PulsingIconState extends State<_PulsingIcon>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+  late final Animation<double> _scale;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2000),
+    )..repeat(reverse: true);
+    _scale = Tween<double>(begin: 1.0, end: 1.08).animate(
+      CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ScaleTransition(
+      scale: _scale,
+      child: Container(
+        width: 60,
+        height: 60,
+        decoration: BoxDecoration(
+          color: AppColors.teal.withOpacity(0.1),
+          border: Border.all(color: AppColors.teal.withOpacity(0.2)),
+          borderRadius: BorderRadius.circular(18),
+        ),
+        child: const Icon(Icons.smart_toy_outlined,
+            size: 30, color: AppColors.teal),
+      ),
+    );
+  }
 }
 
 class _SuggestionCard extends StatelessWidget {
@@ -331,8 +390,8 @@ class _SuggestionCard extends StatelessWidget {
       onTap: onTap,
       child: Container(
         width: double.infinity,
-        margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
         decoration: BoxDecoration(
           gradient: const LinearGradient(
             begin: Alignment.topCenter,
@@ -380,7 +439,7 @@ class _TopicChip extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         decoration: BoxDecoration(
           gradient: const LinearGradient(
             begin: Alignment.topCenter,
@@ -416,21 +475,24 @@ class _ErrorRow extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
         color: AppColors.danger.withOpacity(0.08),
-        borderRadius: BorderRadius.circular(4),
+        borderRadius: BorderRadius.circular(8),
         border: Border.all(color: AppColors.danger.withOpacity(0.25)),
       ),
       child: Row(children: [
-        const Icon(Icons.error_outline, size: 14, color: AppColors.danger),
+        const Icon(Icons.error_outline,
+            size: 14, color: AppColors.danger),
         const SizedBox(width: 8),
         Expanded(
           child: Text(
             error,
-            style: const TextStyle(fontSize: 12, color: AppColors.danger),
+            style:
+                const TextStyle(fontSize: 12, color: AppColors.danger),
           ),
         ),
         GestureDetector(
           onTap: onDismiss,
-          child: const Icon(Icons.close, size: 14, color: AppColors.danger),
+          child:
+              const Icon(Icons.close, size: 14, color: AppColors.danger),
         ),
       ]),
     );

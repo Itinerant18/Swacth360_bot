@@ -73,15 +73,6 @@ class ChatProvider extends ChangeNotifier {
         _messages = [..._messages, ChatMessage.assistant(result.text)];
       }
 
-      // Auto-save after first exchange if authenticated
-      if (_messages.length == 2 && accessToken != null && !_sessionSaved) {
-        final title = text.length > 60 ? '${text.substring(0, 60)}...' : text;
-        try {
-          await saveSession(title, accessToken: accessToken);
-        } catch (_) {
-          // Silent fail for auto-save
-        }
-      }
     } catch (e) {
       _error = e.toString().replaceFirst('Exception: ', '');
     } finally {
