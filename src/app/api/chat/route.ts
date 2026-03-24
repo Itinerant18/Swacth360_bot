@@ -11,7 +11,7 @@ import { evaluateAndStore } from '@/lib/rag-evaluator';
 import { logicalRoute, formatRelationalAnswer } from '@/lib/logical-router';
 import { buildDecomposedPromptPrefix, decomposeQuery, mergeSubQueryResults, type SubQuery } from '@/lib/query-decomposer';
 import { logRoute, selectRoute } from '@/lib/router';
-import { classifyQuery, retrieve, type QueryType, type RAGResult, type RankedMatch } from '@/lib/rag-engine';
+import { classifyQuery, retrieve, type RAGResult, type RankedMatch } from '@/lib/rag-engine';
 import { parseRAGSettings } from '@/lib/rag-settings';
 import { getSupabase } from '@/lib/supabase';
 import { createServerSupabaseClient } from '@/lib/auth-server';
@@ -54,40 +54,6 @@ async function translateToEnglish(
     const prompt = `Translate the ${sourceLang} question to English. Resolve pronouns using context. Output ONLY the English translation.\n${historyCtx}${sourceLang}: ${text}\nEnglish:`;
     const result = await sarvamLlm.invoke(prompt);
     return stripThinkTags(String(result.content)).trim();
-}
-
-function buildSystemPrompt(
-    queryType: QueryType,
-    langName: string,
-    notFoundMsg: string,
-    answerMode: string,
-    confidence: number,
-    context: string,
-    query: string,
-    history: string,
-    decomposedPrefix: string
-): string {
-    const confidenceNote = {
-        rag_high: `HIGH CONFIDENCE (${(confidence * 100).toFixed(0)}%) - sources directly answer this question.`,
-        rag_medium: `MEDIUM CONFIDENCE (${(confidence * 100).toFixed(0)}%) - sources are relevant, synthesize carefully.`,
-        rag_partial: `LOW CONFIDENCE (${(confidence * 100).toFixed(0)}%) - sources only partially match, be explicit about limits.`,
-        general: 'GENERAL MODE - no specific knowledge base match found.',
-    }[answerMode] || '';
-
-    const formatInstructions = {
-        diagnostic: `DIAGNOSTIC FORMAT:\n- Start with the likely cause\n- Then numbered troubleshooting steps\n- Include error codes, LED indicators, and test points`,
-        procedural: `PROCEDURAL FORMAT:\n- Use numbered steps\n- Include terminal labels, wire colors, and torque values\n- Add safety warnings where needed`,
-        factual: `FACTUAL FORMAT:\n- Lead with the direct answer\n- Support with exact values and standards\n- Use tables for 3 or more related values`,
-        visual: `VISUAL FORMAT:\n- Describe connections in logical order\n- List terminals, wire colors, and cable specs\n- End by offering a diagram if useful`,
-        comparative: `COMPARATIVE FORMAT:\n- Use a comparison table\n- Highlight the differences clearly\n- State a recommendation if asked`,
-        unknown: `EXPERT FORMAT:\n- Provide helpful technical information\n- Connect the answer to HMS concepts where possible`,
-    }[queryType] || '';
-
-    if (answerMode === 'general') {
-        return `You are an expert in HMS industrial panels, PLCs, SCADA, Modbus, PROFIBUS, EtherNet/IP, and industrial automation.\n${history}\n${confidenceNote}\n${decomposedPrefix}\nSTRICT RULES:\n1. Always answer in ${langName}\n2. Be specific and actionable\n3. Keep answers under 200 words\n4. If unrelated to HMS or industrial automation, politely redirect\n${formatInstructions}\nQuestion: ${query}\n${langName} Answer:`;
-    }
-
-    return `You are an expert HMS industrial panel technical support agent for SEPLe/SWATCH systems.\n${history}\n${confidenceNote}\n${decomposedPrefix}\nKNOWLEDGE BASE SOURCES:\n${context}\nSTRICT RULES:\n1. Answer from the provided sources whenever possible\n2. Always answer in ${langName}\n3. Include specific values, terminal labels, voltages, and error codes when present\n4. If sources do not fully answer the question, say what is missing and use careful expertise\n5. If no source is relevant, use this fallback: ${notFoundMsg}\n6. Keep answers under 200 words\n${formatInstructions}\nQuestion: ${query}\n${langName} Answer:`;
 }
 
 function textStreamResponse(text: string): Response {
@@ -505,8 +471,8 @@ export async function POST(req: Request) {
         }
 
         const baseAnalysis = classifyQuery(retrievalQuestion);
-        const routedPrompt = selectRoute(baseAnalysis, langName, notFoundMsg, 'general');
-        logRoute(baseAnalysis, routedPrompt);
+        const routedRetrievalConfig = selectRoute(baseAnalysis, langName, notFoundMsg);
+        logRoute(baseAnalysis, routedRetrievalConfig);
 
         const decomposed = await decomposeQuery(retrievalQuestion, baseAnalysis, sarvamLlm);
         const decomposedPrefix = buildDecomposedPromptPrefix(decomposed);
@@ -516,19 +482,19 @@ export async function POST(req: Request) {
             parsedRagSettings?.useHybridSearch
         );
         const retrieveOptions = {
-            useHYDE: routedPrompt.route.retrieval.useHYDE,
-            topK: parsedRagSettings?.topK ?? routedPrompt.route.retrieval.topK,
+            useHYDE: routedRetrievalConfig.route.retrieval.useHYDE,
+            topK: parsedRagSettings?.topK ?? routedRetrievalConfig.route.retrieval.topK,
             useMMR: searchMode === 'mmr',
             useWeighted: searchMode === 'weighted',
             mmrLambda: searchMode === 'mmr' ? (parsedRagSettings?.mmrLambda ?? 0.5) : undefined,
             recencyBoost: searchMode === 'mmr' ? 0.10 : undefined,
-            useGraphBoost: parsedRagSettings?.useGraphBoost ?? routedPrompt.route.retrieval.boostEntities,
+            useGraphBoost: parsedRagSettings?.useGraphBoost ?? routedRetrievalConfig.route.retrieval.boostEntities,
             useHybridSearch,
             useQueryExpansion: parsedRagSettings?.useQueryExpansion ?? useHybridSearch,
             useReranker: parsedRagSettings?.useReranker,
             alpha: parsedRagSettings?.alpha,
-            similarityThreshold: routedPrompt.route.retrieval.threshold,
-            preferredChunkType: routedPrompt.route.retrieval.preferChunkType,
+            similarityThreshold: routedRetrievalConfig.route.retrieval.threshold,
+            preferredChunkType: routedRetrievalConfig.route.retrieval.preferChunkType,
         };
 
         const ragStart = performance.now();
@@ -559,7 +525,6 @@ export async function POST(req: Request) {
             confidence,
             contextString,
             matches,
-            queryAnalysis,
             retrievalStats,
             retrievalMetadata,
         } = lastRagResult;
@@ -663,18 +628,36 @@ export async function POST(req: Request) {
             });
         }
 
-        const historySection = conversationHistory
-            ? `\nCONVERSATION HISTORY:\n${conversationHistory}\n`
-            : '';
+        const routedPrompt = selectRoute(baseAnalysis, langName, notFoundMsg, lastRagResult.answerMode);
 
-        const systemPrompt = buildSystemPrompt(
-            queryAnalysis.type,
-            langName,
-            notFoundMsg,
-            answerMode,
-            confidence,
+        const buildFinalSystemPrompt = (
+            routedSystem: string,
+            context: string,
+            history: string,
+            decomposedPrefix: string
+        ): string => {
+            const sections = [routedSystem.trim()];
+
+            if (history.trim()) {
+                sections.push(`CONVERSATION HISTORY:\n${history.trim()}`);
+            }
+
+            if (decomposedPrefix.trim()) {
+                sections.push(decomposedPrefix.trim());
+            }
+
+            if (context.trim()) {
+                sections.push(`${routedPrompt.contextPrefix}\n${context.trim()}`);
+            }
+
+            return sections.join('\n\n');
+        };
+
+        const historySection = conversationHistory.trim();
+
+        const systemPrompt = buildFinalSystemPrompt(
+            routedPrompt.system,
             contextString,
-            retrievalQuestion,
             historySection,
             decomposedPrefix
         );

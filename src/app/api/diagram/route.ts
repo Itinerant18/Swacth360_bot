@@ -274,17 +274,17 @@ Generate a COMPLETE, PROFESSIONAL network topology diagram for: {panelType}
 \`\`\`mermaid
 flowchart LR
     subgraph Master["HMS Panel / Master"]
-        M["🖥️ {panelType}<br/>Modbus RTU Master"]
+        M["{panelType}<br/>Modbus RTU Master"]
     end
     subgraph Bus["RS-485 Bus (Shielded Twisted Pair)<br/>Max 1200m @ 9600 bps"]
-        M -->|"A+ / B−"| N1["📟 Node 01<br/>Addr: 1"]
-        M -->|"A+ / B−"| N2["📟 Node 02<br/>Addr: 2"]
-        M -->|"A+ / B−"| N3["📟 Node 03<br/>Addr: 3"]
-        M -->|"A+ / B−"| NN["📟 Node N<br/>Addr: N"]
+        M -->|"A+ / B−"| N1["Node 01<br/>Addr: 1"]
+        M -->|"A+ / B−"| N2["Node 02<br/>Addr: 2"]
+        M -->|"A+ / B−"| N3["Node 03<br/>Addr: 3"]
+        M -->|"A+ / B−"| NN["Node N<br/>Addr: N"]
     end
     T1["120Ω Terminator"] -.-> N1
     T2["120Ω Terminator"] -.-> NN
-    PC["💻 Config PC<br/>RS-232 / USB"] -->|"Setup"| M
+    PC["Config PC<br/>RS-232 / USB"] -->|"Setup"| M
 \`\`\`
 
 Update the node names, addresses, and device types using actual KB data for {panelType}. Add all relevant devices as nodes.
@@ -605,7 +605,7 @@ Your output standards:
 3. COMPLETENESS — Fill ALL table cells. Use standard HMS reference values when KB data is unavailable.
 4. STRUCTURE — Follow the exact section order from the template. Do not add extra sections.
 5. DIAGRAM FORMAT — If the template uses \`\`\`mermaid, generate valid Mermaid flowchart/sequence syntax. If the template uses plain \`\`\`, generate ASCII art with Unicode box-drawing characters (┌┐└┘├┤─│►◄). Do NOT mix the two formats.
-6. MERMAID RULES — When generating Mermaid: use quoted labels "like this" for special chars, use <br/> for line breaks in nodes, keep node IDs simple (A, B, C...), use subgraph for grouping. NEVER use backticks inside edge labels or node labels — use double quotes instead. Wrong: -->|\`18 AWG Red\`| Correct: -->|"18 AWG Red"|
+6. MERMAID RULES — When generating Mermaid: use quoted labels "like this" for special chars, use <br/> for line breaks in nodes, keep node IDs simple (A, B, C...), use subgraph for grouping. NEVER use backticks inside edge labels or node labels — use double quotes instead. Wrong: -->|\`18 AWG Red\`| Correct: -->|"18 AWG Red"| CRITICAL: Never use emoji inside Mermaid node labels or edge labels — they cause parser failures. Plain ASCII text only inside [""] and |""| labels.
 7. FORMATTING — Terminal names, voltages, error codes, and measurements must be in backtick \`inline code\`.
 8. WIRE COLOURS — Use emoji circles: 🔴 Red, ⚫ Black, 🔵 Blue, ⚪ White, 🟡 Yellow, 🟢 Green, 🟠 Orange, 🟤 Brown.
 9. ACTIONABLE — Every diagram must include numbered installation/verification steps.

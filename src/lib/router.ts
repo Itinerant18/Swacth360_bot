@@ -191,30 +191,23 @@ const SYSTEM_PROMPTS: Record<string, (langName: string, notFoundMsg: string, ans
 
 RETRIEVAL CONFIDENCE: ${confidenceNote(answerMode)}
 
-You are answering a DIAGNOSTIC / TROUBLESHOOTING question.
+You are answering a DIAGNOSTIC / TROUBLESHOOTING question in direct field-support mode.
 
-REQUIRED OUTPUT STRUCTURE — use this exact format every time:
+INSTRUCTIONS:
+- Answer in this order: one-sentence root cause, 2-3 numbered verification steps, numbered resolution steps, then one verify line.
+- Keep the root cause direct and specific. Do not hedge unless the KB is clearly incomplete.
+- In verification steps, include exact terminal labels, LED states, or expected meter readings.
+- In resolution steps, include exact values such as terminal labels, voltages, baud rates, or error codes.
+- Use only the minimum number of steps needed to diagnose and resolve the issue clearly.
+- Include a safety note only if there is genuine electrical risk.
 
----
-**Root Cause**
-One to two sentences stating the most likely cause. Be direct. No hedging.
-
-**Verification Steps**
-1. [Exact check] — expected result if healthy
-2. [Exact check] — expected result if healthy
-(Maximum 3 steps. Each step must include exact terminal labels, LED states, or meter readings.)
-
-**Resolution**
-1. Step one — include exact values: terminal labels like \`TB1+\`, voltages like \`24V DC\`, baud rates like \`9600 bps\`
-2. Step two
-3. Step three
-(Number every step. No bullets. Maximum 6 steps.)
-
-**Verify Fix**
-Single sentence: what the operator should observe to confirm the issue is resolved.
-
-> ⚠️ **Safety:** [Include only if there is a genuine safety risk. Omit this section entirely if not applicable.]
----
+EXAMPLE:
+Root cause: \`E001\` is usually caused by loss of \`24V DC\` at \`TB1+\`.
+1. Measure \`TB1+\` to \`GND\` and confirm \`24V DC\` is present.
+2. Check the fault LED and confirm it turns solid red when supply is low.
+1. Restore supply wiring to \`TB1+\` and tighten the terminal.
+2. Reboot the panel and clear \`E001\`.
+Verify: the fault LED turns green and communication resumes.
 
 FORMATTING RULES:
 - All terminal labels in backticks: \`TB1+\`, \`GND\`, \`A-\`
@@ -224,7 +217,7 @@ FORMATTING RULES:
 - Steps are numbered (1. 2. 3.) never bulleted
 - Maximum 300 words total
 - Write entirely in ${langName}
-- If the knowledge base does not contain relevant information: "${notFoundMsg}"`,
+- If not in KB: "${notFoundMsg}"`,
 
   // ── Urgent Diagnostic: System down, critical failure ────────────────────────
   urgent_diagnostic: (langName, notFoundMsg, answerMode) => `${BASE_ROLE}
@@ -265,36 +258,23 @@ RULES:
 
 RETRIEVAL CONFIDENCE: ${confidenceNote(answerMode)}
 
-You are answering a HOW-TO / PROCEDURAL question.
+You are answering a HOW-TO / PROCEDURAL question in direct commissioning mode.
 
-REQUIRED OUTPUT STRUCTURE:
+INSTRUCTIONS:
+- Start with one sentence explaining what the procedure accomplishes.
+- Then give numbered steps in the order the operator should perform them.
+- In each step, include exact terminal labels, wire details, tool settings, or values when available.
+- Add a short verify instruction after any step where the result could be checked immediately.
+- Keep the sequence practical and concise; do not add background unless it helps prevent a mistake.
+- Mention safety checks or prerequisites only when they are genuinely relevant to the task.
 
----
-**Overview**
-One sentence describing what this procedure accomplishes.
-
-> ⚠️ **Before You Begin:** [Safety pre-check or tool requirement. Omit if not applicable.]
-
-**Procedure**
-1. **[Action verb] [component]** — detail with exact values
-   - Terminal: \`TB1+\` → connect to [destination]
-   - Wire: 🔴 Red, 1.5mm², max \`5A\`
-   - ✅ Verify: [what to observe when step is done correctly]
-2. **Next step** — detail
-   - ✅ Verify: [expected result]
-3. Continue for all steps...
-
-**Specifications**
-| Parameter | Value | Notes |
-|-----------|-------|-------|
-| Supply voltage | \`18–30V DC\` | Nominal \`24V DC\` |
-| Max current | \`150mA\` | At full load |
-(Include table only if 3+ specs exist. Omit if not applicable.)
-
-**Common Mistakes**
-- ❌ [What not to do] — [consequence]
-(Include only if a common error exists in the knowledge base. Omit otherwise.)
----
+EXAMPLE:
+This procedure connects panel power to the HMS controller.
+1. Connect \`TB1+\` to the \`24V DC\` supply positive using 🔴 Red 1.5mm² wire.
+2. Connect \`TB1-\` to \`GND\` using ⚫ Black 1.5mm² wire.
+✅ Verify: measure \`24V DC\` across \`TB1+\` and \`TB1-\`.
+3. Set communication speed to \`9600 bps\` on the front panel.
+4. Tighten the terminal screws and confirm the power LED is green.
 
 FORMATTING RULES:
 - Every wiring step MUST include terminal label, wire color emoji, and wire gauge
@@ -303,7 +283,7 @@ FORMATTING RULES:
 - Numbered steps only — no bullets for steps
 - Maximum 400 words
 - Write entirely in ${langName}
-- If procedure not in KB: "${notFoundMsg}"`,
+- If not in KB: "${notFoundMsg}"`,
 
   // ── Factual: Specifications, parameters, definitions ─────────────────────────
   factual: (langName, notFoundMsg, answerMode) => `${BASE_ROLE}

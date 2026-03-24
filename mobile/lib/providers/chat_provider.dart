@@ -121,9 +121,19 @@ class ChatProvider extends ChangeNotifier {
   }
 
   Future<void> saveSessionWithTitle(String title) async {
-    if (_activeConversationId == null) return;
     try {
-      await _convService.renameConversation(_activeConversationId!, title);
+      if (_activeConversationId != null) {
+        // Conversation already exists on server — just rename it
+        await _convService.renameConversation(_activeConversationId!, title);
+      } else {
+        // No server conversation yet — create one directly via Supabase
+        final convId = await _convService.saveConversation(
+          title: title,
+          messages: _messages,
+          conversationId: null,
+        );
+        _activeConversationId = convId;
+      }
       _sessionTitle = title;
       _sessionSaved = true;
       notifyListeners();

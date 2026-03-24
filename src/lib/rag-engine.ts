@@ -200,22 +200,26 @@ async function generateHYDE(
     queryAnalysis: QueryAnalysis,
     llm: ChatOpenAI
 ): Promise<string> {
-    const typeHint = {
-        diagnostic: 'a technical troubleshooting answer with error codes, causes, and resolution steps',
-        procedural: 'a numbered step-by-step procedure with terminal labels and wire colors',
-        factual: 'a concise technical specification with exact values and standards',
-        visual: 'a wiring description with terminal connections and specifications',
-        comparative: 'a comparison table of technical specifications',
-        unknown: 'a technical answer about HMS industrial panels',
+    const typeCategory = {
+        diagnostic: 'Troubleshooting & Diagnostics',
+        procedural: 'Installation & Commissioning',
+        factual: 'General Knowledge',
+        visual: 'Installation & Commissioning',
+        comparative: 'Advanced Diagnostics & Integration',
+        unknown: 'General Knowledge',
     }[queryAnalysis.type];
 
-    const prompt = `You are an HMS industrial panel expert. Write ${typeHint} for this question.
-Be specific: include terminal labels, wire colors, voltage values, baud rates, error codes if applicable.
-Write as if answering from a technical manual. 2-4 sentences maximum.
+    const prompt = `Generate a hypothetical knowledge base entry that would answer this question.
+Match this exact format (the knowledge base uses this structure for all entries):
 
+Source: HMS Panel Technical Manual
+Category: ${typeCategory}
+Keywords: ${queryAnalysis.entities.join(', ') || 'HMS panel, terminal, connection'}
 Question: ${query}
+Answer: [2-3 sentences with exact terminal labels (TB1+), voltages (24V DC), baud rates, error codes]
+Details: [1 sentence of supporting technical context]
 
-Technical answer (no preamble, just the answer):`;
+Output ONLY the formatted entry above, nothing else.`;
 
     const result = await llm.invoke(prompt);
     return (result.content as string).trim().slice(0, 500);
@@ -725,18 +729,10 @@ async function enhancedRetrieve(
     const contextString = reranked
         .filter(m => m.finalScore > similarityThreshold)
         .map((m, i) => {
-            const conf = `${(m.finalScore * 100).toFixed(0)}%`;
-            const sourceLabel = m.source_name || m.source || 'Knowledge Base';
-
-            return [
-                `**Source ${i + 1}** [${conf} match | 🔀 Hybrid]`,
-                `*From: ${sourceLabel}*`,
-                `---`,
-                `**Q:** ${m.question}`,
-                `**A:** ${m.relevantPassage || m.answer}`,
-            ].filter(Boolean).join('\n');
+            const answer = (m.relevantPassage || m.answer).slice(0, 300).replace(/\n/g, ' ');
+            return `[${i + 1}] Q: ${m.question}\n    A: ${answer}`;
         })
-        .join('\n\n---\n\n');
+        .join('\n\n');
 
     const latencyMs = performance.now() - startMs;
 
@@ -911,21 +907,10 @@ export async function retrieve(
     const contextString = reranked
         .filter(m => m.finalScore > similarityThreshold)
         .map((m, i) => {
-            const vectorSource = m.retrievalVector === 'hyde' ? '🔮 HYDE' : m.retrievalVector === 'query' ? '📌 Query' : '🔍 Expanded';
-            const conf = `${(m.finalScore * 100).toFixed(0)}%`;
-            const sourceLabel = m.source_name || m.source || 'Knowledge Base';
-
-            // Format like a structured technical document
-            return [
-                `**Source ${i + 1}** [${conf} match | ${vectorSource}]`,
-                `*From: ${sourceLabel}*`,
-                `---`,
-                `**Q:** ${m.question}`,
-                `**A:** ${m.relevantPassage || m.answer}`,
-                m.subcategory ? `*Category: ${m.subcategory}*` : '',
-            ].filter(Boolean).join('\n');
+            const answer = (m.relevantPassage || m.answer).slice(0, 300).replace(/\n/g, ' ');
+            return `[${i + 1}] Q: ${m.question}\n    A: ${answer}`;
         })
-        .join('\n\n---\n\n');
+        .join('\n\n');
 
     // Build structured metadata for the response
     const retrievalMetadata = {

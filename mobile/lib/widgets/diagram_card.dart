@@ -28,21 +28,21 @@ class _DiagramCardState extends State<DiagramCard> {
 
   String _buildHtml() {
     final md = widget.diagram.markdown;
-    String mermaidCode = '';
-    final start = md.indexOf('```mermaid');
-    final end = md.lastIndexOf('```');
-    if (start != -1 && end > start) {
-      mermaidCode = md.substring(start + 10, end).trim();
-    } else {
-      mermaidCode = md.trim();
-    }
-    // Escape for HTML
-    final escaped = mermaidCode
-        .replaceAll('&', '&amp;')
-        .replaceAll('<', '&lt;')
-        .replaceAll('>', '&gt;');
 
-    return '''<!DOCTYPE html><html><head>
+    // Check if there is a mermaid code block
+    final mermaidStart = md.indexOf('```mermaid');
+    final mermaidEnd = md.lastIndexOf('```');
+    final hasMermaid = mermaidStart != -1 && mermaidEnd > mermaidStart;
+
+    if (hasMermaid) {
+      // Extract and render the mermaid block
+      final mermaidCode = md.substring(mermaidStart + 10, mermaidEnd).trim();
+      final escaped = mermaidCode
+          .replaceAll('&', '&amp;')
+          .replaceAll('<', '&lt;')
+          .replaceAll('>', '&gt;');
+
+      return '''<!DOCTYPE html><html><head>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <style>
   body { margin:0; padding:12px; background:#FAF7F2;
@@ -54,6 +54,79 @@ class _DiagramCardState extends State<DiagramCard> {
 <script>mermaid.initialize({startOnLoad:true,theme:'base',
   themeVariables:{primaryColor:'#FEF9C3',primaryTextColor:'#1C1917',
   primaryBorderColor:'#CA8A04',lineColor:'#78716C',fontSize:'13px'}});</script>
+</body></html>''';
+    }
+
+    // No mermaid block — render as styled markdown/HTML
+    // Convert markdown to simple HTML for display
+    final htmlContent = md
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        // Headers
+        .replaceAll(RegExp(r'^### (.+)$', multiLine: true), '<h3>\$1</h3>')
+        .replaceAll(RegExp(r'^## (.+)$', multiLine: true), '<h2>\$1</h2>')
+        .replaceAll(RegExp(r'^# (.+)$', multiLine: true), '<h1>\$1</h1>')
+        // Bold
+        .replaceAll(RegExp(r'\*\*(.+?)\*\*'), '<strong>\$1</strong>')
+        // Inline code
+        .replaceAll(RegExp(r'`([^`]+)`'), '<code>\$1</code>')
+        // Code blocks — preserve as <pre>
+        .replaceAll(
+          RegExp(r'```[a-z]*\n?([\s\S]*?)```', multiLine: true),
+          '<pre>\$1</pre>',
+        )
+        // Horizontal rule
+        .replaceAll(RegExp(r'^---+$', multiLine: true), '<hr/>')
+        // Table rows — basic support
+        .replaceAll(RegExp(r'^\|(.+)\|$', multiLine: true), '<tr>\$1</tr>')
+        // Newlines to <br>
+        .replaceAll('\n', '<br/>');
+
+    return '''<!DOCTYPE html><html><head>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+  body {
+    margin: 0; padding: 12px;
+    background: #FAF7F2;
+    font-family: -apple-system, sans-serif;
+    font-size: 13px;
+    color: #1C1917;
+    line-height: 1.6;
+  }
+  h1 { font-size: 16px; color: #1C1917; margin: 12px 0 6px; }
+  h2 { font-size: 15px; color: #1C1917; margin: 10px 0 5px; }
+  h3 { font-size: 14px; color: #44403C; margin: 8px 0 4px; }
+  strong { font-weight: 700; color: #1C1917; }
+  code {
+    background: #F0EBE3; color: #0D9488;
+    padding: 1px 5px; border-radius: 3px;
+    font-family: monospace; font-size: 12px;
+    border: 1px solid #D6CFC4;
+  }
+  pre {
+    background: #F0EBE3; padding: 10px; border-radius: 6px;
+    font-family: monospace; font-size: 11px;
+    overflow-x: auto; white-space: pre;
+    border: 1px solid #D6CFC4; color: #1C1917;
+    max-width: 100%;
+  }
+  table { border-collapse: collapse; width: 100%; margin: 8px 0; }
+  tr { border-bottom: 1px solid #D6CFC4; }
+  td, th {
+    padding: 6px 8px; text-align: left;
+    border: 1px solid #D6CFC4; font-size: 12px;
+  }
+  th { background: #F0EBE3; font-weight: 700; }
+  hr { border: none; border-top: 1px solid #D6CFC4; margin: 12px 0; }
+  blockquote {
+    margin: 8px 0; padding: 6px 12px;
+    border-left: 3px solid #CA8A04;
+    background: rgba(202,138,4,0.06);
+    color: #78716C; font-size: 12px;
+  }
+</style></head><body>
+$htmlContent
 </body></html>''';
   }
 
