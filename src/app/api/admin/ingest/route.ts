@@ -841,6 +841,7 @@ Requirements:
 4. Add numbered installation steps
 5. Include ⚠️ Critical Notes section
 6. Maximum 80 characters per line
+7. Never generate Mermaid syntax. Only generate plain ASCII art using box-drawing characters (â”Œ â”€ â” â”‚ â”” â”˜ â”œ â”¤ â”¬ â”´ â”¼) and pipe-style tables.
 
 Output the diagram in markdown only. No preamble.`;
 
@@ -984,6 +985,24 @@ Output the diagram in markdown only. No preamble.`;
         duplicateCount,
         errorCount,
     });
+
+    // Log ingestion to ingestion_log table for admin analytics
+    void (async () => {
+        try {
+            await supabase.from('ingestion_log').insert({
+                source_name: sourceName,
+                input_type: inputType,
+                total_chunks: chunkPairs.length + extractedImages.length,
+                success_count: successCount,
+                error_count: errorCount,
+                skip_count: skippedCount,
+                status: errorCount === 0 ? 'completed'
+                    : errorCount === chunkPairs.length + extractedImages.length ? 'failed'
+                    : 'partial',
+                created_by: 'admin_ui',
+            });
+        } catch { /* log failure is non-critical */ }
+    })();
 
     return NextResponse.json({
         success: true,
