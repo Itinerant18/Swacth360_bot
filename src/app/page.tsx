@@ -1048,6 +1048,7 @@ export default function Chat() {
                                                                 disabled={feedbackSubmitted.has(m.id)}
                                                                 className={`p-1.5 rounded transition-colors ${feedbackSubmitted.has(m.id) ? 'opacity-40 cursor-not-allowed text-[#A8A29E]' : 'hover:bg-[#E8E0D4] hover:text-[#0D9488] text-[#A8A29E]'}`}
                                                                 title="Helpful"
+                                                                aria-label="Mark as helpful"
                                                             >
                                                                 <FontAwesomeIcon icon={faThumbsUp} className="w-3 h-3" />
                                                             </button>
@@ -1056,6 +1057,7 @@ export default function Chat() {
                                                                 disabled={feedbackSubmitted.has(m.id)}
                                                                 className={`p-1.5 rounded transition-colors ${feedbackSubmitted.has(m.id) ? 'opacity-40 cursor-not-allowed text-[#A8A29E]' : 'hover:bg-[#E8E0D4] hover:text-red-600 text-[#A8A29E]'}`}
                                                                 title="Not helpful"
+                                                                aria-label="Mark as not helpful"
                                                             >
                                                                 <FontAwesomeIcon icon={faThumbsDown} className="w-3 h-3" />
                                                             </button>
@@ -1081,7 +1083,8 @@ export default function Chat() {
                                                         </div>
                                                         <button onClick={() => handleCopy(m.content, m.id)}
                                                             className="p-1 rounded text-[#A8A29E] hover:text-[#CA8A04] transition-colors cursor-pointer"
-                                                            title="Copy response">
+                                                            title="Copy response"
+                                                            aria-label="Copy response">
                                                             <FontAwesomeIcon icon={copiedId === m.id ? faCheck : faCopy}
                                                                 className={`w-3 h-3 ${copiedId === m.id ? 'text-emerald-600' : ''}`} />
                                                         </button>
@@ -1133,6 +1136,7 @@ export default function Chat() {
                                                                 disabled={feedbackSubmitted.has(m.id)}
                                                                 className={`p-1.5 rounded transition-colors ${feedbackSubmitted.has(m.id) ? 'opacity-40 cursor-not-allowed' : 'hover:bg-[#E8E0D4] hover:text-[#0D9488]'}`}
                                                                 title="Helpful"
+                                                                aria-label="Mark as helpful"
                                                             >
                                                                 <FontAwesomeIcon icon={faThumbsUp} className="w-3 h-3" />
                                                             </button>
@@ -1141,6 +1145,7 @@ export default function Chat() {
                                                                 disabled={feedbackSubmitted.has(m.id)}
                                                                 className={`p-1.5 rounded transition-colors ${feedbackSubmitted.has(m.id) ? 'opacity-40 cursor-not-allowed' : 'hover:bg-[#E8E0D4] hover:text-red-600'}`}
                                                                 title="Not helpful"
+                                                                aria-label="Mark as not helpful"
                                                             >
                                                                 <FontAwesomeIcon icon={faThumbsDown} className="w-3 h-3" />
                                                             </button>
@@ -1208,7 +1213,8 @@ export default function Chat() {
                 {showScrollBtn && (
                     <button onClick={scrollToBottom}
                         className="fixed bottom-28 sm:bottom-32 right-4 sm:right-6 z-30 skeuo-raised w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center rounded-full shadow-lg animate-fade-up cursor-pointer"
-                        title="Scroll to bottom">
+                        title="Scroll to bottom"
+                        aria-label="Scroll to bottom">
                         <FontAwesomeIcon icon={faChevronDown} className="w-3.5 h-3.5 text-[#44403C]" />
                     </button>
                 )}
@@ -1255,6 +1261,7 @@ export default function Chat() {
                                         <button
                                             onClick={() => { setShowSaveModal(false); setSaveSessionName(''); }}
                                             className="p-1.5 rounded-lg text-[#78716C] hover:text-[#1C1917] hover:bg-black/5 transition-colors"
+                                            aria-label="Close save session"
                                         >
                                             <FontAwesomeIcon icon={faTimes} className="w-3 h-3" />
                                         </button>
@@ -1314,7 +1321,8 @@ export default function Chat() {
                                         autoComplete="off"
                                     />
                                     <button type="submit" disabled={isLoading || isLoadingHistory || !input.trim()}
-                                        className="absolute right-1.5 sm:right-2 p-2 sm:p-2.5 skeuo-brass rounded-lg sm:rounded-xl disabled:opacity-30">
+                                        className="absolute right-1.5 sm:right-2 p-2 sm:p-2.5 skeuo-brass rounded-lg sm:rounded-xl disabled:opacity-30"
+                                        aria-label="Send message">
                                         {isLoading || isLoadingHistory
                                             ? <FontAwesomeIcon icon={faSpinner} className="w-3.5 h-3.5 sm:w-4 sm:h-4 animate-spin" />
                                             : <FontAwesomeIcon icon={faPaperPlane} className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
