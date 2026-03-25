@@ -56,7 +56,14 @@ async function translateToEnglish(
     const sourceLang = language === 'hi' ? 'Hindi' : 'Bengali';
     const historyCtx = conversationHistory ? `Context:\n${conversationHistory}\n\n` : '';
     const prompt = `Translate the ${sourceLang} question to English. Resolve pronouns using context. Output ONLY the English translation.\n${historyCtx}${sourceLang}: ${text}\nEnglish:`;
-    const result = await sarvamLlm.invoke(prompt);
+    
+    const result = await Promise.race([
+        sarvamLlm.invoke(prompt),
+        new Promise<any>((_, reject) => 
+            setTimeout(() => reject(new Error('LLM_TIMEOUT')), 15000)
+        )
+    ]);
+
     return stripThinkTags(String(result.content)).trim();
 }
 
@@ -387,21 +394,44 @@ export async function POST(req: Request) {
                             }
                         }
                     }
-
-                    // Save user message
-                    const { error: saveUserMessageError } = await authSupabase.from('messages').insert({
-                        conversation_id: activeConversationId,
-                        role: 'user',
-                        content: latestMessage,
-                    });
-                    if (saveUserMessageError) {
-                        console.warn('User message persistence failed:', saveUserMessageError.message);
-                    }
                 }
             }
         } catch (authErr) {
             // Auth is optional — continue without persistence
             console.warn('Auth/conversation resolution skipped:', (authErr as Error).message);
+        }
+
+        // ── Rate Limiting (Tier-Aware) ────────────────────────────────
+        const clientIp = getClientIdentifier(req);
+        const limitTier = authUserId ? RATE_LIMITS.authenticated : RATE_LIMITS.guest;
+        const rateLimitResult = await checkRateLimit(clientIp, limitTier);
+
+        if (!rateLimitResult.allowed) {
+            return new Response(
+                JSON.stringify({ error: 'Rate limit exceeded. Please try again later.' }),
+                {
+                    status: 429,
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...rateLimitHeaders(rateLimitResult),
+                    },
+                }
+            );
+        }
+
+        // ── Save user message (Post-Rate-Limit) ───────────────────────
+        if (authUserId && activeConversationId) {
+            try {
+                const authSupabase = await createServerSupabaseClient();
+                const { error: saveUserMessageError } = await authSupabase.from('messages').insert({
+                    conversation_id: activeConversationId,
+                    role: 'user',
+                    content: latestMessage,
+                });
+                if (saveUserMessageError) {
+                    console.warn('User message persistence failed:', saveUserMessageError.message);
+                }
+            } catch { /* persistence is non-critical */ }
         }
 
         // Build conversation history from DB (preferred) or client messages
@@ -565,10 +595,11 @@ export async function POST(req: Request) {
         let lastRagResult: RAGResult;
 
         if (decomposed.isDecomposed) {
+            // Each sub-query has a different search string — do NOT reuse the parent embedding
             const subResults = await Promise.all(
                 decomposed.subQueries.map(async (subQuery) => ({
                     subQuery,
-                    ragResult: await retrieve(subQuery.query, sarvamLlm, { ...retrieveOptions, precomputedQueryVector: cachedQueryEmbedding }),
+                    ragResult: await retrieve(subQuery.query, sarvamLlm, retrieveOptions),
                 }))
             );
             lastRagResult = buildMergedRagResult(baseAnalysis, subResults, ragStart);
@@ -747,9 +778,14 @@ export async function POST(req: Request) {
             fallbackMessage,
         );
 
-        const response = await sarvamLlm.invoke([
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: retrievalQuestion },
+        const response = await Promise.race([
+            sarvamLlm.invoke([
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: retrievalQuestion },
+            ]),
+            new Promise<any>((_, reject) => 
+                setTimeout(() => reject(new Error('LLM_TIMEOUT')), 15000)
+            )
         ]);
 
         const rawAnswer = typeof response.content === 'string'

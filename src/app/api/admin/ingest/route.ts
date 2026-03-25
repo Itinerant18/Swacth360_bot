@@ -41,6 +41,7 @@ import { embedText } from '@/lib/embeddings';
 import { extractPdfText } from '@/lib/pdf-extract';
 import { ChatOpenAI } from '@langchain/openai';
 import { semanticChunk } from '@/lib/semantic-chunker';
+import { invalidateAllCache } from '@/lib/cache';
 
 // ─── Config ───────────────────────────────────────────────────
 const CHILD_CHUNK_SIZE = 400;       // small chunks for precise retrieval
@@ -1003,6 +1004,11 @@ Output the diagram in markdown only. No preamble.`;
             });
         } catch { /* log failure is non-critical */ }
     })();
+
+    // Invalidate all cache after successful ingestion
+    await invalidateAllCache().catch(err => {
+        console.warn('⚠️  Cache invalidation failed after ingestion:', err.message);
+    });
 
     return NextResponse.json({
         success: true,
