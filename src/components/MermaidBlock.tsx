@@ -14,7 +14,7 @@
 
 'use client';
 
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback, useId } from 'react';
 
 interface MermaidBlockProps {
     code: string;
@@ -98,7 +98,7 @@ function fixMermaidSyntax(code: string): string {
     // Fix 4: duplicate node definitions in different subgraphs
     // Mermaid doesn't allow redefining a node — remove duplicate labels
     const definedNodes = new Set<string>();
-    fixed = fixed.replace(/^(\s*)(\w+)\["([^"]+)"\]/gm, (match, indent, nodeId, _label) => {
+    fixed = fixed.replace(/^(\s*)(\w+)\["([^"]+)"\]/gm, (match, indent, nodeId) => {
         if (definedNodes.has(nodeId)) {
             return `${indent}${nodeId}`;
         }
@@ -127,14 +127,11 @@ export default function MermaidBlock({ code }: MermaidBlockProps) {
     const [zoom, setZoom] = useState(1);
 
     // Generate a stable, unique ID for this instance
-    // Use a ref so it doesn't change on re-render
-    const idRef = useRef(
-        `mermaid-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`
-    );
+    const reactId = useId();
+    const currentId = `mermaid-${reactId.replace(/:/g, '')}`;
 
     useEffect(() => {
         let cancelled = false;
-        const currentId = idRef.current;
 
         async function renderDiagram() {
             try {
@@ -184,7 +181,7 @@ export default function MermaidBlock({ code }: MermaidBlockProps) {
             cancelled = true;
             cleanupMermaidElement(currentId);
         };
-    }, [code]);
+    }, [code, currentId]);
 
     const handleZoomIn = useCallback(() => setZoom(z => Math.min(z + 0.25, 3)), []);
     const handleZoomOut = useCallback(() => setZoom(z => Math.max(z - 0.25, 0.5)), []);

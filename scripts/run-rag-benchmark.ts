@@ -20,7 +20,7 @@
 import { readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { ChatOpenAI } from '@langchain/openai';
-import { retrieve, classifyQuery } from '../src/lib/rag-engine';
+import { retrieve } from '../src/lib/rag-engine';
 import { evaluateRAGResponse, type EvalScores } from '../src/lib/rag-evaluator';
 
 // ─── Types ──────────────────────────────────────────────────

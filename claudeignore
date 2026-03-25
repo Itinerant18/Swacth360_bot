@@ -1,0 +1,36 @@
+# .claudeignore — Tell Claude Code what NOT to read/modify
+# Similar to .gitignore but for Claude Code's context
+
+# Dependencies (huge, never touch)
+node_modules/
+.next/
+.netlify/
+
+# Mobile app — Flutter only, not TypeScript
+# Claude Code should NOT touch mobile/ without explicit instruction
+mobile/
+
+# Lock files — never edit manually
+package-lock.json
+pubspec.lock
+
+# Environment secrets
+.env
+.env.local
+.env.production
+
+# Build outputs
+dist/
+build/
+out/
+
+# Supabase local
+.supabase/
+
+# TypeScript output
+tsc_output.txt
+*.js.map
+
+# OS files
+.DS_Store
+Thumbs.db

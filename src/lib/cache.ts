@@ -25,6 +25,7 @@ const CACHE_CONFIG = {
     REDIS_KEY_PREFIX: 'sai:cache:v1:',
     MAX_ANSWER_LENGTH: 8000,
     MIN_ANSWER_LENGTH: 20,
+    LOCAL_CACHE_MAX_ENTRIES: 200,
 };
 
 // Types
@@ -46,6 +47,7 @@ export type CacheResult = (CacheHit & { hit: true }) | CacheMiss;
 // Redis Client (Tier 1)
 
 let _redis: Redis | null = null;
+const localTier1Cache = new Map<string, { answer: string; expiresAt: number }>();
 
 function getRedis(): Redis | null {
     if (_redis) return _redis;
@@ -64,17 +66,76 @@ function getRedis(): Redis | null {
 
 // Tier 1 Helpers
 
+function normalizeCacheQuery(query: string): string {
+    return query
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, ' ')
+        .replace(/\s+([?!.:,])/g, '$1');
+}
+
 function hashQuery(query: string): string {
-    const normalized = query.trim().toLowerCase();
+    const normalized = normalizeCacheQuery(query);
     return CACHE_CONFIG.REDIS_KEY_PREFIX + createHash('sha256').update(normalized).digest('hex');
 }
 
+function getLocalTier1(query: string): string | null {
+    const normalized = normalizeCacheQuery(query);
+    const cached = localTier1Cache.get(normalized);
+
+    if (!cached) {
+        return null;
+    }
+
+    if (cached.expiresAt < Date.now()) {
+        localTier1Cache.delete(normalized);
+        return null;
+    }
+
+    // Refresh insertion order for hot entries.
+    localTier1Cache.delete(normalized);
+    localTier1Cache.set(normalized, cached);
+    return cached.answer;
+}
+
+function setLocalTier1(query: string, answer: string): void {
+    const normalized = normalizeCacheQuery(query);
+    const expiresAt = Date.now() + CACHE_CONFIG.TIER1_TTL_SECONDS * 1000;
+
+    if (localTier1Cache.has(normalized)) {
+        localTier1Cache.delete(normalized);
+    }
+
+    localTier1Cache.set(normalized, { answer, expiresAt });
+
+    while (localTier1Cache.size > CACHE_CONFIG.LOCAL_CACHE_MAX_ENTRIES) {
+        const oldestKey = localTier1Cache.keys().next().value;
+        if (!oldestKey) {
+            break;
+        }
+        localTier1Cache.delete(oldestKey);
+    }
+}
+
+function deleteLocalTier1(query: string): void {
+    localTier1Cache.delete(normalizeCacheQuery(query));
+}
+
 async function tier1Get(query: string): Promise<string | null> {
+    const localHit = getLocalTier1(query);
+    if (localHit) {
+        console.log(`[cache] Local Tier 1 HIT - "${query.slice(0, 60)}"`);
+        return localHit;
+    }
+
     const redis = getRedis();
     if (!redis) return null;
     try {
         const key = hashQuery(query);
         const cached = await redis.get<string>(key);
+        if (cached) {
+            setLocalTier1(query, cached);
+        }
         return cached ?? null;
     } catch (err: unknown) {
         console.warn('[cache.tier1] Redis GET failed:', (err as Error).message);
@@ -83,6 +144,7 @@ async function tier1Get(query: string): Promise<string | null> {
 }
 
 async function tier1Set(query: string, answer: string): Promise<void> {
+    setLocalTier1(query, answer);
     const redis = getRedis();
     if (!redis) return;
     try {
@@ -94,6 +156,7 @@ async function tier1Set(query: string, answer: string): Promise<void> {
 }
 
 async function tier1Delete(query: string): Promise<void> {
+    deleteLocalTier1(query);
     const redis = getRedis();
     if (!redis) return;
     try {
@@ -141,8 +204,8 @@ async function tier2Set(params: {
     const { query, queryVector, answer, answerMode, language } = params;
     try {
         const { error } = await supabase.from('semantic_cache').insert({
-            query_hash: createHash('sha256').update(query.trim().toLowerCase()).digest('hex'),
-            query_text: query.slice(0, 500),
+            query_hash: createHash('sha256').update(normalizeCacheQuery(query)).digest('hex'),
+            query_text: normalizeCacheQuery(query).slice(0, 500),
             embedding: queryVector,
             answer,
             answer_mode: answerMode,
@@ -212,7 +275,7 @@ export async function storeCache(params: {
 }): Promise<void> {
     const { answer, answerMode } = params;
 
-    if (answerMode === 'general') return;
+    if (answerMode === 'general' || answerMode === 'rag_partial') return;
     if (answer.length < CACHE_CONFIG.MIN_ANSWER_LENGTH) return;
     if (answer.length > CACHE_CONFIG.MAX_ANSWER_LENGTH) return;
 
@@ -232,7 +295,7 @@ export async function storeCache(params: {
  */
 export async function invalidateCache(query: string): Promise<void> {
     const supabase = getSupabase();
-    const hash = createHash('sha256').update(query.trim().toLowerCase()).digest('hex');
+    const hash = createHash('sha256').update(normalizeCacheQuery(query)).digest('hex');
     await Promise.allSettled([
         tier1Delete(query),
         supabase.rpc('invalidate_cache_entry', { p_query_hash: hash }),
@@ -250,6 +313,8 @@ export async function invalidateAllCache(): Promise<{ tier1Cleared: boolean; tie
     const supabase = getSupabase();
     let tier1Cleared = false;
     let tier2Cleared = 0;
+
+    localTier1Cache.clear();
 
     try {
         if (redis) {

@@ -18,9 +18,13 @@ import { createServerSupabaseClient } from '@/lib/auth-server';
 import { checkCache, storeCache } from '@/lib/cache';
 import { embedText } from '@/lib/embeddings';
 import { stripThinkTags, stripRawChainOfThought } from '@/lib/sarvam';
-import { rewriteWithContext, type ConversationMessage } from '@/lib/conversation-retrieval';
+import { type ConversationMessage } from '@/lib/conversation-retrieval';
 import { applyFeedbackBoost } from '@/lib/feedback-reranker';
 import { checkRateLimit, getClientIdentifier, rateLimitHeaders, RATE_LIMITS } from '@/lib/rate-limiter';
+import { buildCasualResponse, buildIntentStylePrompt, classifyIntent } from '@/lib/intentClassifier';
+import { processQuery } from '@/lib/queryProcessor';
+import { formatResponse } from '@/lib/responseFormatter';
+import { buildRetrievalPlan, optimizeRetrievalResult } from '@/lib/retrievalOptimizer';
 
 dns.setDefaultResultOrder('ipv4first');
 
@@ -34,9 +38,9 @@ const NOT_FOUND_MESSAGES: Record<string, string> = {
 };
 
 function isEnglish(text: string): boolean {
-    const ascii = text.replace(/[^a-zA-Z]/g, '').length;
-    const total = text.replace(/[\s\d\W]/g, '').length || 1;
-    return (ascii / total) > 0.6;
+    const asciiLetters = (text.match(/[a-zA-Z]/g) || []).length;
+    const allLetters = (text.match(/\p{L}/gu) || []).length || 1;
+    return (asciiLetters / allLetters) > 0.6;
 }
 
 async function translateToEnglish(
@@ -67,6 +71,30 @@ function textStreamResponse(text: string): Response {
         }),
         { headers: { 'Content-Type': 'text/plain; charset=utf-8' } }
     );
+}
+
+function buildChatResponse(
+    text: string,
+    activeConversationId: string | null,
+    rateLimitResult: Awaited<ReturnType<typeof checkRateLimit>>,
+    extraHeaders: Record<string, string> = {},
+): Response {
+    const response = textStreamResponse(text);
+
+    if (activeConversationId) {
+        response.headers.set('x-conversation-id', activeConversationId);
+    }
+
+    const rlHeaders = rateLimitHeaders(rateLimitResult);
+    for (const [key, value] of Object.entries(rlHeaders)) {
+        response.headers.set(key, value);
+    }
+
+    for (const [key, value] of Object.entries(extraHeaders)) {
+        response.headers.set(key, value);
+    }
+
+    return response;
 }
 
 function elapsed(start: number): string {
@@ -204,6 +232,37 @@ function buildMergedRagResult(
     };
 }
 
+async function persistAssistantMessage(params: {
+    enabled: boolean;
+    conversationId: string | null;
+    content: string;
+    answerMode: string;
+    topSimilarity?: number;
+}): Promise<void> {
+    const { enabled, conversationId, content, answerMode, topSimilarity } = params;
+
+    if (!enabled || !conversationId) {
+        return;
+    }
+
+    try {
+        const authSupabase = await createServerSupabaseClient();
+        const { error } = await authSupabase.from('messages').insert({
+            conversation_id: conversationId,
+            role: 'assistant',
+            content,
+            answer_mode: answerMode,
+            top_similarity: topSimilarity,
+        });
+
+        if (error) {
+            console.warn('Assistant message persistence failed:', error.message);
+        }
+    } catch {
+        // persistence is non-critical
+    }
+}
+
 export async function POST(req: Request) {
     const requestStart = performance.now();
 
@@ -304,19 +363,26 @@ export async function POST(req: Request) {
                             dbHistory = recoveredHistory.map(({ role, content }) => ({ role, content }));
 
                             if (recoveredHistory.length > 0) {
-                                const rowsToInsert = recoveredHistory.map((message, index) => ({
-                                    conversation_id: activeConversationId,
-                                    role: message.role,
-                                    content: message.content,
-                                    created_at: new Date(new Date(message.createdAt).getTime() + index).toISOString(),
-                                }));
-
-                                const { error: recoveryInsertError } = await authSupabase
+                                const { count } = await authSupabase
                                     .from('messages')
-                                    .insert(rowsToInsert);
+                                    .select('id', { count: 'exact', head: true })
+                                    .eq('conversation_id', activeConversationId);
 
-                                if (recoveryInsertError) {
-                                    console.warn('Recovered history persistence failed:', recoveryInsertError.message);
+                                if (count === 0 || count === null) {
+                                    const rowsToInsert = recoveredHistory.map((message, index) => ({
+                                        conversation_id: activeConversationId,
+                                        role: message.role,
+                                        content: message.content,
+                                        created_at: new Date(new Date(message.createdAt).getTime() + index).toISOString(),
+                                    }));
+
+                                    const { error: recoveryInsertError } = await authSupabase
+                                        .from('messages')
+                                        .insert(rowsToInsert);
+
+                                    if (recoveryInsertError) {
+                                        console.warn('Recovered history persistence failed:', recoveryInsertError.message);
+                                    }
                                 }
                             }
                         }
@@ -377,18 +443,33 @@ export async function POST(req: Request) {
                 content: m.content,
             }));
 
-        const { rewritten: contextualQuestion, wasRewritten } = await rewriteWithContext(
-            englishQuestion,
-            contextMessages,
-            sarvamLlm,
-        );
+        const processedQuery = await processQuery({
+            originalQuery: englishQuestion,
+            history: contextMessages,
+            llm: sarvamLlm,
+        });
+        const retrievalQuestion = processedQuery.retrievalQuery;
+        const baseAnalysis = classifyQuery(retrievalQuestion);
+        const intent = classifyIntent(retrievalQuestion, baseAnalysis);
 
-        if (wasRewritten) {
-            console.log(`Context rewrite: "${englishQuestion}" -> "${contextualQuestion}"`);
+        if (processedQuery.retrievalQuery !== processedQuery.normalizedOriginal) {
+            console.log(`Query rewrite: "${processedQuery.normalizedOriginal}" -> "${processedQuery.retrievalQuery}"`);
         }
 
-        // Use the contextual question for retrieval, original for display
-        const retrievalQuestion = wasRewritten ? contextualQuestion : englishQuestion;
+        console.log(`Intent: ${intent.intent} (${intent.reason})`);
+
+        if (intent.intent === 'casual') {
+            const casualAnswer = buildCasualResponse(latestMessage, language);
+
+            await persistAssistantMessage({
+                enabled: Boolean(authUserId),
+                conversationId: activeConversationId,
+                content: casualAnswer,
+                answerMode: 'casual',
+            });
+
+            return buildChatResponse(casualAnswer, activeConversationId, rateLimitResult);
+        }
 
         // ── Diagram detection — MUST run BEFORE cache checks ──────────
         // If this is a diagram request, skip cache entirely and go
@@ -407,26 +488,19 @@ export async function POST(req: Request) {
             const tier1CacheResult = await checkCache(retrievalQuestion, null);
             if (tier1CacheResult.hit) {
                 console.log('[chat] Cache Tier 1 hit - skipping full RAG pipeline');
+                const cachedAnswer = formatResponse(tier1CacheResult.answer, {
+                    intent: intent.intent,
+                    confidence: 0.88,
+                });
 
-                // Persist assistant message to conversation if user is logged in
-                if (authUserId && activeConversationId) {
-                    try {
-                        const authSupabase = await createServerSupabaseClient();
-                        await authSupabase.from('messages').insert({
-                            conversation_id: activeConversationId,
-                            role: 'assistant',
-                            content: tier1CacheResult.answer,
-                            answer_mode: 'cache',
-                        });
-                    } catch { /* persistence is non-critical */ }
-                }
+                await persistAssistantMessage({
+                    enabled: Boolean(authUserId),
+                    conversationId: activeConversationId,
+                    content: cachedAnswer,
+                    answerMode: 'cache',
+                });
 
-                const cachedResponse = textStreamResponse(tier1CacheResult.answer);
-                if (activeConversationId) {
-                    cachedResponse.headers.set('x-conversation-id', activeConversationId);
-                }
-                cachedResponse.headers.set('x-cache', 'HIT:tier1');
-                return cachedResponse;
+                return buildChatResponse(cachedAnswer, activeConversationId, rateLimitResult, { 'x-cache': 'HIT:tier1' });
             }
         }
 
@@ -434,7 +508,7 @@ export async function POST(req: Request) {
         const { decision, relationalResult } = await logicalRoute(retrievalQuestion);
         if (decision.route === 'relational' && relationalResult) {
             const relationalAnswer = formatRelationalAnswer(relationalResult, langName);
-            return textStreamResponse(relationalAnswer);
+            return buildChatResponse(relationalAnswer, activeConversationId, rateLimitResult);
         }
 
         // Embed query (reused for Tier 2 cache + RAG retrieval)
@@ -446,53 +520,46 @@ export async function POST(req: Request) {
             if (tier2CacheResult.hit) {
                 console.log(`[chat] Cache Tier 2 hit (sim=${tier2CacheResult.similarity?.toFixed(3)}) - skipping full RAG pipeline`);
 
-                if (authUserId && activeConversationId) {
-                    try {
-                        const authSupabase = await createServerSupabaseClient();
-                        await authSupabase.from('messages').insert({
-                            conversation_id: activeConversationId,
-                            role: 'assistant',
-                            content: tier2CacheResult.answer,
-                            answer_mode: 'cache',
-                        });
-                    } catch { /* non-critical */ }
-                }
+                const cachedAnswer = formatResponse(tier2CacheResult.answer, {
+                    intent: intent.intent,
+                    confidence: tier2CacheResult.similarity ?? 0.82,
+                });
 
-                const cachedResponse = textStreamResponse(tier2CacheResult.answer);
-                if (activeConversationId) {
-                    cachedResponse.headers.set('x-conversation-id', activeConversationId);
-                }
-                cachedResponse.headers.set('x-cache', `HIT:tier2:${tier2CacheResult.similarity?.toFixed(3)}`);
-                return cachedResponse;
+                await persistAssistantMessage({
+                    enabled: Boolean(authUserId),
+                    conversationId: activeConversationId,
+                    content: cachedAnswer,
+                    answerMode: 'cache',
+                    topSimilarity: tier2CacheResult.similarity,
+                });
+
+                return buildChatResponse(
+                    cachedAnswer,
+                    activeConversationId,
+                    rateLimitResult,
+                    { 'x-cache': `HIT:tier2:${tier2CacheResult.similarity?.toFixed(3)}` },
+                );
             }
         }
 
-        const baseAnalysis = classifyQuery(retrievalQuestion);
         const routedRetrievalConfig = selectRoute(baseAnalysis, langName, notFoundMsg);
         logRoute(baseAnalysis, routedRetrievalConfig);
 
         const decomposed = await decomposeQuery(retrievalQuestion, baseAnalysis, sarvamLlm);
         const decomposedPrefix = buildDecomposedPromptPrefix(decomposed);
-        const useHybridSearch = shouldUseHybridRetrieval(
-            baseAnalysis,
-            decision.route,
-            parsedRagSettings?.useHybridSearch
-        );
-        const retrieveOptions = {
-            useHYDE: routedRetrievalConfig.route.retrieval.useHYDE,
-            topK: parsedRagSettings?.topK ?? routedRetrievalConfig.route.retrieval.topK,
-            useMMR: searchMode === 'mmr',
-            useWeighted: searchMode === 'weighted',
-            mmrLambda: searchMode === 'mmr' ? (parsedRagSettings?.mmrLambda ?? 0.5) : undefined,
-            recencyBoost: searchMode === 'mmr' ? 0.10 : undefined,
-            useGraphBoost: parsedRagSettings?.useGraphBoost ?? routedRetrievalConfig.route.retrieval.boostEntities,
-            useHybridSearch,
-            useQueryExpansion: parsedRagSettings?.useQueryExpansion ?? useHybridSearch,
-            useReranker: parsedRagSettings?.useReranker,
-            alpha: parsedRagSettings?.alpha,
-            similarityThreshold: routedRetrievalConfig.route.retrieval.threshold,
-            preferredChunkType: routedRetrievalConfig.route.retrieval.preferChunkType,
-        };
+        const retrieveOptions = buildRetrievalPlan({
+            analysis: baseAnalysis,
+            intent,
+            routeRetrieval: routedRetrievalConfig.route.retrieval,
+            ragSettings: parsedRagSettings,
+            searchMode,
+            logicalRouteType: decision.route,
+            requestedHybridSearch: shouldUseHybridRetrieval(
+                baseAnalysis,
+                decision.route,
+                parsedRagSettings?.useHybridSearch
+            ),
+        });
 
         const ragStart = performance.now();
         let lastRagResult: RAGResult;
@@ -501,12 +568,12 @@ export async function POST(req: Request) {
             const subResults = await Promise.all(
                 decomposed.subQueries.map(async (subQuery) => ({
                     subQuery,
-                    ragResult: await retrieve(subQuery.query, sarvamLlm, retrieveOptions),
+                    ragResult: await retrieve(subQuery.query, sarvamLlm, { ...retrieveOptions, precomputedQueryVector: cachedQueryEmbedding }),
                 }))
             );
             lastRagResult = buildMergedRagResult(baseAnalysis, subResults, ragStart);
         } else {
-            lastRagResult = await retrieve(retrievalQuestion, sarvamLlm, retrieveOptions);
+            lastRagResult = await retrieve(retrievalQuestion, sarvamLlm, { ...retrieveOptions, precomputedQueryVector: cachedQueryEmbedding });
         }
 
         // ── Feedback-Driven Reranking Boost ──────────────────────────
@@ -514,6 +581,14 @@ export async function POST(req: Request) {
         if (lastRagResult.matches.length > 0) {
             await applyFeedbackBoost(lastRagResult.matches);
         }
+
+        const optimizedRetrieval = optimizeRetrievalResult({
+            query: retrievalQuestion,
+            ragResult: lastRagResult,
+            intent,
+            language,
+        });
+        lastRagResult = optimizedRetrieval.ragResult;
 
         console.log(`RAG Engine completed [${elapsed(ragStart)}]`);
 
@@ -525,6 +600,7 @@ export async function POST(req: Request) {
             retrievalStats,
             retrievalMetadata,
         } = lastRagResult;
+        const fallbackMessage = optimizedRetrieval.fallbackMessage;
 
         // ── Stored diagram short-circuit ────────────────────
         // If the top RAG match is a stored diagram with high confidence,
@@ -556,7 +632,7 @@ export async function POST(req: Request) {
                 answer_mode: 'diagram_stored',
                 top_similarity: confidence,
                 user_id: userId || null,
-            });
+            }).then(({ error }) => { if (error) console.warn('chat_sessions insert failed:', error.message); });
 
             const payload = JSON.stringify(storedDiagramPayload);
             return textStreamResponse(`DIAGRAM_RESPONSE:${payload}`);
@@ -590,7 +666,7 @@ export async function POST(req: Request) {
                         answer_mode: 'diagram',
                         top_similarity: diagramData.hasKBContext ? confidence : 0.3,
                         user_id: userId || null,
-                    });
+                    }).then(({ error }) => { if (error) console.warn('chat_sessions insert failed:', error.message); });
 
                     const payload = JSON.stringify({ __type: 'diagram', ...diagramData });
                     return textStreamResponse(`DIAGRAM_RESPONSE:${payload}`);
@@ -600,7 +676,7 @@ export async function POST(req: Request) {
                 // Return a fallback diagram response instead of silently falling through to text
                 const fallbackPayload = JSON.stringify({
                     __type: 'diagram',
-                    markdown: `## Diagram Generation Error\n\nUnable to generate ${diagramType} diagram at this time.\n\n**Error:** ${(err as Error).message}\n\n> Please try again or contact support if the issue persists.`,
+                    markdown: `## Diagram Generation Error\n\nUnable to generate ${diagramType} diagram at this time.\n\nPlease try again or contact technical support if the issue persists.`,
                     title: `${diagramType} diagram — Error`,
                     diagramType,
                     panelType: 'HMS Panel',
@@ -631,12 +707,14 @@ export async function POST(req: Request) {
             routedSystem: string,
             context: string,
             history: string,
-            decomposedPrefix: string
+            decomposedPrefix: string,
+            finalAnswerStyle: string,
+            fallbackNote?: string,
         ): string => {
             const sections = [routedSystem.trim()];
 
             if (history.trim()) {
-                sections.push(`CONVERSATION HISTORY:\n${history.trim()}`);
+                sections.push(`RECENT CONVERSATION MEMORY:\n${history.trim()}`);
             }
 
             if (decomposedPrefix.trim()) {
@@ -647,16 +725,26 @@ export async function POST(req: Request) {
                 sections.push(`${routedPrompt.contextPrefix}\n${context.trim()}`);
             }
 
+            if (finalAnswerStyle.trim()) {
+                sections.push(finalAnswerStyle.trim());
+            }
+
+            if (fallbackNote) {
+                sections.push(`CONFIDENCE NOTE:\n- Retrieval confidence is limited.\n- Use only the matched information.\n- Clearly say when an answer is approximate or incomplete.`);
+            }
+
             return sections.join('\n\n');
         };
 
-        const historySection = conversationHistory.trim();
+        const historySection = processedQuery.memory.promptContext.trim();
 
         const systemPrompt = buildFinalSystemPrompt(
             routedPrompt.system,
             contextString,
             historySection,
-            decomposedPrefix
+            decomposedPrefix,
+            buildIntentStylePrompt(intent),
+            fallbackMessage,
         );
 
         const response = await sarvamLlm.invoke([
@@ -667,7 +755,13 @@ export async function POST(req: Request) {
         const rawAnswer = typeof response.content === 'string'
             ? response.content
             : JSON.stringify(response.content);
-        const answer = stripRawChainOfThought(stripThinkTags(rawAnswer), notFoundMsg);
+        const cleanedAnswer = stripRawChainOfThought(stripThinkTags(rawAnswer), notFoundMsg);
+        const answer = formatResponse(cleanedAnswer, {
+            intent: intent.intent,
+            confidence,
+            fallbackMessage,
+            matches,
+        });
 
         void evaluateAndStore({
             question: retrievalQuestion,
@@ -687,37 +781,24 @@ export async function POST(req: Request) {
             bot_answer: answer,
             user_id: authUserId || userId || null,
             conversation_id: activeConversationId || null,
-        });
+        }).then(({ error }) => { if (error) console.warn('chat_sessions insert failed:', error.message); });
 
         // Store answer in both cache tiers (fire-and-forget)
         void storeCache({
             query: retrievalQuestion,
             queryVector: cachedQueryEmbedding,
             answer,
-            answerMode: dbAnswerMode,
+            answerMode,
             language,
         });
 
-        // ── Save assistant message + auto-title ──
-        if (authUserId && activeConversationId) {
-            try {
-                const authSupabase = await createServerSupabaseClient();
-
-                // Save assistant message before returning so resumed conversations can load reliably.
-                const { error: saveAssistantMessageError } = await authSupabase.from('messages').insert({
-                    conversation_id: activeConversationId,
-                    role: 'assistant',
-                    content: answer,
-                    answer_mode: dbAnswerMode,
-                    top_similarity: matches[0]?.finalScore || confidence,
-                });
-                if (saveAssistantMessageError) {
-                    console.warn('Assistant message persistence failed:', saveAssistantMessageError.message);
-                }
-
-                // Message saved — title will be set by user via "Save Session"
-            } catch { /* persistence is non-critical */ }
-        }
+        await persistAssistantMessage({
+            enabled: Boolean(authUserId),
+            conversationId: activeConversationId,
+            content: answer,
+            answerMode: dbAnswerMode,
+            topSimilarity: matches[0]?.finalScore || confidence,
+        });
 
         console.log(`Response complete [${elapsed(requestStart)}] mode=${answerMode} conf=${(confidence * 100).toFixed(0)}%`);
         console.log(`Stats: ${retrievalStats.totalCandidates} candidates -> ${retrievalStats.afterRerank} after rerank | ${retrievalStats.latencyMs.toFixed(0)}ms`);
@@ -725,15 +806,7 @@ export async function POST(req: Request) {
         console.log(`${'='.repeat(60)}\n`);
 
         // Return with conversation ID header and rate limit info
-        const chatResponse = textStreamResponse(answer);
-        if (activeConversationId) {
-            chatResponse.headers.set('x-conversation-id', activeConversationId);
-        }
-        const rlHeaders = rateLimitHeaders(rateLimitResult);
-        for (const [key, value] of Object.entries(rlHeaders)) {
-            chatResponse.headers.set(key, value);
-        }
-        return chatResponse;
+        return buildChatResponse(answer, activeConversationId, rateLimitResult);
     } catch (error: unknown) {
         console.error('Chat API Error:', error);
         return new Response(

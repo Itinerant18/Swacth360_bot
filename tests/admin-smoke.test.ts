@@ -73,11 +73,7 @@ await run('admin ingest returns 500 when required API keys are missing', async (
 });
 
 await run('admin raptor GET rejects unauthorized requests', async () => {
-    const request = new NextRequest('http://localhost/api/admin/raptor', {
-        method: 'GET',
-    });
-
-    const response = await raptorGet(request);
+    const response = await raptorGet();
     const body = await response.json();
 
     assert.equal(response.status, 401);

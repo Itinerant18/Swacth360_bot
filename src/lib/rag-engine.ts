@@ -650,6 +650,10 @@ async function enhancedRetrieve(
 
     console.log(`\n🚀 Enhanced RAG — Hybrid Search Mode`);
 
+    if (options.useHYDE) {
+        console.log(`  HYDE: skipped (not implemented in hybrid search path)`);
+    }
+
     // Extract entities for graph boost
     const entities = useGraphBoost ? extractEntities(query) : [];
     const entityNames = entities.map(e => e.name);
@@ -772,6 +776,7 @@ export async function retrieve(
         alpha?: number;
         similarityThreshold?: number;
         preferredChunkType?: PreferredChunkType;
+        precomputedQueryVector?: number[];
     } = {}
 ): Promise<RAGResult> {
     const startMs = performance.now();
@@ -831,7 +836,7 @@ export async function retrieve(
 
     // Run query embedding + HYDE generation in parallel
     const [queryVector, expandedVector, hydeResult] = await Promise.all([
-        embedText(query),
+        options.precomputedQueryVector ? Promise.resolve(options.precomputedQueryVector) : embedText(query),
         embedText(expandedQuery),
         useHYDE && queryAnalysis.type !== 'visual'
             ? Promise.race([
@@ -968,11 +973,13 @@ export async function retrieve(
         });
 
         // Record access for each returned match
-        for (const match of reranked.slice(0, 3)) {
-            try {
-                await supabase.rpc('record_knowledge_access', { p_id: match.id });
-            } catch { /* ignore individual access logging failures */ }
-        }
+        await Promise.all(
+            reranked.slice(0, 3).map(async (match) => {
+                try {
+                    await supabase.rpc('record_knowledge_access', { p_id: match.id });
+                } catch { /* ignore */ }
+            })
+        );
     } catch {
         console.log('  ⚠️  Query logging failed (non-critical)');
     }
