@@ -59,6 +59,7 @@ async function translateToEnglish(
     
     const result = await Promise.race([
         sarvamLlm.invoke(prompt),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         new Promise<any>((_, reject) => 
             setTimeout(() => reject(new Error('LLM_TIMEOUT')), 15000)
         )
@@ -783,6 +784,7 @@ export async function POST(req: Request) {
                 { role: 'system', content: systemPrompt },
                 { role: 'user', content: retrievalQuestion },
             ]),
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             new Promise<any>((_, reject) => 
                 setTimeout(() => reject(new Error('LLM_TIMEOUT')), 15000)
             )
