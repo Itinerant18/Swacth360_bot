@@ -15,7 +15,7 @@ export async function GET() {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
-        // Return all conversations that belong to the user
+        // Only return conversations that have been explicitly saved (title != null and not defaults)
         const { data: conversations, error } = await supabase
             .from('conversations')
             .select(`
@@ -23,8 +23,11 @@ export async function GET() {
                 title,
                 created_at,
                 updated_at,
-                messages ( id, content, role )
+                messages ( id )
             `)
+            .neq('title', '')
+            .neq('title', 'New Conversation')
+            .neq('title', 'Untitled')
             .order('updated_at', { ascending: false })
             .limit(50);
 
@@ -33,42 +36,19 @@ export async function GET() {
             return NextResponse.json({ error: 'Failed to fetch conversations' }, { status: 500 });
         }
 
-        const result = (conversations ?? [])
-            .filter((c: {
-                messages: { id: string; content: string; role: string }[] | null;
-            }) => {
-                // Only show conversations that have at least 1 message
-                return Array.isArray(c.messages) && c.messages.length > 0;
-            })
-            .map((c: {
-                id: string;
-                title: string | null;
-                created_at: string;
-                updated_at: string;
-                messages: { id: string; content: string; role: string }[] | null;
-            }) => {
-                // Auto-generate title from first user message if title is empty/missing
-                let displayTitle = c.title?.trim() || '';
-                if (!displayTitle || displayTitle === 'New Conversation' || displayTitle === 'Untitled') {
-                    const firstUserMsg = Array.isArray(c.messages)
-                        ? c.messages.find(m => m.role === 'user')
-                        : null;
-                    if (firstUserMsg?.content) {
-                        displayTitle = firstUserMsg.content.slice(0, 60).trim();
-                        if (firstUserMsg.content.length > 60) displayTitle += '…';
-                    } else {
-                        displayTitle = 'New Chat';
-                    }
-                }
-
-                return {
-                    id: c.id,
-                    title: displayTitle,
-                    created_at: c.created_at,
-                    updated_at: c.updated_at,
-                    message_count: Array.isArray(c.messages) ? c.messages.length : 0,
-                };
-            });
+        const result = (conversations ?? []).map((c: {
+            id: string;
+            title: string | null;
+            created_at: string;
+            updated_at: string;
+            messages: { id: string }[] | { id: string } | null;
+        }) => ({
+            id: c.id,
+            title: c.title,
+            created_at: c.created_at,
+            updated_at: c.updated_at,
+            message_count: Array.isArray(c.messages) ? c.messages.length : (c.messages ? 1 : 0),
+        }));
 
         return NextResponse.json(result);
     } catch (err) {

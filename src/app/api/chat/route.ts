@@ -271,11 +271,9 @@ export async function POST(req: Request) {
 
                 // Create or verify conversation
                 if (!activeConversationId) {
-                    // Auto-title from first user message
-                    const autoTitle = latestMessage.slice(0, 60).trim() + (latestMessage.length > 60 ? '…' : '');
                     const { data: conv } = await authSupabase
                         .from('conversations')
-                        .insert({ user_id: user.id, title: autoTitle })
+                        .insert({ user_id: user.id, title: '' })
                         .select('id')
                         .single();
                     if (conv) activeConversationId = conv.id;
