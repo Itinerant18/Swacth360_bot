@@ -53,6 +53,86 @@ export function stripThinkTags(text: string): string {
 }
 
 /**
+ * Detects and strips untagged chain-of-thought reasoning that the sarvam-m
+ * model sometimes emits WITHOUT `<think>` wrappers.
+ *
+ * Reasoning patterns detected:
+ *   - "Okay, the user is asking..."
+ *   - "Let me think / start / recall / figure out..."
+ *   - "First, I need to..." / "I should check if..."
+ *   - "Wait, some panels..." / "But wait, ..."
+ *   - "Alternatively, maybe..."
+ *   - "Given the uncertainty, I should..."
+ *
+ * Strategy: Detect if the response starts with reasoning patterns.
+ * If it does, try to extract the "clean answer" portion that follows.
+ * If no clean answer portion exists, return a fallback.
+ */
+const COT_START_PATTERNS = [
+    /^okay,?\s+(the\s+user|so\s+|let)/i,
+    /^(let\s+me\s+(think|start|recall|figure|check|consider|verify))/i,
+    /^(first,?\s+i\s+(need|should|want)\s+to)/i,
+    /^(i\s+(need|should|think|recall|remember|don'?t\s+have)\s)/i,
+    /^(hmm|hm),?\s/i,
+    /^(so,?\s+(the\s+(user|question)|for|if))/i,
+    /^(wait,?\s)/i,
+    /^(alright,?\s+(so|let|the))/i,
+    /^(if\s+there'?s\s+no\s+specific)/i,
+    /^(if\s+(i|the)\s+(don'?t|do\s+not|can'?t))/i,
+    /^(now,?\s+(let|the|i))/i,
+];
+
+const COT_LINE_PATTERNS = [
+    /^(but\s+wait|alternatively|given\s+(the\s+)?uncertainty|i\s+should\s+(check|mention|note|provide|structure|outline)|since\s+(the\s+)?user|maybe\s+(the|there|i)|from\s+what\s+i\s+(know|remember|recall))/i,
+    /^(the\s+user('s|\s+might|\s+is\s+asking))/i,
+    /^(if\s+i'?m\s+not\s+(sure|certain))/i,
+    /^(also,?\s+include|i\s+need\s+to\s+(make|verify|be|respond|figure|check))/i,
+    /^(let\s+me\s+verify)/i,
+    /^(if\s+(not|there),?\s+then)/i,
+];
+
+export function stripRawChainOfThought(text: string, fallbackMsg?: string): string {
+    if (!text || text.length < 100) return text;
+
+    // Quick check: does the text START with a reasoning pattern?
+    const startsWithCoT = COT_START_PATTERNS.some(p => p.test(text.trim()));
+    if (!startsWithCoT) return text;
+
+    // The text starts with CoT. Try to find where the real answer begins.
+    // Split into paragraphs and look for the first non-CoT paragraph.
+    const paragraphs = text.split(/\n{2,}/);
+    const cleanParagraphs: string[] = [];
+    let foundCleanContent = false;
+
+    for (const para of paragraphs) {
+        const trimmed = para.trim();
+        if (!trimmed) continue;
+
+        // Check if this paragraph is reasoning
+        const isReasoning = COT_START_PATTERNS.some(p => p.test(trimmed)) ||
+            COT_LINE_PATTERNS.some(p => p.test(trimmed));
+
+        if (isReasoning && !foundCleanContent) {
+            // Still in the CoT preamble — skip
+            continue;
+        }
+
+        // Once we find non-CoT content, keep everything after
+        foundCleanContent = true;
+        cleanParagraphs.push(para);
+    }
+
+    const cleaned = cleanParagraphs.join('\n\n').trim();
+
+    // If we stripped everything (entire response was reasoning), use fallback
+    if (cleaned.length < 80) {
+        return fallbackMsg ?? text;
+    }
+
+    return cleaned;
+}
+
+/**
  * Full cleanup pipeline for user-facing Sarvam responses.
  * 1. Strips think tags
  * 2. Trims whitespace

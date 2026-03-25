@@ -16,7 +16,7 @@ import {
 import LanguageSelector from '../components/LanguageSelector';
 import DiagramCard from '../components/DiagramCard';
 import { signOut, isAdminEmail, getSupabaseAuth, sanitizeAuthSession } from '@/lib/auth';
-import { loadStoredRAGSettings, fetchServerRAGSettings, type RAGSettings } from '@/lib/rag-settings';
+
 
 interface Conversation {
     id: string;
@@ -289,7 +289,6 @@ export default function Chat() {
     const [isLoadingHistory, setIsLoadingHistory] = useState(false);
     const [loadingConversationId, setLoadingConversationId] = useState<string | null>(null);
     const [historyError, setHistoryError] = useState<ConversationHistoryError | null>(null);
-    const [ragSettings, setRagSettings] = useState<RAGSettings | null>(null);
 
     useEffect(() => {
         if (typeof window !== 'undefined' && isAuthenticated && window.innerWidth >= 1024) {
@@ -297,24 +296,6 @@ export default function Chat() {
         }
     }, [isAuthenticated]);
 
-    useEffect(() => {
-        const refreshSettings = async () => {
-            // Try server first, fall back to localStorage
-            const serverSettings = await fetchServerRAGSettings();
-            if (serverSettings) {
-                setRagSettings(serverSettings);
-            } else {
-                setRagSettings(loadStoredRAGSettings());
-            }
-        };
-
-        void refreshSettings();
-        window.addEventListener('storage', () => void refreshSettings());
-
-        return () => {
-            window.removeEventListener('storage', () => void refreshSettings());
-        };
-    }, []);
 
     // ─── Chat State ───────────────────────────────────────────
     const [language, setLanguage] = useState<'en' | 'bn' | 'hi'>('en');
@@ -346,7 +327,7 @@ export default function Chat() {
 
     const { messages, input, handleInputChange, handleSubmit: rawHandleSubmit, isLoading, append, setMessages, stop } = useChat({
         credentials: 'include',
-        body: { userId, language, conversationId: activeConversationId, ragSettings },
+        body: { userId, language, conversationId: activeConversationId },
         onResponse: (response) => {
             const conversationId = response.headers.get('x-conversation-id');
             if (conversationId) {

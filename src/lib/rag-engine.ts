@@ -595,8 +595,10 @@ function extractRelevantPassage(query: string, answer: string): string {
  */
 function calibrateConfidence(rawSimilarity: number, queryType: QueryType): number {
     // Sigmoid calibration: f(x) = 1 / (1 + e^(-k(x - threshold)))
-    const k = 12;     // steepness
-    const center = 0.52; // center point (where calibrated = 0.5)
+    // NOTE: rawSimilarity here is a COMPOSITE finalScore (vector*0.55 + cross*0.30 + bm25*0.15)
+    //       which ranges ~0.10 to ~0.50 — NOT the raw vector similarity (0-1).
+    const k = 12;       // steepness
+    const center = 0.30; // center point — calibrated for composite finalScore range
 
     const calibrated = 1 / (1 + Math.exp(-k * (rawSimilarity - center)));
 
@@ -902,6 +904,11 @@ export async function retrieve(
     else if (calibratedConfidence >= 0.55) answerMode = 'rag_medium';
     else if (calibratedConfidence >= 0.35) answerMode = 'rag_partial';
     else answerMode = 'general';
+
+    console.log(`  📊 Scoring: topFinalScore=${topScore.toFixed(3)} → calibrated=${calibratedConfidence.toFixed(3)} → mode=${answerMode}`);
+    if (reranked.length > 0) {
+        console.log(`  📎 Top match: "${reranked[0].question.slice(0, 60)}" (vec=${reranked[0].vectorSimilarity.toFixed(3)}, cross=${reranked[0].crossScore.toFixed(3)}, bm25=${reranked[0].bm25Score.toFixed(3)}, final=${reranked[0].finalScore.toFixed(3)})`);
+    }
 
     // Step 9: Build context string with compressed passages (enhanced format)
     const contextString = reranked

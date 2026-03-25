@@ -3,10 +3,12 @@ import 'package:flutter/foundation.dart';
 import '../models/message_model.dart';
 import '../services/chat_service.dart';
 import '../services/conversation_service.dart';
+import '../services/feedback_service.dart';
 
 class ChatProvider extends ChangeNotifier {
   final _chatService = ChatService();
   final _convService = ConversationService();
+  final _feedbackService = FeedbackService();
 
   List<ChatMessage> _messages = [];
   bool _isLoading = false;
@@ -14,6 +16,7 @@ class ChatProvider extends ChangeNotifier {
   String? _activeConversationId;
   String? _sessionTitle;
   bool _sessionSaved = false;
+  String? _storedAccessToken;
 
   List<ChatMessage> get messages => _messages;
   bool get isLoading => _isLoading;
@@ -35,6 +38,7 @@ class ChatProvider extends ChangeNotifier {
     _error = null;
     _isLoading = false;
     _sessionSaved = false;
+    _storedAccessToken = null;
     notifyListeners();
   }
 
@@ -44,6 +48,8 @@ class ChatProvider extends ChangeNotifier {
     String? userId,
     String? accessToken,
   }) async {
+    if (accessToken != null) _storedAccessToken = accessToken;
+
     final userMsg = ChatMessage.user(text);
     _messages = [..._messages, userMsg];
     _isLoading = true;
@@ -52,7 +58,8 @@ class ChatProvider extends ChangeNotifier {
 
     try {
       final apiMessages = _messages
-          .where((m) => m.diagram == null) // exclude diagram messages from history
+          .where(
+              (m) => m.diagram == null) // exclude diagram messages from history
           .map((m) => m.toApiJson())
           .toList();
 
@@ -72,7 +79,6 @@ class ChatProvider extends ChangeNotifier {
       } else {
         _messages = [..._messages, ChatMessage.assistant(result.text)];
       }
-
     } catch (e) {
       _error = e.toString().replaceFirst('Exception: ', '');
     } finally {
@@ -143,10 +149,28 @@ class ChatProvider extends ChangeNotifier {
   }
 
   void updateMessageFeedback(String messageId, int rating) {
+    // Optimistic local update - instant UI response.
     _messages = _messages.map((m) {
       if (m.id == messageId) return m.copyWith(feedbackRating: rating);
       return m;
     }).toList();
     notifyListeners();
+
+    // Fire-and-forget API call - only when a conversation exists on the backend.
+    // Errors are swallowed inside FeedbackService; we never surface them to the user.
+    final conversationId = _activeConversationId;
+    if (conversationId != null) {
+      _feedbackService.submitFeedback(
+        conversationId: conversationId,
+        messageId: messageId,
+        rating: rating,
+        accessToken: _storedAccessToken,
+      );
+    } else {
+      debugPrint(
+        '[ChatProvider] Feedback skipped - no active conversation '
+        '(msg=$messageId rating=$rating)',
+      );
+    }
   }
 }

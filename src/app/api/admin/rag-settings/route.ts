@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabase } from '@/lib/supabase';
+import { invalidateAllCache } from '@/lib/cache';
 
 export async function GET() {
     const supabase = getSupabase();
@@ -66,6 +67,14 @@ export async function PUT(request: NextRequest) {
         if (error) {
             console.error('[admin.rag-settings.put] error', error);
             return NextResponse.json({ error: error.message }, { status: 500 });
+        }
+
+        // Flush all cached answers so queries use the new pipeline settings
+        try {
+            const cacheResult = await invalidateAllCache();
+            console.log(`[admin.rag-settings.put] Cache flushed — Tier1: ${cacheResult.tier1Cleared}, Tier2: ${cacheResult.tier2Cleared} rows`);
+        } catch (cacheErr) {
+            console.warn('[admin.rag-settings.put] Cache flush failed:', (cacheErr as Error).message);
         }
 
         return NextResponse.json({

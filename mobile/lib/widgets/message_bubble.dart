@@ -47,8 +47,7 @@ class MessageBubble extends StatelessWidget {
               leading: const Icon(Icons.copy,
                   size: 20, color: AppColors.textGraphite),
               title: const Text('Copy message',
-                  style:
-                      TextStyle(fontSize: 14, color: AppColors.textInk)),
+                  style: TextStyle(fontSize: 14, color: AppColors.textInk)),
               onTap: () {
                 Clipboard.setData(ClipboardData(text: content));
                 Navigator.pop(context);
@@ -78,17 +77,12 @@ class MessageBubble extends StatelessWidget {
 
   Widget _buildUserBubble(BuildContext context) {
     final bubbleContainer = Container(
-      padding:
-          const EdgeInsets.symmetric(horizontal: 14.0, vertical: 10.0),
+      padding: const EdgeInsets.symmetric(horizontal: 14.0, vertical: 10.0),
       decoration: const BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [
-            Color(0xFF5F473A),
-            Color(0xFF4B2E22),
-            Color(0xFF3A2118)
-          ],
+          colors: [Color(0xFF5F473A), Color(0xFF4B2E22), Color(0xFF3A2118)],
           stops: [0.0, 0.4, 1.0],
         ),
         borderRadius: BorderRadius.only(
@@ -99,13 +93,9 @@ class MessageBubble extends StatelessWidget {
         ),
         boxShadow: [
           BoxShadow(
-              color: Color(0x4D000000),
-              blurRadius: 4,
-              offset: Offset(0, 2)),
+              color: Color(0x4D000000), blurRadius: 4, offset: Offset(0, 2)),
           BoxShadow(
-              color: Color(0x14FFFFFF),
-              blurRadius: 0,
-              offset: Offset(0, 1)),
+              color: Color(0x14FFFFFF), blurRadius: 0, offset: Offset(0, 1)),
         ],
       ),
       child: Text(
@@ -119,8 +109,7 @@ class MessageBubble extends StatelessWidget {
     );
 
     return Padding(
-      padding:
-          const EdgeInsets.only(bottom: 16.0, left: 40.0, right: 16.0),
+      padding: const EdgeInsets.only(bottom: 16.0, left: 40.0, right: 16.0),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.end,
         crossAxisAlignment: CrossAxisAlignment.end,
@@ -135,8 +124,7 @@ class MessageBubble extends StatelessWidget {
           const CircleAvatar(
             radius: 14,
             backgroundColor: Color(0xFF4B2E22),
-            child:
-                Icon(Icons.person, size: 14, color: Color(0xFFFAF7F2)),
+            child: Icon(Icons.person, size: 14, color: Color(0xFFFAF7F2)),
           ),
         ],
       ),
@@ -178,13 +166,11 @@ class MessageBubble extends StatelessWidget {
               fontSize: 14,
               fontWeight: FontWeight.w700,
               color: AppColors.textInk),
-          listBullet: const TextStyle(
-              fontSize: 14, color: AppColors.textInk),
+          listBullet: const TextStyle(fontSize: 14, color: AppColors.textInk),
           strong: const TextStyle(
               fontWeight: FontWeight.w700, color: AppColors.textInk),
           em: const TextStyle(
-              fontStyle: FontStyle.italic,
-              color: AppColors.textGraphite),
+              fontStyle: FontStyle.italic, color: AppColors.textGraphite),
         ),
       );
     }
@@ -206,8 +192,7 @@ class MessageBubble extends StatelessWidget {
     );
 
     return Padding(
-      padding:
-          const EdgeInsets.only(bottom: 16.0, left: 16.0, right: 40.0),
+      padding: const EdgeInsets.only(bottom: 16.0, left: 16.0, right: 40.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -243,59 +228,11 @@ class MessageBubble extends StatelessWidget {
             ],
           ),
           // Feedback row for assistant text messages (not diagrams)
-          if (!isUser && diagram == null) ...[
-            Padding(
-              padding: const EdgeInsets.only(left: 36, top: 6, bottom: 4),
-              child: Divider(
-                height: 1,
-                thickness: 0.5,
-                color: AppColors.borderStitch.withOpacity(0.5),
-              ),
+          if (!isUser && diagram == null)
+            _FeedbackRow(
+              messageId: messageId,
+              feedbackRating: feedbackRating,
             ),
-            Padding(
-              padding: EdgeInsets.zero,
-              child: Row(children: [
-                const SizedBox(width: 40), // offset to align under bubble
-                Text(
-                  'Helpful?',
-                  style: TextStyle(
-                    fontSize: 10,
-                    color: AppColors.textFaint,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                IconButton(
-                  icon: Icon(
-                    Icons.thumb_up_outlined,
-                    size: 13,
-                    color: feedbackRating == 1
-                        ? AppColors.teal
-                        : AppColors.textFaint,
-                  ),
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
-                  onPressed: () => context
-                      .read<ChatProvider>()
-                      .updateMessageFeedback(messageId, 1),
-                ),
-                const SizedBox(width: 8),
-                IconButton(
-                  icon: Icon(
-                    Icons.thumb_down_outlined,
-                    size: 13,
-                    color: feedbackRating == -1
-                        ? AppColors.danger
-                        : AppColors.textFaint,
-                  ),
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
-                  onPressed: () => context
-                      .read<ChatProvider>()
-                      .updateMessageFeedback(messageId, -1),
-                ),
-              ]),
-            ),
-          ],
         ],
       ),
     );
@@ -308,8 +245,7 @@ class TypingIndicatorBubble extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding:
-          const EdgeInsets.only(bottom: 16.0, left: 16.0, right: 40.0),
+      padding: const EdgeInsets.only(bottom: 16.0, left: 16.0, right: 40.0),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.start,
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -427,5 +363,181 @@ class _TypingDotState extends State<_TypingDot>
         );
       },
     );
+  }
+}
+
+class _FeedbackRow extends StatefulWidget {
+  final String messageId;
+  final int? feedbackRating;
+
+  const _FeedbackRow({
+    required this.messageId,
+    required this.feedbackRating,
+  });
+
+  @override
+  State<_FeedbackRow> createState() => _FeedbackRowState();
+}
+
+class _FeedbackRowState extends State<_FeedbackRow>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _pulseCtrl;
+  late Animation<double> _pulseAnim;
+  int? _tappedRating;
+
+  @override
+  void initState() {
+    super.initState();
+    _pulseCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 350),
+    );
+    _pulseAnim = Tween<double>(begin: 1.0, end: 1.35).animate(
+      CurvedAnimation(parent: _pulseCtrl, curve: Curves.elasticOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _pulseCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _handleFeedback(BuildContext context, int rating) async {
+    final previousRating = widget.feedbackRating;
+    setState(() => _tappedRating = rating);
+
+    await HapticFeedback.lightImpact();
+    _pulseCtrl.forward(from: 0);
+
+    if (context.mounted) {
+      context
+          .read<ChatProvider>()
+          .updateMessageFeedback(widget.messageId, rating);
+    }
+
+    if (context.mounted && previousRating != rating) {
+      final label =
+          rating == 1 ? 'Thanks for the feedback!' : "Got it - we'll improve";
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(
+          content: Text(label, style: const TextStyle(fontSize: 13)),
+          backgroundColor: AppColors.textInk,
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 2),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8),
+          ),
+          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        ));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(left: 38, top: 6, bottom: 4),
+          child: Divider(
+            height: 1,
+            thickness: 0.5,
+            color: AppColors.borderStitch.withOpacity(0.5),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.only(left: 40),
+          child: Row(
+            children: [
+              const Text(
+                'Helpful?',
+                style: TextStyle(fontSize: 10, color: AppColors.textFaint),
+              ),
+              const SizedBox(width: 10),
+              _buildThumbButton(
+                context,
+                1,
+                icon: Icons.thumb_up_outlined,
+                selectedIcon: Icons.thumb_up,
+                selectedColor: AppColors.teal,
+              ),
+              const SizedBox(width: 6),
+              _buildThumbButton(
+                context,
+                -1,
+                icon: Icons.thumb_down_outlined,
+                selectedIcon: Icons.thumb_down,
+                selectedColor: AppColors.danger,
+              ),
+              if (widget.feedbackRating != null) ...[
+                const SizedBox(width: 10),
+                Text(
+                  'Feedback sent',
+                  style: TextStyle(
+                    fontSize: 9,
+                    color: widget.feedbackRating == 1
+                        ? AppColors.teal
+                        : AppColors.danger,
+                    fontStyle: FontStyle.italic,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildThumbButton(
+    BuildContext context,
+    int rating, {
+    required IconData icon,
+    required IconData selectedIcon,
+    required Color selectedColor,
+  }) {
+    final isSelected = widget.feedbackRating == rating;
+    final isJustTapped = _tappedRating == rating;
+
+    Widget button = GestureDetector(
+      onTap: () => _handleFeedback(context, rating),
+      behavior: HitTestBehavior.opaque,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.all(6),
+        decoration: BoxDecoration(
+          color:
+              isSelected ? selectedColor.withOpacity(0.10) : Colors.transparent,
+          borderRadius: BorderRadius.circular(6),
+          border: isSelected
+              ? Border.all(color: selectedColor.withOpacity(0.30))
+              : null,
+        ),
+        child: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 200),
+          transitionBuilder: (child, anim) =>
+              ScaleTransition(scale: anim, child: child),
+          child: Icon(
+            isSelected ? selectedIcon : icon,
+            key: ValueKey(isSelected),
+            size: 15,
+            color: isSelected ? selectedColor : AppColors.textFaint,
+          ),
+        ),
+      ),
+    );
+
+    if (isJustTapped) {
+      button = AnimatedBuilder(
+        animation: _pulseAnim,
+        builder: (_, child) =>
+            Transform.scale(scale: _pulseAnim.value, child: child),
+        child: button,
+      );
+    }
+
+    return button;
   }
 }

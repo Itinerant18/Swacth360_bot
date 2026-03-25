@@ -12,12 +12,12 @@ import { logicalRoute, formatRelationalAnswer } from '@/lib/logical-router';
 import { buildDecomposedPromptPrefix, decomposeQuery, mergeSubQueryResults, type SubQuery } from '@/lib/query-decomposer';
 import { logRoute, selectRoute } from '@/lib/router';
 import { classifyQuery, retrieve, type RAGResult, type RankedMatch } from '@/lib/rag-engine';
-import { parseRAGSettings } from '@/lib/rag-settings';
+import { parseRAGSettings, type RAGSettings } from '@/lib/rag-settings';
 import { getSupabase } from '@/lib/supabase';
 import { createServerSupabaseClient } from '@/lib/auth-server';
 import { checkCache, storeCache } from '@/lib/cache';
 import { embedText } from '@/lib/embeddings';
-import { stripThinkTags } from '@/lib/sarvam';
+import { stripThinkTags, stripRawChainOfThought } from '@/lib/sarvam';
 import { rewriteWithContext, type ConversationMessage } from '@/lib/conversation-retrieval';
 import { applyFeedbackBoost } from '@/lib/feedback-reranker';
 import { checkRateLimit, getClientIdentifier, rateLimitHeaders, RATE_LIMITS } from '@/lib/rate-limiter';
@@ -231,33 +231,30 @@ export async function POST(req: Request) {
             language = 'en',
             searchMode = 'standard',
             conversationId: reqConversationId,
-            ragSettings,
         } = await req.json();
         const languageNames = { en: 'English', bn: 'Bengali', hi: 'Hindi' } as const;
         const langName = languageNames[language as keyof typeof languageNames] || 'English';
 
-        // Try client-sent settings first, fall back to server-stored settings
-        let parsedRagSettings = parseRAGSettings(ragSettings);
-        if (!parsedRagSettings) {
-            try {
-                const { data } = await getSupabase()
-                    .from('rag_settings')
-                    .select('*')
-                    .eq('id', 1)
-                    .single();
-                if (data) {
-                    parsedRagSettings = parseRAGSettings({
-                        useHybridSearch: data.use_hybrid_search,
-                        useReranker: data.use_reranker,
-                        useQueryExpansion: data.use_query_expansion,
-                        useGraphBoost: data.use_graph_boost,
-                        topK: data.top_k,
-                        alpha: data.alpha,
-                        mmrLambda: data.mmr_lambda,
-                    });
-                }
-            } catch { /* use defaults if DB fails */ }
-        }
+        // Always read RAG settings from database (single source of truth)
+        let parsedRagSettings: RAGSettings | null = null;
+        try {
+            const { data } = await getSupabase()
+                .from('rag_settings')
+                .select('*')
+                .eq('id', 1)
+                .single();
+            if (data) {
+                parsedRagSettings = parseRAGSettings({
+                    useHybridSearch: data.use_hybrid_search,
+                    useReranker: data.use_reranker,
+                    useQueryExpansion: data.use_query_expansion,
+                    useGraphBoost: data.use_graph_boost,
+                    topK: data.top_k,
+                    alpha: data.alpha,
+                    mmrLambda: data.mmr_lambda,
+                });
+            }
+        } catch { /* use defaults if DB fails */ }
 
         const latestMessage = messages[messages.length - 1].content;
 
@@ -274,9 +271,11 @@ export async function POST(req: Request) {
 
                 // Create or verify conversation
                 if (!activeConversationId) {
+                    // Auto-title from first user message
+                    const autoTitle = latestMessage.slice(0, 60).trim() + (latestMessage.length > 60 ? '…' : '');
                     const { data: conv } = await authSupabase
                         .from('conversations')
-                        .insert({ user_id: user.id, title: '' })
+                        .insert({ user_id: user.id, title: autoTitle })
                         .select('id')
                         .single();
                     if (conv) activeConversationId = conv.id;
@@ -670,7 +669,7 @@ export async function POST(req: Request) {
         const rawAnswer = typeof response.content === 'string'
             ? response.content
             : JSON.stringify(response.content);
-        const answer = stripThinkTags(rawAnswer);
+        const answer = stripRawChainOfThought(stripThinkTags(rawAnswer), notFoundMsg);
 
         void evaluateAndStore({
             question: retrievalQuestion,

@@ -5,7 +5,6 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faSliders, faBrain, faMagnifyingGlass, faSave, faRotate, faTriangleExclamation, faArrowsRotate } from '@fortawesome/free-solid-svg-icons';
 import {
     DEFAULT_RAG_SETTINGS,
-    RAG_SETTINGS_STORAGE_KEY,
     type RAGSettings,
 } from '@/lib/rag-settings';
 
@@ -24,15 +23,9 @@ export default function RAGSettingsTab() {
             if (!res.ok) throw new Error('Failed to load settings');
             const data: RAGSettings = await res.json();
             setSettings(data);
-            // Sync to localStorage so chat client can read them
-            try { localStorage.setItem(RAG_SETTINGS_STORAGE_KEY, JSON.stringify(data)); } catch { /* ok */ }
+
         } catch (err) {
             setError((err as Error).message);
-            // Fall back to localStorage if API fails
-            try {
-                const raw = localStorage.getItem(RAG_SETTINGS_STORAGE_KEY);
-                if (raw) setSettings(JSON.parse(raw));
-            } catch { /* ok */ }
         } finally {
             setLoading(false);
         }
@@ -55,8 +48,7 @@ export default function RAGSettingsTab() {
                 const data = await res.json();
                 throw new Error(data.error || 'Failed to save settings');
             }
-            // Sync to localStorage for chat client
-            try { localStorage.setItem(RAG_SETTINGS_STORAGE_KEY, JSON.stringify(settings)); } catch { /* ok */ }
+
             setSaved(true);
             setTimeout(() => setSaved(false), 2000);
         } catch (err) {
@@ -77,7 +69,7 @@ export default function RAGSettingsTab() {
                 body: JSON.stringify(DEFAULT_RAG_SETTINGS),
             });
             if (!res.ok) throw new Error('Failed to reset settings');
-            try { localStorage.removeItem(RAG_SETTINGS_STORAGE_KEY); } catch { /* ok */ }
+
         } catch (err) {
             setError((err as Error).message);
         } finally {
