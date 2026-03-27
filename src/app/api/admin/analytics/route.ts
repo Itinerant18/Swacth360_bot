@@ -1,4 +1,5 @@
 import { getSupabase } from '@/lib/supabase';
+import { getAnalyticsSummary } from '@/lib/logger';
 import { NextResponse } from 'next/server';
 
 // GET - Return analytics data
@@ -150,6 +151,8 @@ export async function GET() {
         const totalTokens = tokenData.reduce((sum: number, t: { tokens_used: number }) => sum + t.tokens_used, 0);
         const totalRequests = tokenData.reduce((sum: number, t: { request_count: number }) => sum + t.request_count, 0);
 
+        const assistantMonitoring = await getAnalyticsSummary(24);
+
         return NextResponse.json({
             totalChats: total,
             ragCount: rag,
@@ -182,6 +185,7 @@ export async function GET() {
                 totalTokens,
                 totalRequests,
             },
+            assistantMonitoring,
         });
     } catch (err: unknown) {
         console.error('[admin.analytics] error', err);

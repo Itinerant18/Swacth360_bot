@@ -9,6 +9,12 @@ export interface ConfidenceResult {
     consistency: number;
 }
 
+export interface RetrievalDecisionParams {
+    complexity: 'simple' | 'medium' | 'complex';
+    confidence?: number;
+    entityCount?: number;
+}
+
 export function answerModeFromConfidence(score: number): 'rag_high' | 'rag_medium' | 'rag_partial' | 'general' {
     if (score >= 0.75) {
         return 'rag_high';
@@ -23,6 +29,34 @@ export function answerModeFromConfidence(score: number): 'rag_high' | 'rag_mediu
     }
 
     return 'general';
+}
+
+export function isFastPathCandidate(params: {
+    query: string;
+    complexity: 'simple' | 'medium' | 'complex';
+}): boolean {
+    const wordCount = params.query.trim().split(/\s+/).filter(Boolean).length;
+    return params.complexity === 'simple' && wordCount <= 8;
+}
+
+export function deriveAdaptiveTopK(params: RetrievalDecisionParams): number {
+    const { complexity, confidence = 0, entityCount = 0 } = params;
+
+    if (confidence >= 0.72 || complexity === 'simple' || entityCount > 0) {
+        return 3;
+    }
+
+    return complexity === 'complex' ? 5 : 4;
+}
+
+export function shouldUseVerificationPass(params: {
+    complexity: 'simple' | 'medium' | 'complex';
+    confidence: number;
+    matchCount: number;
+}): boolean {
+    return params.complexity === 'complex'
+        && params.confidence < 0.62
+        && params.matchCount >= 3;
 }
 
 function clamp(value: number, min: number, max: number): number {

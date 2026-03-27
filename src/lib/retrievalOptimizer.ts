@@ -86,7 +86,9 @@ function deriveTopK(intent: IntentClassification, analysis: QueryAnalysis, confi
         ? 3
         : analysis.type === 'comparative'
             ? 5
-            : 4;
+            : analysis.complexity === 'complex'
+                ? 5
+                : 4;
 
     return clamp(configuredTopK, 1, intentCap);
 }

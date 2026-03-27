@@ -18,7 +18,7 @@ import { createServerSupabaseClient } from '@/lib/auth-server';
 import { checkCache, storeCache } from '@/lib/cache';
 import { embedText } from '@/lib/embeddings';
 import { stripThinkTags, stripRawChainOfThought } from '@/lib/sarvam';
-import { type ConversationMessage } from '@/lib/conversation-retrieval';
+import { isLikelyFollowUp, type ConversationMessage } from '@/lib/conversation-retrieval';
 import { applyFeedbackBoost } from '@/lib/feedback-reranker';
 import { checkRateLimit, getClientIdentifier, rateLimitHeaders, RATE_LIMITS } from '@/lib/rate-limiter';
 import { buildCasualResponse, buildIntentStylePrompt, classifyIntent } from '@/lib/intentClassifier';
@@ -26,12 +26,17 @@ import { extractKeywordsAndEntities, processQuery } from '@/lib/queryProcessor';
 import { formatResponse } from '@/lib/responseFormatter';
 import { buildRetrievalPlan } from '@/lib/retrievalOptimizer';
 import { generateQueryExpansions } from '@/lib/queryExpansion';
-import { generateHydeEmbedding } from '@/lib/hydeGenerator';
-import { runMultiVectorSearch } from '@/lib/vectorSearch';
+import { generateHydeEmbedding, shouldGenerateHyde } from '@/lib/hydeGenerator';
+import { createEmbeddingStore, runMultiVectorSearch } from '@/lib/vectorSearch';
 import { retrieveRaptorContexts } from '@/lib/raptorRetrieval';
 import { rankAndDeduplicateContext } from '@/lib/contextRanker';
-import { answerModeFromConfidence, scoreConfidence } from '@/lib/confidence';
+import { answerModeFromConfidence, deriveAdaptiveTopK, isFastPathCandidate, scoreConfidence, shouldUseVerificationPass } from '@/lib/confidence';
 import { sanitizeInput } from '@/lib/sanitize';
+import { createStageTimer, recordMetric, type PipelineMetric } from '@/lib/pipelineMetrics';
+import { checkSemanticCache, storeSemanticCache } from '@/lib/semanticCache';
+import { mergeHybridMatches, searchKeywordMatches } from '@/lib/hybridSearch';
+import { buildContextWindow, rerankMatches } from '@/lib/reranker';
+import { recordChatLog, recordFailure, type CacheSource } from '@/lib/logger';
 
 dns.setDefaultResultOrder('ipv4first');
 
@@ -113,6 +118,13 @@ function buildChatResponse(
 
 function elapsed(start: number): string {
     return `${((performance.now() - start) / 1000).toFixed(2)}s`;
+}
+
+function buildChunkLabels(matches: RankedMatch[]): string[] {
+    return matches.slice(0, 5).map((match) => {
+        const source = match.source_name || match.source || 'kb';
+        return `${source} | ${match.question}`.replace(/\s+/g, ' ').trim().slice(0, 140);
+    });
 }
 
 function shouldUseHybridRetrieval(
@@ -285,9 +297,18 @@ async function runRetrievalStages(params: {
     queryEmbedding?: number[];
     keywords?: string[];
     entities?: string[];
+    requestCache?: ReturnType<typeof createEmbeddingStore>;
 }): Promise<{
     ragResult: RAGResult;
     fallbackMessage?: string;
+    diagnostics: {
+        hydeUsed: boolean;
+        hydeAttempted: boolean;
+        queryExpansionUsed: boolean;
+        keywordMatches: number;
+        degradationApplied: boolean;
+        effectiveTopK: number;
+    };
 }> {
     const {
         query,
@@ -297,42 +318,46 @@ async function runRetrievalStages(params: {
         queryEmbedding,
         keywords = [],
         entities = [],
+        requestCache,
     } = params;
 
+    const retrievalStart = performance.now();
     const fallbackKeywords = keywords.length > 0
         ? keywords
         : query.toLowerCase().split(/\W+/).filter((token) => token.length > 2).slice(0, 5);
     const resolvedQueryEmbedding = queryEmbedding ?? await embedText(query);
 
-    const [expansionResult, hydeResult] = await Promise.all([
-        generateQueryExpansions({
-            query,
-            keywords: fallbackKeywords,
-            entities,
-            llm: retrieveOptions.useQueryExpansion ? llm : undefined,
-            maxVariations: 5,
-        }),
-        retrieveOptions.useHYDE
-            ? generateHydeEmbedding({
-                query,
-                queryType: analysis.type,
-                llm,
-            })
-            : Promise.resolve({ text: null, embedding: null, timedOut: false }),
-    ]);
+    const emptyVectorResult = {
+        queryEmbedding: resolvedQueryEmbedding,
+        matches: [] as RankedMatch[],
+        stats: {
+            queryVectorHits: 0,
+            hydeVectorHits: 0,
+            expandedVectorHits: 0,
+            totalCandidates: 0,
+        },
+    };
 
-    const [vectorResult, raptorMatches] = await Promise.all([
+    const [baseVectorResult, expansionResult, raptorMatches, keywordMatches] = await Promise.all([
         runMultiVectorSearch({
             query,
             queryEmbedding: resolvedQueryEmbedding,
-            expandedQueries: expansionResult.variations,
-            hydeEmbedding: hydeResult.embedding,
+            expandedQueries: [],
+            hydeEmbedding: null,
             similarityThreshold: retrieveOptions.similarityThreshold,
             useMMR: retrieveOptions.useMMR,
             useWeighted: retrieveOptions.useWeighted,
             mmrLambda: retrieveOptions.mmrLambda,
             recencyBoost: retrieveOptions.recencyBoost,
             preferredChunkType: retrieveOptions.preferredChunkType,
+            requestCache,
+        }),
+        generateQueryExpansions({
+            query,
+            keywords: fallbackKeywords,
+            entities,
+            llm: retrieveOptions.useQueryExpansion ? llm : undefined,
+            maxVariations: 4,
         }),
         retrieveRaptorContexts({
             queryEmbedding: resolvedQueryEmbedding,
@@ -340,9 +365,112 @@ async function runRetrievalStages(params: {
             topK: Math.max(retrieveOptions.topK, 4),
             threshold: retrieveOptions.similarityThreshold,
         }),
+        retrieveOptions.useHybridSearch
+            ? searchKeywordMatches({
+                query,
+                topK: Math.max(retrieveOptions.topK * 2, 6),
+            })
+            : Promise.resolve([] as RankedMatch[]),
     ]);
 
-    const combinedMatches = [...vectorResult.matches, ...raptorMatches];
+    const expandedVectorResult = expansionResult.variations.length > 0
+        ? await runMultiVectorSearch({
+            query,
+            queryEmbedding: resolvedQueryEmbedding,
+            expandedQueries: expansionResult.variations,
+            hydeEmbedding: null,
+            similarityThreshold: retrieveOptions.similarityThreshold,
+            useMMR: retrieveOptions.useMMR,
+            useWeighted: retrieveOptions.useWeighted,
+            mmrLambda: retrieveOptions.mmrLambda,
+            recencyBoost: retrieveOptions.recencyBoost,
+            preferredChunkType: retrieveOptions.preferredChunkType,
+            includeQueryVector: false,
+            requestCache,
+        })
+        : emptyVectorResult;
+
+    const preliminaryCandidates = mergeHybridMatches({
+        query,
+        vectorMatches: [
+            ...baseVectorResult.matches,
+            ...expandedVectorResult.matches,
+            ...raptorMatches,
+        ],
+        keywordMatches,
+        topK: Math.max(retrieveOptions.topK * 3, 10),
+    });
+    const preliminaryReranked = rerankMatches({
+        query,
+        matches: preliminaryCandidates,
+        topK: Math.max(retrieveOptions.topK * 2, 6),
+    });
+    const preliminaryConfidence = scoreConfidence({
+        query,
+        matches: preliminaryReranked.slice(0, 3),
+        baseConfidence: preliminaryReranked[0]?.finalScore ?? 0,
+    });
+    const effectiveTopK = Math.min(
+        retrieveOptions.topK,
+        deriveAdaptiveTopK({
+            complexity: analysis.complexity,
+            confidence: preliminaryConfidence.score,
+            entityCount: entities.length,
+        }),
+    );
+
+    const hydeEnabled = shouldGenerateHyde({
+        enabled: retrieveOptions.useHYDE,
+        queryType: analysis.type,
+        complexity: analysis.complexity,
+        preliminaryConfidence: preliminaryConfidence.score,
+        elapsedMs: performance.now() - retrievalStart,
+        hasEntities: entities.length > 0,
+    });
+
+    const hydeResult = hydeEnabled
+        ? await generateHydeEmbedding({
+            query,
+            queryType: analysis.type,
+            llm,
+            enabled: true,
+        })
+        : {
+            text: null,
+            embedding: null,
+            timedOut: false,
+            attempted: false,
+            skipped: true,
+        };
+
+    const hydeVectorResult = hydeResult.embedding
+        ? await runMultiVectorSearch({
+            query,
+            queryEmbedding: resolvedQueryEmbedding,
+            expandedQueries: [],
+            hydeEmbedding: hydeResult.embedding,
+            similarityThreshold: retrieveOptions.similarityThreshold,
+            useMMR: retrieveOptions.useMMR,
+            useWeighted: retrieveOptions.useWeighted,
+            mmrLambda: retrieveOptions.mmrLambda,
+            recencyBoost: retrieveOptions.recencyBoost,
+            preferredChunkType: retrieveOptions.preferredChunkType,
+            includeQueryVector: false,
+            requestCache,
+        })
+        : emptyVectorResult;
+
+    const combinedMatches = rerankMatches({
+        query,
+        matches: mergeHybridMatches({
+            query,
+            vectorMatches: [...preliminaryCandidates, ...hydeVectorResult.matches],
+            keywordMatches: [],
+            topK: Math.max(effectiveTopK * 3, 10),
+        }),
+        topK: Math.max(effectiveTopK * 2, 6),
+    });
+
     if (combinedMatches.length > 0) {
         await applyFeedbackBoost(combinedMatches);
     }
@@ -350,7 +478,7 @@ async function runRetrievalStages(params: {
     const rankedContext = rankAndDeduplicateContext({
         query,
         matches: combinedMatches,
-        maxContexts: retrieveOptions.topK,
+        maxContexts: effectiveTopK,
         preferredChunkType: retrieveOptions.preferredChunkType,
     });
     const confidenceResult = scoreConfidence({
@@ -358,6 +486,8 @@ async function runRetrievalStages(params: {
         matches: rankedContext.matches,
         baseConfidence: rankedContext.matches[0]?.finalScore ?? 0,
     });
+    const contextString = buildContextWindow(rankedContext.matches, 1200);
+    const totalCandidates = preliminaryCandidates.length + hydeVectorResult.matches.length;
 
     return {
         ragResult: {
@@ -365,12 +495,12 @@ async function runRetrievalStages(params: {
             queryAnalysis: analysis,
             answerMode: answerModeFromConfidence(confidenceResult.score),
             confidence: confidenceResult.score,
-            contextString: rankedContext.contextString,
+            contextString,
             retrievalStats: {
-                queryVectorHits: vectorResult.stats.queryVectorHits,
-                hydeVectorHits: vectorResult.stats.hydeVectorHits,
-                expandedVectorHits: vectorResult.stats.expandedVectorHits,
-                totalCandidates: combinedMatches.length,
+                queryVectorHits: baseVectorResult.stats.queryVectorHits,
+                hydeVectorHits: hydeVectorResult.stats.hydeVectorHits,
+                expandedVectorHits: expandedVectorResult.stats.expandedVectorHits,
+                totalCandidates,
                 afterRerank: rankedContext.matches.length,
                 latencyMs: 0,
             },
@@ -378,20 +508,47 @@ async function runRetrievalStages(params: {
                 sourcesUsed: [...new Set(rankedContext.matches.map((match) => match.source_name || match.source))],
                 totalMatches: rankedContext.matches.length,
                 vectorSources: {
-                    query: vectorResult.stats.queryVectorHits,
-                    hyde: vectorResult.stats.hydeVectorHits,
-                    expanded: vectorResult.stats.expandedVectorHits,
+                    query: baseVectorResult.stats.queryVectorHits,
+                    hyde: hydeVectorResult.stats.hydeVectorHits,
+                    expanded: expandedVectorResult.stats.expandedVectorHits,
                 },
                 topConfidence: confidenceResult.score,
-                retrievalMethod: `pipeline:exp=${expansionResult.variations.length}:hyde=${hydeResult.embedding ? 1 : 0}:raptor=${raptorMatches.length}:filtered=${rankedContext.filteredCount}:deduped=${rankedContext.duplicateCount}`,
+                retrievalMethod: `pipeline:exp=${expansionResult.variations.length}:hyde=${hydeResult.embedding ? 1 : 0}:raptor=${raptorMatches.length}:keyword=${keywordMatches.length}:filtered=${rankedContext.filteredCount}:deduped=${rankedContext.duplicateCount}:topk=${effectiveTopK}`,
             },
         },
         fallbackMessage: confidenceResult.fallbackMessage,
+        diagnostics: {
+            hydeUsed: Boolean(hydeResult.embedding),
+            hydeAttempted: hydeResult.attempted,
+            queryExpansionUsed: expansionResult.variations.length > 0,
+            keywordMatches: keywordMatches.length,
+            degradationApplied: retrieveOptions.useHYDE && !hydeEnabled,
+            effectiveTopK,
+        },
     };
 }
 
 export async function POST(req: Request) {
     const requestStart = performance.now();
+    const stageTimer = createStageTimer();
+    const requestEmbeddingCache = createEmbeddingStore();
+    const requestId = `req_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const metricsSnapshot: Partial<PipelineMetric> = {
+        requestId,
+        cacheHit: false,
+        cacheTier: null,
+        answerMode: 'unknown',
+        confidence: 0,
+        matchCount: 0,
+        hydeUsed: false,
+        queryExpansionUsed: false,
+        error: null,
+    };
+    let cacheSource: CacheSource = 'none';
+    let llmCallCount = 0;
+    let originalQueryForLog = '';
+    let rewrittenQueryForLog = '';
+    let intentForLog = 'unknown';
 
     // ── Rate Limiting ─────────────────────────────────────────────
     try {
@@ -427,6 +584,7 @@ export async function POST(req: Request) {
         const langName = languageNames[language as keyof typeof languageNames] || 'English';
 
         // Always read RAG settings from database (single source of truth)
+        stageTimer.mark('auth');
         let parsedRagSettings: RAGSettings | null = null;
         try {
             const { data } = await getSupabase()
@@ -521,6 +679,7 @@ export async function POST(req: Request) {
                     }
                 }
             }
+            stageTimer.end('auth');
         } catch (authErr) {
             // Auth is optional — continue without persistence
             console.warn('Auth/conversation resolution skipped:', (authErr as Error).message);
@@ -579,12 +738,17 @@ export async function POST(req: Request) {
             maxTokens: 768,
         });
 
+        if (language !== 'en' && !isEnglish(latestMessage)) {
+            llmCallCount += 1;
+        }
+        stageTimer.mark('translation');
         const englishQuestion = await translateToEnglish(
             latestMessage,
             language,
             sarvamLlm,
             conversationHistory
         );
+        stageTimer.end('translation');
 
         if (language !== 'en' && !isEnglish(latestMessage)) {
             console.log(`Translation [${language}->EN]: "${englishQuestion}"`);
@@ -599,14 +763,21 @@ export async function POST(req: Request) {
                 content: m.content,
             }));
 
+        originalQueryForLog = englishQuestion;
+        const shouldUseRewriteModel = contextMessages.length > 0 && isLikelyFollowUp(englishQuestion);
+        if (shouldUseRewriteModel) {
+            llmCallCount += 1;
+        }
         const processedQuery = await processQuery({
             originalQuery: englishQuestion,
             history: contextMessages,
-            llm: sarvamLlm,
+            llm: shouldUseRewriteModel ? sarvamLlm : undefined,
         });
         const retrievalQuestion = processedQuery.retrievalQuery;
         const baseAnalysis = classifyQuery(retrievalQuestion);
         const intent = classifyIntent(retrievalQuestion, baseAnalysis);
+        rewrittenQueryForLog = retrievalQuestion;
+        intentForLog = intent.intent;
 
         if (processedQuery.retrievalQuery !== processedQuery.normalizedOriginal) {
             console.log(`Query rewrite: "${processedQuery.normalizedOriginal}" -> "${processedQuery.retrievalQuery}"`);
@@ -622,6 +793,24 @@ export async function POST(req: Request) {
                 conversationId: activeConversationId,
                 content: casualAnswer,
                 answerMode: 'casual',
+            });
+
+            recordChatLog({
+                requestId,
+                query: originalQueryForLog || latestMessage,
+                rewrittenQuery: rewrittenQueryForLog || latestMessage,
+                intent: intentForLog,
+                retrievedChunks: [],
+                finalChunks: [],
+                confidence: 1,
+                responseTimeMs: performance.now() - requestStart,
+                success: true,
+                fallbackTriggered: false,
+                cacheSource,
+                hydeUsed: false,
+                queryExpansionUsed: false,
+                llmCalls: llmCallCount,
+                error: null,
             });
 
             return buildChatResponse(casualAnswer, activeConversationId, rateLimitResult);
@@ -640,9 +829,12 @@ export async function POST(req: Request) {
 
         // Tier 1 Cache Check (exact match, no embedding needed)
         // Skip cache for diagram requests
+        stageTimer.mark('cacheCheck');
         if (!isDiagram) {
             const tier1CacheResult = await checkCache(retrievalQuestion, null);
             if (tier1CacheResult.hit) {
+                stageTimer.end('cacheCheck');
+                cacheSource = 'exact';
                 console.log('[chat] Cache Tier 1 hit - skipping full RAG pipeline');
                 const cachedAnswer = formatResponse(tier1CacheResult.answer, {
                     intent: intent.intent,
@@ -656,7 +848,39 @@ export async function POST(req: Request) {
                     answerMode: 'cache',
                 });
 
-                return buildChatResponse(cachedAnswer, activeConversationId, rateLimitResult, { 'x-cache': 'HIT:tier1' });
+                void recordMetric({
+                    ...metricsSnapshot,
+                    totalLatencyMs: performance.now() - requestStart,
+                    stages: stageTimer.getTimings(),
+                    cacheHit: true,
+                    cacheTier: 1,
+                    answerMode: 'cache',
+                    confidence: 0.88,
+                    createdAt: new Date().toISOString(),
+                } as PipelineMetric);
+
+                recordChatLog({
+                    requestId,
+                    query: originalQueryForLog || latestMessage,
+                    rewrittenQuery: retrievalQuestion,
+                    intent: intentForLog,
+                    retrievedChunks: [],
+                    finalChunks: [],
+                    confidence: 0.88,
+                    responseTimeMs: performance.now() - requestStart,
+                    success: true,
+                    fallbackTriggered: false,
+                    cacheSource,
+                    hydeUsed: false,
+                    queryExpansionUsed: false,
+                    llmCalls: llmCallCount,
+                    error: null,
+                });
+
+                return buildChatResponse(cachedAnswer, activeConversationId, rateLimitResult, {
+                    'x-cache': 'HIT:tier1',
+                    'x-pipeline-latency': `${(performance.now() - requestStart).toFixed(0)}ms`,
+                });
             }
         }
 
@@ -664,16 +888,102 @@ export async function POST(req: Request) {
         const { decision, relationalResult } = await logicalRoute(retrievalQuestion);
         if (decision.route === 'relational' && relationalResult) {
             const relationalAnswer = formatRelationalAnswer(relationalResult, langName);
+            recordChatLog({
+                requestId,
+                query: originalQueryForLog || latestMessage,
+                rewrittenQuery: retrievalQuestion,
+                intent: intentForLog,
+                retrievedChunks: [],
+                finalChunks: [],
+                confidence: 0.9,
+                responseTimeMs: performance.now() - requestStart,
+                success: true,
+                fallbackTriggered: false,
+                cacheSource,
+                hydeUsed: false,
+                queryExpansionUsed: false,
+                llmCalls: llmCallCount,
+                error: null,
+            });
             return buildChatResponse(relationalAnswer, activeConversationId, rateLimitResult);
         }
 
-        // Embed query (reused for Tier 2 cache + RAG retrieval)
+        // Embed query (reused for semantic cache, Tier 2 cache, and RAG retrieval)
+        stageTimer.mark('embedding');
         const cachedQueryEmbedding = await embedText(retrievalQuestion);
+        stageTimer.end('embedding');
+
+        if (!isDiagram && isFastPathCandidate({ query: retrievalQuestion, complexity: baseAnalysis.complexity })) {
+            const semanticFastPath = checkSemanticCache({
+                query: retrievalQuestion,
+                queryEmbedding: cachedQueryEmbedding,
+            });
+
+            if (semanticFastPath.hit) {
+                stageTimer.end('cacheCheck');
+                cacheSource = 'semantic_local';
+                console.log(`[chat] Local semantic cache hit (sim=${semanticFastPath.similarity.toFixed(3)}) - skipping full RAG pipeline`);
+
+                const cachedAnswer = formatResponse(semanticFastPath.answer, {
+                    intent: intent.intent,
+                    confidence: semanticFastPath.similarity,
+                });
+
+                await persistAssistantMessage({
+                    enabled: Boolean(authUserId),
+                    conversationId: activeConversationId,
+                    content: cachedAnswer,
+                    answerMode: 'cache',
+                    topSimilarity: semanticFastPath.similarity,
+                });
+
+                void recordMetric({
+                    ...metricsSnapshot,
+                    totalLatencyMs: performance.now() - requestStart,
+                    stages: stageTimer.getTimings(),
+                    cacheHit: true,
+                    cacheTier: 2,
+                    answerMode: 'cache',
+                    confidence: semanticFastPath.similarity,
+                    createdAt: new Date().toISOString(),
+                } as PipelineMetric);
+
+                recordChatLog({
+                    requestId,
+                    query: originalQueryForLog || latestMessage,
+                    rewrittenQuery: retrievalQuestion,
+                    intent: intentForLog,
+                    retrievedChunks: [],
+                    finalChunks: [],
+                    confidence: semanticFastPath.similarity,
+                    responseTimeMs: performance.now() - requestStart,
+                    success: true,
+                    fallbackTriggered: false,
+                    cacheSource,
+                    hydeUsed: false,
+                    queryExpansionUsed: false,
+                    llmCalls: llmCallCount,
+                    error: null,
+                });
+
+                return buildChatResponse(
+                    cachedAnswer,
+                    activeConversationId,
+                    rateLimitResult,
+                    {
+                        'x-cache': `HIT:semantic:${semanticFastPath.similarity.toFixed(3)}`,
+                        'x-pipeline-latency': `${(performance.now() - requestStart).toFixed(0)}ms`,
+                    },
+                );
+            }
+        }
 
         // Tier 2 Cache Check (semantic match) — also skip for diagram requests
         if (!isDiagram) {
             const tier2CacheResult = await checkCache(retrievalQuestion, cachedQueryEmbedding);
             if (tier2CacheResult.hit) {
+                stageTimer.end('cacheCheck');
+                cacheSource = 'semantic_db';
                 console.log(`[chat] Cache Tier 2 hit (sim=${tier2CacheResult.similarity?.toFixed(3)}) - skipping full RAG pipeline`);
 
                 const cachedAnswer = formatResponse(tier2CacheResult.answer, {
@@ -689,19 +999,60 @@ export async function POST(req: Request) {
                     topSimilarity: tier2CacheResult.similarity,
                 });
 
+                void recordMetric({
+                    ...metricsSnapshot,
+                    totalLatencyMs: performance.now() - requestStart,
+                    stages: stageTimer.getTimings(),
+                    cacheHit: true,
+                    cacheTier: 2,
+                    answerMode: 'cache',
+                    confidence: tier2CacheResult.similarity ?? 0.82,
+                    createdAt: new Date().toISOString(),
+                } as PipelineMetric);
+
+                recordChatLog({
+                    requestId,
+                    query: originalQueryForLog || latestMessage,
+                    rewrittenQuery: retrievalQuestion,
+                    intent: intentForLog,
+                    retrievedChunks: [],
+                    finalChunks: [],
+                    confidence: tier2CacheResult.similarity ?? 0.82,
+                    responseTimeMs: performance.now() - requestStart,
+                    success: true,
+                    fallbackTriggered: false,
+                    cacheSource,
+                    hydeUsed: false,
+                    queryExpansionUsed: false,
+                    llmCalls: llmCallCount,
+                    error: null,
+                });
+
                 return buildChatResponse(
                     cachedAnswer,
                     activeConversationId,
                     rateLimitResult,
-                    { 'x-cache': `HIT:tier2:${tier2CacheResult.similarity?.toFixed(3)}` },
+                    {
+                        'x-cache': `HIT:tier2:${tier2CacheResult.similarity?.toFixed(3)}`,
+                        'x-pipeline-latency': `${(performance.now() - requestStart).toFixed(0)}ms`,
+                    },
                 );
             }
         }
 
+        stageTimer.end('cacheCheck');
+
         const routedRetrievalConfig = selectRoute(baseAnalysis, langName, notFoundMsg);
         logRoute(baseAnalysis, routedRetrievalConfig);
 
-        const decomposed = await decomposeQuery(retrievalQuestion, baseAnalysis, sarvamLlm);
+        // Gate decomposition: skip for simple queries (saves an LLM call)
+        const isSimple = baseAnalysis.complexity === 'simple';
+        if (!isSimple) {
+            llmCallCount += 1;
+        }
+        const decomposed = isSimple
+            ? { isDecomposed: false as const, subQueries: [], reasoning: 'Skipped — simple query', originalQuery: retrievalQuestion }
+            : await decomposeQuery(retrievalQuestion, baseAnalysis, sarvamLlm);
         const decomposedPrefix = buildDecomposedPromptPrefix(decomposed);
         const retrieveOptions = buildRetrievalPlan({
             analysis: baseAnalysis,
@@ -717,9 +1068,22 @@ export async function POST(req: Request) {
             ),
         });
 
+        if (retrieveOptions.useQueryExpansion) {
+            llmCallCount += 1;
+        }
+
+        stageTimer.mark('retrieval');
         const ragStart = performance.now();
         let lastRagResult: RAGResult;
         let fallbackMessage: string | undefined;
+        let retrievalDiagnostics = {
+            hydeUsed: false,
+            hydeAttempted: false,
+            queryExpansionUsed: false,
+            keywordMatches: 0,
+            degradationApplied: false,
+            effectiveTopK: retrieveOptions.topK,
+        };
 
         if (decomposed.isDecomposed) {
             // Each sub-query has a different search string — do NOT reuse the parent embedding
@@ -733,12 +1097,14 @@ export async function POST(req: Request) {
                         retrieveOptions,
                         keywords: extracted.keywords,
                         entities: extracted.entities,
+                        requestCache: requestEmbeddingCache,
                     });
 
                     return {
                         subQuery,
                         ragResult: stageResult.ragResult,
                         fallbackMessage: stageResult.fallbackMessage,
+                        diagnostics: stageResult.diagnostics,
                     };
                 })
             );
@@ -747,6 +1113,14 @@ export async function POST(req: Request) {
                 subResults.map(({ subQuery, ragResult }) => ({ subQuery, ragResult })),
                 ragStart
             );
+            retrievalDiagnostics = {
+                hydeUsed: subResults.some((result) => result.diagnostics.hydeUsed),
+                hydeAttempted: subResults.some((result) => result.diagnostics.hydeAttempted),
+                queryExpansionUsed: subResults.some((result) => result.diagnostics.queryExpansionUsed),
+                keywordMatches: subResults.reduce((sum, result) => sum + result.diagnostics.keywordMatches, 0),
+                degradationApplied: subResults.some((result) => result.diagnostics.degradationApplied),
+                effectiveTopK: Math.max(retrieveOptions.topK, ...subResults.map((result) => result.diagnostics.effectiveTopK)),
+            };
         } else {
             const stageResult = await runRetrievalStages({
                 query: retrievalQuestion,
@@ -756,19 +1130,28 @@ export async function POST(req: Request) {
                 queryEmbedding: cachedQueryEmbedding,
                 keywords: processedQuery.keywords,
                 entities: processedQuery.entities,
+                requestCache: requestEmbeddingCache,
             });
 
             lastRagResult = stageResult.ragResult;
             fallbackMessage = stageResult.fallbackMessage;
+            retrievalDiagnostics = stageResult.diagnostics;
+        }
+
+        metricsSnapshot.hydeUsed = retrievalDiagnostics.hydeUsed;
+        metricsSnapshot.queryExpansionUsed = retrievalDiagnostics.queryExpansionUsed;
+        if (retrievalDiagnostics.hydeAttempted) {
+            llmCallCount += 1;
         }
 
         // ── Feedback-Driven Reranking Boost ──────────────────────────
         // Adjust scores based on historical user feedback (thumbs up/down)
+        stageTimer.mark('reranking');
         if (decomposed.isDecomposed) {
             const rerankedMerged = rankAndDeduplicateContext({
                 query: retrievalQuestion,
                 matches: lastRagResult.matches,
-                maxContexts: retrieveOptions.topK,
+                maxContexts: retrievalDiagnostics.effectiveTopK,
                 preferredChunkType: retrieveOptions.preferredChunkType,
             });
             const mergedConfidence = scoreConfidence({
@@ -782,7 +1165,7 @@ export async function POST(req: Request) {
                 matches: rerankedMerged.matches,
                 confidence: mergedConfidence.score,
                 answerMode: answerModeFromConfidence(mergedConfidence.score),
-                contextString: rerankedMerged.contextString,
+                contextString: buildContextWindow(rerankedMerged.matches, 1200),
                 retrievalStats: {
                     ...lastRagResult.retrievalStats,
                     afterRerank: rerankedMerged.matches.length,
@@ -811,6 +1194,8 @@ export async function POST(req: Request) {
             };
         }
 
+        stageTimer.end('reranking');
+        stageTimer.end('retrieval');
         console.log(`RAG pipeline completed [${elapsed(ragStart)}]`);
 
         const {
@@ -854,6 +1239,24 @@ export async function POST(req: Request) {
                 user_id: userId || null,
             }).then(({ error }) => { if (error) console.warn('chat_sessions insert failed:', error.message); });
 
+            recordChatLog({
+                requestId,
+                query: originalQueryForLog || latestMessage,
+                rewrittenQuery: retrievalQuestion,
+                intent: intentForLog,
+                retrievedChunks: buildChunkLabels(matches),
+                finalChunks: buildChunkLabels(matches),
+                confidence,
+                responseTimeMs: performance.now() - requestStart,
+                success: true,
+                fallbackTriggered: false,
+                cacheSource,
+                hydeUsed: retrievalDiagnostics.hydeUsed,
+                queryExpansionUsed: retrievalDiagnostics.queryExpansionUsed,
+                llmCalls: llmCallCount,
+                error: null,
+            });
+
             const payload = JSON.stringify(storedDiagramPayload);
             return textStreamResponse(`DIAGRAM_RESPONSE:${payload}`);
         }
@@ -888,6 +1291,24 @@ export async function POST(req: Request) {
                         user_id: userId || null,
                     }).then(({ error }) => { if (error) console.warn('chat_sessions insert failed:', error.message); });
 
+                    recordChatLog({
+                        requestId,
+                        query: originalQueryForLog || latestMessage,
+                        rewrittenQuery: retrievalQuestion,
+                        intent: intentForLog,
+                        retrievedChunks: buildChunkLabels(matches),
+                        finalChunks: buildChunkLabels(matches),
+                        confidence: diagramData.hasKBContext ? confidence : 0.3,
+                        responseTimeMs: performance.now() - requestStart,
+                        success: true,
+                        fallbackTriggered: !diagramData.hasKBContext,
+                        cacheSource,
+                        hydeUsed: retrievalDiagnostics.hydeUsed,
+                        queryExpansionUsed: retrievalDiagnostics.queryExpansionUsed,
+                        llmCalls: llmCallCount,
+                        error: null,
+                    });
+
                     const payload = JSON.stringify({ __type: 'diagram', ...diagramData });
                     return textStreamResponse(`DIAGRAM_RESPONSE:${payload}`);
                 }
@@ -903,6 +1324,12 @@ export async function POST(req: Request) {
                     hasKBContext: false,
                     generatedBy: 'fallback',
                     success: false,
+                });
+                recordFailure({
+                    requestId,
+                    query: retrievalQuestion,
+                    reason: 'diagram_generation_failed',
+                    confidence,
                 });
                 return textStreamResponse(`DIAGRAM_RESPONSE:${fallbackPayload}`);
             }
@@ -967,6 +1394,8 @@ export async function POST(req: Request) {
             fallbackMessage,
         );
 
+        stageTimer.mark('llmGeneration');
+        llmCallCount += 1;
         const response = await Promise.race([
             sarvamLlm.invoke([
                 { role: 'system', content: systemPrompt },
@@ -980,7 +1409,35 @@ export async function POST(req: Request) {
         const rawAnswer = typeof response.content === 'string'
             ? response.content
             : JSON.stringify(response.content);
-        const cleanedAnswer = stripRawChainOfThought(stripThinkTags(rawAnswer), notFoundMsg);
+        let cleanedAnswer = stripRawChainOfThought(stripThinkTags(rawAnswer), notFoundMsg);
+
+        if (shouldUseVerificationPass({
+            complexity: baseAnalysis.complexity,
+            confidence,
+            matchCount: matches.length,
+        })) {
+            llmCallCount += 1;
+            const verificationPrompt = `Revise the draft answer so every claim stays grounded in the provided context.\n\nContext:\n${contextString}\n\nDraft answer:\n${cleanedAnswer}\n\nReturn only the improved answer.`;
+            const verificationResponse = await Promise.race([
+                sarvamLlm.invoke([
+                    {
+                        role: 'system',
+                        content: 'You revise support answers for clarity and accuracy. Remove unsupported claims and keep the structure concise.',
+                    },
+                    { role: 'user', content: verificationPrompt },
+                ]),
+                new Promise<never>((_, reject) =>
+                    setTimeout(() => reject(new Error('LLM_TIMEOUT')), 8000)
+                ),
+            ]);
+
+            const verifiedRaw = typeof verificationResponse.content === 'string'
+                ? verificationResponse.content
+                : JSON.stringify(verificationResponse.content);
+            cleanedAnswer = stripRawChainOfThought(stripThinkTags(verifiedRaw), notFoundMsg);
+        }
+        stageTimer.end('llmGeneration');
+
         const answer = formatResponse(cleanedAnswer, {
             intent: intent.intent,
             confidence,
@@ -1019,6 +1476,14 @@ export async function POST(req: Request) {
             language,
             confidence,
         });
+        storeSemanticCache({
+            query: retrievalQuestion,
+            queryEmbedding: cachedQueryEmbedding,
+            answer,
+            answerMode,
+            language,
+            confidence,
+        });
 
         await persistAssistantMessage({
             enabled: Boolean(authUserId),
@@ -1028,15 +1493,89 @@ export async function POST(req: Request) {
             topSimilarity: matches[0]?.finalScore || confidence,
         });
 
+        if (confidence < 0.5 || fallbackMessage) {
+            recordFailure({
+                requestId,
+                query: retrievalQuestion,
+                reason: fallbackMessage ? 'fallback_triggered' : 'low_confidence',
+                confidence,
+            });
+        }
+
+        recordChatLog({
+            requestId,
+            query: originalQueryForLog || latestMessage,
+            rewrittenQuery: retrievalQuestion,
+            intent: intentForLog,
+            retrievedChunks: buildChunkLabels(lastRagResult.matches),
+            finalChunks: buildChunkLabels(matches),
+            confidence,
+            responseTimeMs: performance.now() - requestStart,
+            success: true,
+            fallbackTriggered: Boolean(fallbackMessage),
+            cacheSource,
+            hydeUsed: retrievalDiagnostics.hydeUsed,
+            queryExpansionUsed: retrievalDiagnostics.queryExpansionUsed,
+            llmCalls: llmCallCount,
+            error: null,
+        });
+
         console.log(`Response complete [${elapsed(requestStart)}] mode=${answerMode} conf=${(confidence * 100).toFixed(0)}%`);
         console.log(`Stats: ${retrievalStats.totalCandidates} candidates -> ${retrievalStats.afterRerank} after rerank | ${retrievalStats.latencyMs.toFixed(0)}ms`);
         console.log(`Sources: ${retrievalMetadata?.sourcesUsed?.join(', ') || 'none'}`);
         console.log(`${'='.repeat(60)}\n`);
 
+        // Record pipeline metrics (fire-and-forget)
+        void recordMetric({
+            ...metricsSnapshot,
+            totalLatencyMs: performance.now() - requestStart,
+            stages: stageTimer.getTimings(),
+            answerMode: dbAnswerMode,
+            confidence,
+            matchCount: matches.length,
+            createdAt: new Date().toISOString(),
+        } as PipelineMetric);
+
         // Return with conversation ID header and rate limit info
-        return buildChatResponse(answer, activeConversationId, rateLimitResult);
+        return buildChatResponse(answer, activeConversationId, rateLimitResult, {
+            'x-pipeline-latency': `${(performance.now() - requestStart).toFixed(0)}ms`,
+        });
     } catch (error: unknown) {
         console.error('Chat API Error:', error);
+        const errorMessage = (error as Error).message || 'Unknown error';
+
+        void recordMetric({
+            ...metricsSnapshot,
+            totalLatencyMs: performance.now() - requestStart,
+            stages: stageTimer.getTimings(),
+            error: errorMessage,
+            createdAt: new Date().toISOString(),
+        } as PipelineMetric);
+
+        recordFailure({
+            requestId,
+            query: rewrittenQueryForLog || originalQueryForLog || 'unknown',
+            reason: errorMessage,
+            confidence: null,
+        });
+        recordChatLog({
+            requestId,
+            query: originalQueryForLog || 'unknown',
+            rewrittenQuery: rewrittenQueryForLog || originalQueryForLog || 'unknown',
+            intent: intentForLog,
+            retrievedChunks: [],
+            finalChunks: [],
+            confidence: 0,
+            responseTimeMs: performance.now() - requestStart,
+            success: false,
+            fallbackTriggered: false,
+            cacheSource,
+            hydeUsed: Boolean(metricsSnapshot.hydeUsed),
+            queryExpansionUsed: Boolean(metricsSnapshot.queryExpansionUsed),
+            llmCalls: llmCallCount,
+            error: errorMessage,
+        });
+
         return new Response(
             JSON.stringify({ error: 'Failed to process chat request.' }),
             { status: 500, headers: { 'Content-Type': 'application/json' } }

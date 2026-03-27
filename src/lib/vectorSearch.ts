@@ -17,12 +17,17 @@ export interface VectorSearchResult {
 
 const MATCHES_PER_VECTOR = 6;
 const embeddingCache = new Map<string, number[]>();
+export type EmbeddingStore = Map<string, number[]>;
+
+export function createEmbeddingStore(): EmbeddingStore {
+    return new Map<string, number[]>();
+}
 
 function normalizeEmbeddingKey(text: string): string {
     return text.trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
-async function getEmbeddings(texts: string[]): Promise<number[][]> {
+async function getEmbeddings(texts: string[], requestCache?: EmbeddingStore): Promise<number[][]> {
     const normalized = texts.map((text) => normalizeEmbeddingKey(text));
     const originalByKey = new Map<string, string>();
 
@@ -32,21 +37,26 @@ async function getEmbeddings(texts: string[]): Promise<number[][]> {
         }
     });
 
-    const uniqueMissing = [...new Set(normalized.filter((key) => !embeddingCache.has(key)))];
+    const uniqueMissing = [...new Set(normalized.filter((key) => {
+        return !(requestCache?.has(key) || embeddingCache.has(key));
+    }))];
 
     if (uniqueMissing.length === 1) {
         const source = originalByKey.get(uniqueMissing[0]) || uniqueMissing[0];
-        embeddingCache.set(uniqueMissing[0], await embedText(source));
+        const vector = await embedText(source);
+        embeddingCache.set(uniqueMissing[0], vector);
+        requestCache?.set(uniqueMissing[0], vector);
     } else if (uniqueMissing.length > 1) {
         const sources = uniqueMissing.map((key) => originalByKey.get(key) || key);
         const vectors = await embedTexts(sources);
         uniqueMissing.forEach((key, index) => {
             embeddingCache.set(key, vectors[index]);
+            requestCache?.set(key, vectors[index]);
         });
     }
 
     return normalized.map((key) => {
-        const vector = embeddingCache.get(key);
+        const vector = requestCache?.get(key) || embeddingCache.get(key);
         if (!vector) {
             throw new Error(`Missing embedding for key: ${key}`);
         }
@@ -228,6 +238,9 @@ export async function runMultiVectorSearch(params: {
     mmrLambda?: number;
     recencyBoost?: number;
     preferredChunkType?: PreferredChunkType;
+    includeQueryVector?: boolean;
+    requestCache?: EmbeddingStore;
+    maxExpandedQueries?: number;
 }): Promise<VectorSearchResult> {
     const {
         query,
@@ -240,22 +253,27 @@ export async function runMultiVectorSearch(params: {
         mmrLambda,
         recencyBoost,
         preferredChunkType,
+        includeQueryVector = true,
+        requestCache,
+        maxExpandedQueries = 4,
     } = params;
 
-    const limitedExpansions = expandedQueries.slice(0, 4);
-    const expandedEmbeddings = limitedExpansions.length > 0 ? await getEmbeddings(limitedExpansions) : [];
-    const queryEmbedding = providedQueryEmbedding ?? (await getEmbeddings([query]))[0];
+    const limitedExpansions = expandedQueries.slice(0, maxExpandedQueries);
+    const expandedEmbeddings = limitedExpansions.length > 0 ? await getEmbeddings(limitedExpansions, requestCache) : [];
+    const queryEmbedding = providedQueryEmbedding ?? (await getEmbeddings([query], requestCache))[0];
     const searchJobs: Array<Promise<RankedMatch[]>> = [
-        searchSingleVector({
-            vector: queryEmbedding,
-            label: 'query',
-            similarityThreshold,
-            useMMR,
-            useWeighted,
-            mmrLambda,
-            recencyBoost,
-            preferredChunkType,
-        }),
+        ...(includeQueryVector
+            ? [searchSingleVector({
+                vector: queryEmbedding,
+                label: 'query',
+                similarityThreshold,
+                useMMR,
+                useWeighted,
+                mmrLambda,
+                recencyBoost,
+                preferredChunkType,
+            })]
+            : []),
         ...expandedEmbeddings.map((embedding) => searchSingleVector({
             vector: embedding,
             label: 'expanded',
@@ -282,8 +300,9 @@ export async function runMultiVectorSearch(params: {
     }
 
     const groups = await Promise.all(searchJobs);
-    const queryHits = groups[0] || [];
-    const expandedHits = groups.slice(1, 1 + expandedEmbeddings.length).flat();
+    const queryHits = includeQueryVector ? (groups[0] || []) : [];
+    const expandedStartIndex = includeQueryVector ? 1 : 0;
+    const expandedHits = groups.slice(expandedStartIndex, expandedStartIndex + expandedEmbeddings.length).flat();
     const hydeHits = hydeEmbedding ? (groups[groups.length - 1] || []) : [];
     const matches = [...queryHits, ...expandedHits, ...hydeHits];
 

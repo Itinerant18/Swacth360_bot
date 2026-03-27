@@ -11,6 +11,8 @@
  * - Cost reduction vs using LLM for reranking
  */
 
+import type { RankedMatch } from './rag-engine';
+
 // Configuration
 const RERANKER_MODEL = 'BAAI/bge-reranker-v2-m3';
 const RERANK_TOP_K = 10; // Return top K after reranking
@@ -232,4 +234,104 @@ export function getReranker(): BGERReranker {
         _reranker = new BGERReranker();
     }
     return _reranker;
+}
+
+function normalizeText(input: string): string {
+    return input
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function lexicalCoverage(query: string, text: string): number {
+    const queryTerms = normalizeText(query).split(' ').filter((token) => token.length > 2);
+    if (queryTerms.length === 0) {
+        return 0;
+    }
+
+    const candidateText = normalizeText(text);
+    const overlap = queryTerms.filter((term) => candidateText.includes(term)).length;
+    return overlap / queryTerms.length;
+}
+
+function contextOverlap(query: string, match: RankedMatch): number {
+    const answerText = match.relevantPassage || match.answer;
+    return lexicalCoverage(query, `${match.question} ${answerText}`);
+}
+
+export function rerankMatches(params: {
+    query: string;
+    matches: RankedMatch[];
+    topK?: number;
+}): RankedMatch[] {
+    const { query, matches, topK = 5 } = params;
+
+    if (matches.length === 0) {
+        return [];
+    }
+
+    const maxBm25 = Math.max(...matches.map((match) => match.bm25Score || 0), 0.001);
+
+    return [...matches]
+        .map((match) => {
+            const baseSimilarity = Math.max(match.finalScore, match.vectorSimilarity, 0);
+            const keywordSignal = (match.bm25Score || 0) / maxBm25;
+            const overlap = contextOverlap(query, match);
+            const rerankedScore =
+                baseSimilarity * 0.5
+                + keywordSignal * 0.2
+                + overlap * 0.2
+                + lexicalCoverage(query, match.question) * 0.1;
+
+            return {
+                ...match,
+                finalScore: Math.min(1, rerankedScore),
+            };
+        })
+        .sort((left, right) => right.finalScore - left.finalScore)
+        .slice(0, Math.max(topK, 5));
+}
+
+export function buildContextWindow(matches: RankedMatch[], maxTokens = 1200): string {
+    let tokenCount = 0;
+    const blocks: string[] = [];
+    const groups = new Map<string, RankedMatch[]>();
+
+    for (const match of matches) {
+        const source = match.source_name || match.source || 'Knowledge Base';
+        const existing = groups.get(source) || [];
+        existing.push(match);
+        groups.set(source, existing);
+    }
+
+    for (const [source, sourceMatches] of groups.entries()) {
+        const lines: string[] = [`[Document] ${source}`];
+
+        for (const match of sourceMatches) {
+            const snippet = (match.relevantPassage || match.answer)
+                .replace(/\s+/g, ' ')
+                .trim()
+                .slice(0, 360);
+            const entry = `[Section] ${match.question}\n${snippet}`;
+            const entryTokens = entry.split(/\s+/).filter(Boolean).length;
+
+            if (tokenCount + entryTokens > maxTokens) {
+                break;
+            }
+
+            lines.push(entry);
+            tokenCount += entryTokens;
+        }
+
+        if (lines.length > 1) {
+            blocks.push(lines.join('\n'));
+        }
+
+        if (tokenCount >= maxTokens) {
+            break;
+        }
+    }
+
+    return blocks.join('\n\n');
 }
