@@ -95,6 +95,7 @@ function textStreamResponse(text: string): Response {
 function buildChatResponse(
     text: string,
     activeConversationId: string | null,
+    requestId: string,
     rateLimitResult: Awaited<ReturnType<typeof checkRateLimit>>,
     extraHeaders: Record<string, string> = {},
 ): Response {
@@ -102,6 +103,10 @@ function buildChatResponse(
 
     if (activeConversationId) {
         response.headers.set('x-conversation-id', activeConversationId);
+    }
+
+    if (requestId) {
+        response.headers.set('x-request-id', requestId);
     }
 
     const rlHeaders = rateLimitHeaders(rateLimitResult);
@@ -557,7 +562,13 @@ export async function POST(req: Request) {
         if (!body || !Array.isArray(body.messages) || body.messages.length === 0) {
             return new Response(
                 JSON.stringify({ error: 'Invalid messages format' }),
-                { status: 400, headers: { 'Content-Type': 'application/json' } }
+                {
+                    status: 400,
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'x-request-id': requestId,
+                    },
+                }
             );
         }
 
@@ -575,7 +586,13 @@ export async function POST(req: Request) {
         if (!latestMessage) {
             return new Response(
                 JSON.stringify({ error: 'Invalid messages format' }),
-                { status: 400, headers: { 'Content-Type': 'application/json' } }
+                {
+                    status: 400,
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'x-request-id': requestId,
+                    },
+                }
             );
         }
 
@@ -696,6 +713,7 @@ export async function POST(req: Request) {
                     status: 429,
                     headers: {
                         'Content-Type': 'application/json',
+                        'x-request-id': requestId,
                         ...rateLimitHeaders(rateLimitResult),
                     },
                 }
@@ -817,7 +835,7 @@ export async function POST(req: Request) {
                 error: null,
             });
 
-            return buildChatResponse(casualAnswer, activeConversationId, rateLimitResult);
+            return buildChatResponse(casualAnswer, activeConversationId, requestId, rateLimitResult);
         }
 
         // ── Diagram detection — MUST run BEFORE cache checks ──────────
@@ -881,7 +899,7 @@ export async function POST(req: Request) {
                     error: null,
                 });
 
-                return buildChatResponse(cachedAnswer, activeConversationId, rateLimitResult, {
+                return buildChatResponse(cachedAnswer, activeConversationId, requestId, rateLimitResult, {
                     'x-cache': 'HIT:tier1',
                     'x-pipeline-latency': `${(performance.now() - requestStart).toFixed(0)}ms`,
                 });
@@ -909,7 +927,7 @@ export async function POST(req: Request) {
                 llmCalls: llmCallCount,
                 error: null,
             });
-            return buildChatResponse(relationalAnswer, activeConversationId, rateLimitResult);
+            return buildChatResponse(relationalAnswer, activeConversationId, requestId, rateLimitResult);
         }
 
         // Embed query (reused for semantic cache, Tier 2 cache, and RAG retrieval)
@@ -973,6 +991,7 @@ export async function POST(req: Request) {
                 return buildChatResponse(
                     cachedAnswer,
                     activeConversationId,
+                    requestId,
                     rateLimitResult,
                     {
                         'x-cache': `HIT:semantic:${semanticFastPath.similarity.toFixed(3)}`,
@@ -1035,6 +1054,7 @@ export async function POST(req: Request) {
                 return buildChatResponse(
                     cachedAnswer,
                     activeConversationId,
+                    requestId,
                     rateLimitResult,
                     {
                         'x-cache': `HIT:tier2:${tier2CacheResult.similarity?.toFixed(3)}`,
@@ -1395,7 +1415,7 @@ export async function POST(req: Request) {
                 error: null,
             });
 
-            return buildChatResponse(notFoundMsg, activeConversationId, rateLimitResult);
+            return buildChatResponse(notFoundMsg, activeConversationId, requestId, rateLimitResult);
         }
 
         const routedPrompt = selectRoute(baseAnalysis, langName, notFoundMsg, lastRagResult.answerMode);
@@ -1587,7 +1607,7 @@ export async function POST(req: Request) {
         } as PipelineMetric);
 
         // Return with conversation ID header and rate limit info
-        return buildChatResponse(answer, activeConversationId, rateLimitResult, {
+        return buildChatResponse(answer, activeConversationId, requestId, rateLimitResult, {
             'x-pipeline-latency': `${(performance.now() - requestStart).toFixed(0)}ms`,
         });
     } catch (error: unknown) {
@@ -1628,7 +1648,13 @@ export async function POST(req: Request) {
 
         return new Response(
             JSON.stringify({ error: 'Failed to process chat request.' }),
-            { status: 500, headers: { 'Content-Type': 'application/json' } }
+            {
+                status: 500,
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-request-id': requestId,
+                },
+            }
         );
     }
 }

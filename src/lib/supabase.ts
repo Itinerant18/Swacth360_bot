@@ -1,3 +1,4 @@
+import 'server-only';
 import dns from 'node:dns';
 import { Agent, fetch as undiciFetch } from 'undici';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';

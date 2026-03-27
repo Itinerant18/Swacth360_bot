@@ -59,6 +59,7 @@ interface WindowEntry {
 }
 
 const memoryStore = new Map<string, WindowEntry>();
+const MAX_MEMORY_ENTRIES = 10_000;
 
 // Cleanup stale entries every 5 minutes
 let cleanupInterval: ReturnType<typeof setInterval> | null = null;
@@ -94,6 +95,16 @@ function checkMemoryRateLimit(
 
     let entry = memoryStore.get(key);
     if (!entry) {
+        if (memoryStore.size >= MAX_MEMORY_ENTRIES) {
+            // Evict oldest 10% — Map iteration is insertion-order
+            const deleteCount = Math.floor(MAX_MEMORY_ENTRIES * 0.1);
+            const iter = memoryStore.keys();
+            for (let i = 0; i < deleteCount; i++) {
+                const oldest = iter.next();
+                if (oldest.done) break;
+                memoryStore.delete(oldest.value);
+            }
+        }
         entry = { timestamps: [] };
         memoryStore.set(key, entry);
     }

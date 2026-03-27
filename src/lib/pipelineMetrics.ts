@@ -51,7 +51,7 @@ function pushToBuffer(metric: PipelineMetric): void {
 
 const BATCH_SIZE = 10;
 const FLUSH_INTERVAL_MS = 15_000; // flush every 15s even if batch not full
-let pendingBatch: PipelineMetric[] = [];
+const pendingBatch: PipelineMetric[] = [];
 let flushTimer: ReturnType<typeof setTimeout> | null = null;
 
 function scheduleFlush(): void {

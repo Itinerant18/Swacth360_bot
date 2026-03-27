@@ -41,6 +41,7 @@
     "recharts": "^3.8.0",
     "remark-gfm": "^4.0.1",
     "resend": "^6.9.3",
+    "server-only": "^0.0.1",
     "undici": "^7.22.0"
   },
   "devDependencies": {

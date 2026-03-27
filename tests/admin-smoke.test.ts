@@ -1,14 +1,69 @@
 import assert from 'node:assert/strict';
+import Module from 'node:module';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { NextRequest } from 'next/server';
 
-import { POST as ingestPost } from '@/app/api/admin/ingest/route';
-import { GET as raptorGet, POST as raptorPost } from '@/app/api/admin/raptor/route';
-import { PATCH as questionsPatch } from '@/app/api/admin/questions/route';
-import AdminDashboard from '@/app/admin/page';
-import GraphTab from '@/components/GraphTab';
-import FeedbackTab from '@/components/FeedbackTab';
+type IngestPost = typeof import('@/app/api/admin/ingest/route').POST;
+type RaptorGet = typeof import('@/app/api/admin/raptor/route').GET;
+type RaptorPost = typeof import('@/app/api/admin/raptor/route').POST;
+type QuestionsPatch = typeof import('@/app/api/admin/questions/route').PATCH;
+type AdminDashboardComponent = typeof import('@/app/admin/page').default;
+type GraphTabComponent = typeof import('@/components/GraphTab').default;
+type FeedbackTabComponent = typeof import('@/components/FeedbackTab').default;
+
+type SmokeModules = {
+    ingestPost: IngestPost;
+    raptorGet: RaptorGet;
+    raptorPost: RaptorPost;
+    questionsPatch: QuestionsPatch;
+    AdminDashboard: AdminDashboardComponent;
+    GraphTab: GraphTabComponent;
+    FeedbackTab: FeedbackTabComponent;
+};
+
+type ModuleWithLoad = typeof Module & {
+    _load: (request: string, parent: unknown, isMain: boolean) => unknown;
+};
+
+const moduleLoader = Module as ModuleWithLoad;
+const originalLoad = moduleLoader._load.bind(moduleLoader);
+
+moduleLoader._load = (request, parent, isMain) => {
+    if (request === 'server-only') {
+        return {};
+    }
+
+    return originalLoad(request, parent, isMain);
+};
+
+async function loadSmokeModules(): Promise<SmokeModules> {
+    const [
+        ingestModule,
+        raptorModule,
+        questionsModule,
+        adminPageModule,
+        graphTabModule,
+        feedbackTabModule,
+    ] = await Promise.all([
+        import('@/app/api/admin/ingest/route'),
+        import('@/app/api/admin/raptor/route'),
+        import('@/app/api/admin/questions/route'),
+        import('@/app/admin/page'),
+        import('@/components/GraphTab'),
+        import('@/components/FeedbackTab'),
+    ]);
+
+    return {
+        ingestPost: ingestModule.POST,
+        raptorGet: raptorModule.GET,
+        raptorPost: raptorModule.POST,
+        questionsPatch: questionsModule.PATCH,
+        AdminDashboard: adminPageModule.default,
+        GraphTab: graphTabModule.default,
+        FeedbackTab: feedbackTabModule.default,
+    };
+}
 
 async function withEnv(overrides: Record<string, string | undefined>, fn: () => Promise<void> | void) {
     const previous = new Map<string, string | undefined>();
@@ -47,7 +102,17 @@ async function run(name: string, fn: () => Promise<void> | void) {
 }
 
 async function main() {
-    await run('admin ingest returns 500 when required API keys are missing', async () => {
+    const {
+        ingestPost,
+        raptorGet,
+        raptorPost,
+        questionsPatch,
+        AdminDashboard,
+        GraphTab,
+        FeedbackTab,
+    } = await loadSmokeModules();
+
+    await run('admin ingest requires authentication before env validation', async () => {
         await withEnv(
             {
                 SARVAM_API_KEY: undefined,
@@ -67,21 +132,21 @@ async function main() {
                 const response = await ingestPost(request);
                 const body = await response.json();
 
-                assert.equal(response.status, 500);
-                assert.equal(body.error, 'SARVAM_API_KEY not configured');
+                assert.equal(response.status, 401);
+                assert.match(String(body.error), /^Authentication (required|failed)$/);
             }
         );
     });
 
-    await run('admin raptor GET returns 500 when supabase env is missing', async () => {
+    await run('admin raptor GET requires authentication', async () => {
         const response = await raptorGet();
         const body = await response.json();
 
-        assert.equal(response.status, 500);
-        assert.equal(body.error, 'supabaseUrl is required.');
+        assert.equal(response.status, 401);
+        assert.match(String(body.error), /^Authentication (required|failed)$/);
     });
 
-    await run('admin raptor POST returns 500 when supabase env is missing', async () => {
+    await run('admin raptor POST requires authentication', async () => {
         const request = new NextRequest('http://localhost/api/admin/raptor', {
             method: 'POST',
         });
@@ -89,11 +154,11 @@ async function main() {
         const response = await raptorPost(request);
         const body = await response.json();
 
-        assert.equal(response.status, 500);
-        assert.equal(body.error, 'supabaseUrl is required.');
+        assert.equal(response.status, 401);
+        assert.match(String(body.error), /^Authentication (required|failed)$/);
     });
 
-    await run('admin questions PATCH validates missing id/status before hitting storage', async () => {
+    await run('admin questions PATCH requires authentication before validation', async () => {
         const request = new NextRequest('http://localhost/api/admin/questions', {
             method: 'PATCH',
             headers: { 'content-type': 'application/json' },
@@ -103,8 +168,8 @@ async function main() {
         const response = await questionsPatch(request);
         const body = await response.json();
 
-        assert.equal(response.status, 400);
-        assert.equal(body.error, 'id and status required');
+        assert.equal(response.status, 401);
+        assert.match(String(body.error), /^Authentication (required|failed)$/);
     });
 
     await run('admin dashboard renders core headings', () => {

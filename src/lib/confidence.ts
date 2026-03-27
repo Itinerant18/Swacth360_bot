@@ -24,7 +24,7 @@ export function answerModeFromConfidence(score: number): 'rag_high' | 'rag_mediu
         return 'rag_medium';
     }
 
-    if (score >= 0.4) {
+    if (score >= 0.45) {
         return 'rag_partial';
     }
 

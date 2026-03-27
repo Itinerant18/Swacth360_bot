@@ -1,7 +1,80 @@
-import { getSupabase } from '@/lib/supabase';
-import { getAnalyticsSummary } from '@/lib/logger';
-import { NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/admin-auth';
+import { getAnalyticsSummary } from '@/lib/logger';
+import { getSupabase } from '@/lib/supabase';
+import { NextResponse } from 'next/server';
+
+type QueryResult<T = unknown> = {
+    data?: T[] | null;
+    count?: number | null;
+    error?: { message?: string | null } | null;
+};
+
+type RecentSessionRow = {
+    user_question: string;
+    answer_mode: string | null;
+    top_similarity: number | null;
+    created_at: string;
+};
+
+type KnowledgeRow = {
+    source: string;
+    source_name: string;
+};
+
+type RecentMessageRow = {
+    content: string;
+    role: string;
+    created_at: string;
+    conversation_id: string;
+    answer_mode: string | null;
+    top_similarity: number | null;
+};
+
+type FeedbackRow = {
+    rating: number;
+    is_relevant: boolean;
+};
+
+type TokenRow = {
+    tokens_used: number;
+    request_count: number;
+};
+
+function emptyQueryResult<T>(): QueryResult<T> {
+    return {
+        data: [],
+        count: 0,
+        error: null,
+    };
+}
+
+const EMPTY_ANALYTICS_SUMMARY = {
+    count: 0,
+    avgLatencyMs: 0,
+    failureRate: 0,
+    cacheHitRate: 0,
+    semanticCacheHitRate: 0,
+    hydeUsageRate: 0,
+    avgLlmCalls: 0,
+    topQueries: [],
+    lowConfidenceQueries: [],
+};
+
+function unwrap<T>(label: string, result: PromiseSettledResult<unknown>, fallback: T): T {
+    if (result.status === 'fulfilled') {
+        return result.value as T;
+    }
+
+    console.error(`[admin.analytics] ${label} rejected`, result.reason);
+    return fallback;
+}
+
+function logQueryError(label: string, result: QueryResult): void {
+    const message = result?.error?.message;
+    if (message) {
+        console.error(`[admin.analytics] ${label} query error`, message);
+    }
+}
 
 // GET - Return analytics data
 export async function GET() {
@@ -12,33 +85,26 @@ export async function GET() {
     console.info('[admin.analytics] request');
 
     try {
-        // Fetch from both legacy (chat_sessions) and new (conversations + messages) tables
         const [
-            // Legacy table counts
-            legacyTotalRes,
-            legacyRagRes,
-            legacyDiagramRes,
-            legacyFallbackRes,
-            legacyRecentRes,
-            // New conversation system counts
-            convTotalRes,
-            messageTotalRes,
-            // New system answer mode counts
-            msgRagRes,
-            msgFallbackRes,
-            msgDiagramRes,
-            // Shared data
-            totalUnknownRes,
-            pendingUnknownRes,
-            reviewedUnknownRes,
-            topUnknownRes,
-            kbCompositionRes,
-            // Feedback from retrieval_feedback (consistent with FeedbackTab)
-            feedbackStatsRes,
-            // Token usage
-            tokenStatsRes,
-        ] = await Promise.all([
-            // Legacy
+            legacyTotalSettled,
+            legacyRagSettled,
+            legacyDiagramSettled,
+            legacyFallbackSettled,
+            legacyRecentSettled,
+            convTotalSettled,
+            messageTotalSettled,
+            msgRagSettled,
+            msgFallbackSettled,
+            msgDiagramSettled,
+            totalUnknownSettled,
+            pendingUnknownSettled,
+            reviewedUnknownSettled,
+            topUnknownSettled,
+            kbCompositionSettled,
+            feedbackStatsSettled,
+            tokenStatsSettled,
+            assistantMonitoringSettled,
+        ] = await Promise.allSettled([
             supabase.from('chat_sessions').select('*', { count: 'exact', head: true }),
             supabase.from('chat_sessions').select('*', { count: 'exact', head: true }).eq('answer_mode', 'rag'),
             supabase.from('chat_sessions').select('*', { count: 'exact', head: true }).eq('answer_mode', 'diagram'),
@@ -48,14 +114,11 @@ export async function GET() {
                 .select('user_question, answer_mode, top_similarity, created_at')
                 .order('created_at', { ascending: false })
                 .limit(10),
-            // New conversation system
             supabase.from('conversations').select('*', { count: 'exact', head: true }),
             supabase.from('messages').select('*', { count: 'exact', head: true }).eq('role', 'user'),
-            // New system answer mode counts (from messages table)
             supabase.from('messages').select('*', { count: 'exact', head: true }).eq('role', 'assistant').eq('answer_mode', 'rag'),
             supabase.from('messages').select('*', { count: 'exact', head: true }).eq('role', 'assistant').in('answer_mode', ['general', 'partial', 'live']),
             supabase.from('messages').select('*', { count: 'exact', head: true }).eq('role', 'assistant').in('answer_mode', ['diagram', 'diagram_stored']),
-            // Shared
             supabase.from('unknown_questions').select('*', { count: 'exact', head: true }),
             supabase.from('unknown_questions').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
             supabase.from('unknown_questions').select('*', { count: 'exact', head: true }).eq('status', 'reviewed'),
@@ -66,28 +129,56 @@ export async function GET() {
                 .order('frequency', { ascending: false })
                 .limit(10),
             supabase.from('hms_knowledge').select('source, source_name'),
-            // Feedback from retrieval_feedback table (same source as FeedbackTab)
             supabase.from('retrieval_feedback').select('id, rating, is_relevant'),
-            // Token usage summary
             supabase.from('token_usage').select('tokens_used, request_count').gte(
                 'period_start',
-                new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
+                new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
             ),
+            getAnalyticsSummary(24),
         ]);
 
-        // Log non-critical errors but don't fail
-        const criticalErrors = [
-            totalUnknownRes.error,
-            kbCompositionRes.error,
-        ].filter(Boolean);
+        const legacyTotalRes = unwrap<QueryResult>('legacyTotalRes', legacyTotalSettled, emptyQueryResult());
+        const legacyRagRes = unwrap<QueryResult>('legacyRagRes', legacyRagSettled, emptyQueryResult());
+        const legacyDiagramRes = unwrap<QueryResult>('legacyDiagramRes', legacyDiagramSettled, emptyQueryResult());
+        const legacyFallbackRes = unwrap<QueryResult>('legacyFallbackRes', legacyFallbackSettled, emptyQueryResult());
+        const legacyRecentRes = unwrap<QueryResult<RecentSessionRow>>('legacyRecentRes', legacyRecentSettled, emptyQueryResult<RecentSessionRow>());
+        const convTotalRes = unwrap<QueryResult>('convTotalRes', convTotalSettled, emptyQueryResult());
+        const messageTotalRes = unwrap<QueryResult>('messageTotalRes', messageTotalSettled, emptyQueryResult());
+        const msgRagRes = unwrap<QueryResult>('msgRagRes', msgRagSettled, emptyQueryResult());
+        const msgFallbackRes = unwrap<QueryResult>('msgFallbackRes', msgFallbackSettled, emptyQueryResult());
+        const msgDiagramRes = unwrap<QueryResult>('msgDiagramRes', msgDiagramSettled, emptyQueryResult());
+        const totalUnknownRes = unwrap<QueryResult>('totalUnknownRes', totalUnknownSettled, emptyQueryResult());
+        const pendingUnknownRes = unwrap<QueryResult>('pendingUnknownRes', pendingUnknownSettled, emptyQueryResult());
+        const reviewedUnknownRes = unwrap<QueryResult>('reviewedUnknownRes', reviewedUnknownSettled, emptyQueryResult());
+        const topUnknownRes = unwrap<QueryResult>('topUnknownRes', topUnknownSettled, emptyQueryResult());
+        const kbCompositionRes = unwrap<QueryResult<KnowledgeRow>>('kbCompositionRes', kbCompositionSettled, emptyQueryResult<KnowledgeRow>());
+        const feedbackStatsRes = unwrap<QueryResult<FeedbackRow>>('feedbackStatsRes', feedbackStatsSettled, emptyQueryResult<FeedbackRow>());
+        const tokenStatsRes = unwrap<QueryResult<TokenRow>>('tokenStatsRes', tokenStatsSettled, emptyQueryResult<TokenRow>());
+        const assistantMonitoring = unwrap('assistantMonitoring', assistantMonitoringSettled, EMPTY_ANALYTICS_SUMMARY);
 
-        if (criticalErrors.length > 0) {
-            throw new Error(criticalErrors.map((error) => error?.message).join('; '));
-        }
+        const queryResults: Array<[string, QueryResult]> = [
+            ['legacyTotalRes', legacyTotalRes],
+            ['legacyRagRes', legacyRagRes],
+            ['legacyDiagramRes', legacyDiagramRes],
+            ['legacyFallbackRes', legacyFallbackRes],
+            ['legacyRecentRes', legacyRecentRes],
+            ['convTotalRes', convTotalRes],
+            ['messageTotalRes', messageTotalRes],
+            ['msgRagRes', msgRagRes],
+            ['msgFallbackRes', msgFallbackRes],
+            ['msgDiagramRes', msgDiagramRes],
+            ['totalUnknownRes', totalUnknownRes],
+            ['pendingUnknownRes', pendingUnknownRes],
+            ['reviewedUnknownRes', reviewedUnknownRes],
+            ['topUnknownRes', topUnknownRes],
+            ['kbCompositionRes', kbCompositionRes],
+            ['feedbackStatsRes', feedbackStatsRes],
+            ['tokenStatsRes', tokenStatsRes],
+        ];
+        queryResults.forEach(([label, result]) => logQueryError(label, result));
 
-        // KB composition
         const sourceMap: Record<string, { count: number; name: string }> = {};
-        kbCompositionRes.data?.forEach((row: { source: string; source_name: string }) => {
+        kbCompositionRes.data?.forEach((row) => {
             const key = row.source || 'json';
             if (!sourceMap[key]) {
                 sourceMap[key] = {
@@ -103,7 +194,6 @@ export async function GET() {
             sourceMap[key].count++;
         });
 
-        // Use new conversation system if legacy is empty
         const legacyTotal = legacyTotalRes.count ?? 0;
         const convTotal = convTotalRes.count ?? 0;
         const messageTotal = messageTotalRes.count ?? 0;
@@ -114,48 +204,39 @@ export async function GET() {
         const diagram = useLegacy ? (legacyDiagramRes.count ?? 0) : (msgDiagramRes.count ?? 0);
         const general = useLegacy ? (legacyFallbackRes.count ?? 0) : (msgFallbackRes.count ?? 0);
 
-        // Recent sessions — prefer new messages if legacy is empty
-        let recentSessions = legacyRecentRes.data || [];
+        let recentSessions = legacyRecentRes.data ?? [];
         if (recentSessions.length === 0 && !useLegacy) {
-            // Fetch recent messages from the new system (with answer_mode)
-            const { data: recentMessages } = await supabase
+            const { data: recentMessages, error: recentMessagesError } = await supabase
                 .from('messages')
                 .select('content, role, created_at, conversation_id, answer_mode, top_similarity')
                 .eq('role', 'user')
                 .order('created_at', { ascending: false })
                 .limit(10);
 
-            recentSessions = (recentMessages || []).map((m: {
-                content: string;
-                role: string;
-                created_at: string;
-                conversation_id: string;
-                answer_mode: string | null;
-                top_similarity: number | null;
-            }) => ({
-                user_question: m.content,
-                answer_mode: m.answer_mode || 'conversation',
-                top_similarity: m.top_similarity,
-                created_at: m.created_at,
+            if (recentMessagesError) {
+                console.error('[admin.analytics] recentMessages query error', recentMessagesError.message);
+            }
+
+            recentSessions = (recentMessages ?? []).map((message: RecentMessageRow) => ({
+                user_question: message.content,
+                answer_mode: message.answer_mode || 'conversation',
+                top_similarity: message.top_similarity,
+                created_at: message.created_at,
             }));
         }
 
-        // Feedback stats from retrieval_feedback (consistent with FeedbackTab)
-        const feedbackData = feedbackStatsRes.data || [];
+        const feedbackData = feedbackStatsRes.data ?? [];
         const totalFeedback = feedbackData.length;
         const positiveFeedback = feedbackData.filter(
-            (f: { rating: number; is_relevant: boolean }) => f.is_relevant === true || (f.rating ?? 0) >= 4
+            (feedback) => feedback.is_relevant === true || (feedback.rating ?? 0) >= 4,
         ).length;
         const negativeFeedback = feedbackData.filter(
-            (f: { rating: number; is_relevant: boolean }) => f.is_relevant === false || ((f.rating ?? 0) > 0 && (f.rating ?? 0) <= 2)
+            (feedback) => feedback.is_relevant === false || ((feedback.rating ?? 0) > 0 && (feedback.rating ?? 0) <= 2),
         ).length;
 
-        // Token usage stats
-        const tokenData = tokenStatsRes.data || [];
-        const totalTokens = tokenData.reduce((sum: number, t: { tokens_used: number }) => sum + t.tokens_used, 0);
-        const totalRequests = tokenData.reduce((sum: number, t: { request_count: number }) => sum + t.request_count, 0);
-
-        const assistantMonitoring = await getAnalyticsSummary(24);
+        const tokenData = tokenStatsRes.data ?? [];
+        const totalTokens = tokenData.reduce((sum, token) => sum + token.tokens_used, 0);
+        const totalRequests = tokenData.reduce((sum, token) => sum + token.request_count, 0);
 
         return NextResponse.json({
             totalChats: total,
@@ -169,22 +250,19 @@ export async function GET() {
                 pending: pendingUnknownRes.count ?? 0,
                 reviewed: reviewedUnknownRes.count ?? 0,
             },
-            topUnknown: topUnknownRes.data || [],
+            topUnknown: topUnknownRes.data ?? [],
             knowledgeBase: sourceMap,
             recentSessions,
-            // New conversation system stats
             conversations: {
                 total: convTotal,
                 totalMessages: messageTotal,
                 isNewSystem: !useLegacy,
             },
-            // Feedback stats
             feedback: {
                 total: totalFeedback,
                 positive: positiveFeedback,
                 negative: negativeFeedback,
             },
-            // Token usage stats (last 30 days)
             tokenUsage: {
                 totalTokens,
                 totalRequests,
