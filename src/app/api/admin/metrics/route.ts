@@ -46,7 +46,14 @@ export async function GET(req: Request) {
             .limit(1000);
 
         if (error) {
-            throw new Error(error.message);
+            console.warn('[admin.metrics] DB query failed, falling back to memory buffer:', error.message);
+            const recent = getRecentMetrics();
+            const aggregates = computeAggregates(recent);
+            return NextResponse.json({
+                source: 'memory',
+                window: `last ${recent.length} requests (DB unavailable)`,
+                ...aggregates,
+            });
         }
 
         const metrics = (rows || []).map((row: Record<string, unknown>) => ({

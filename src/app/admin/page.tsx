@@ -5,13 +5,13 @@ import type { IconDefinition } from '@fortawesome/fontawesome-svg-core';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
     faGear, faPenToSquare, faChartLine,
-    faCircleCheck, faRocket, faComment, faBook, faRobot,
-    faCircleExclamation, faCubes, faFire, faClock, faUsers,
+    faCircleCheck, faRocket, faComment, faClock, faUsers,
     faPhone, faEnvelope, faUpload, faFileAlt, faCloudUploadAlt,
     faCheckCircle, faTimesCircle, faMinusCircle, faSpinner,
     faDatabase, faDiagramProject, faSliders, faStar,
     faSignOutAlt, faLayerGroup,
 } from '@fortawesome/free-solid-svg-icons';
+import AdminAnalyticsDashboard from '@/components/admin/AdminAnalyticsDashboard';
 import GraphTab from '@/components/GraphTab';
 import RAGSettingsTab from '@/components/RAGSettingsTab';
 import FeedbackTab from '@/components/FeedbackTab';
@@ -25,38 +25,6 @@ type UnknownQuestion = {
     frequency: number;
     status: string;
     created_at: string;
-};
-
-type Analytics = {
-    totalChats: number;
-    ragCount: number;
-    generalCount: number;
-    diagramCount: number;
-    ragPercent: number;
-    diagramPercent: number;
-    unknownQuestions: { total: number; pending: number; reviewed: number };
-    topUnknown: { english_text: string; user_question: string; frequency: number; top_similarity: number }[];
-    knowledgeBase: Record<string, { count: number; name: string }>;
-    recentSessions: { user_question: string; answer_mode: string; top_similarity: number; created_at: string }[];
-    conversations?: { total: number; totalMessages: number; isNewSystem: boolean };
-    feedback?: { total: number; positive: number; negative: number };
-    tokenUsage?: { totalTokens: number; totalRequests: number };
-};
-
-const EMPTY_ANALYTICS: Analytics = {
-    totalChats: 0,
-    ragCount: 0,
-    generalCount: 0,
-    diagramCount: 0,
-    ragPercent: 0,
-    diagramPercent: 0,
-    unknownQuestions: { total: 0, pending: 0, reviewed: 0 },
-    topUnknown: [],
-    knowledgeBase: {},
-    recentSessions: [],
-    conversations: { total: 0, totalMessages: 0, isNewSystem: false },
-    feedback: { total: 0, positive: 0, negative: 0 },
-    tokenUsage: { totalTokens: 0, totalRequests: 0 },
 };
 
 type TrackedUser = {
@@ -96,10 +64,8 @@ type Tab = 'review' | 'analytics' | 'users' | 'ingest' | 'graph' | 'settings' | 
 export default function AdminDashboard() {
     const [tab, setTab] = useState<Tab>('review');
     const [questions, setQuestions] = useState<UnknownQuestion[]>([]);
-    const [analytics, setAnalytics] = useState<Analytics | null>(null);
     const [users, setUsers] = useState<TrackedUser[]>([]);
     const [reviewLoading, setReviewLoading] = useState(false);
-    const [analyticsLoading, setAnalyticsLoading] = useState(false);
     const [usersLoading, setUsersLoading] = useState(false);
     const [expandedId, setExpandedId] = useState<string | null>(null);
     const [answerText, setAnswerText] = useState('');
@@ -107,7 +73,6 @@ export default function AdminDashboard() {
     const [saving, setSaving] = useState(false);
     const [toast, setToast] = useState('');
     const [reviewError, setReviewError] = useState('');
-    const [analyticsError, setAnalyticsError] = useState('');
     const [usersError, setUsersError] = useState('');
     const [activeQuestionId, setActiveQuestionId] = useState<string | null>(null);
 
@@ -154,25 +119,6 @@ export default function AdminDashboard() {
             setReviewError((err as Error).message || 'Failed to load review queue');
         }
         setReviewLoading(false);
-    }, []);
-
-    const fetchAnalytics = useCallback(async () => {
-        setAnalyticsLoading(true);
-        setAnalyticsError('');
-        try {
-            const res = await fetch('/api/admin/analytics');
-            const data = await res.json();
-
-            if (!res.ok) {
-                throw new Error(data.error || 'Failed to load analytics');
-            }
-
-            setAnalytics({ ...EMPTY_ANALYTICS, ...data });
-        } catch (err: unknown) {
-            setAnalytics(EMPTY_ANALYTICS);
-            setAnalyticsError((err as Error).message || 'Failed to load analytics');
-        }
-        setAnalyticsLoading(false);
     }, []);
 
     const fetchUsers = useCallback(async () => {
@@ -225,10 +171,9 @@ export default function AdminDashboard() {
 
     useEffect(() => {
         if (tab === 'review') void fetchQuestions();
-        else if (tab === 'analytics') void fetchAnalytics();
         else if (tab === 'users') void fetchUsers();
         else if (tab === 'raptor') void fetchRaptor();
-    }, [tab, fetchQuestions, fetchAnalytics, fetchUsers, fetchRaptor]);
+    }, [tab, fetchQuestions, fetchUsers, fetchRaptor]);
 
     const showToast = (msg: string) => {
         setToast(msg);
@@ -460,7 +405,7 @@ export default function AdminDashboard() {
             <main className="max-w-5xl mx-auto px-4 sm:px-6 py-5 sm:py-6">
 
                 {/* Loading */}
-                {((tab === 'review' && reviewLoading) || (tab === 'analytics' && analyticsLoading) || (tab === 'users' && usersLoading)) ? (
+                {((tab === 'review' && reviewLoading) || (tab === 'users' && usersLoading)) ? (
                     <div className="flex items-center justify-center py-20">
                         <div className="flex gap-1.5">
                             <div className="w-2 h-2 rounded-full bg-[#CA8A04] animate-bounce" style={{ animationDelay: '0ms' }} />
@@ -550,108 +495,8 @@ export default function AdminDashboard() {
                         ))}
                     </div>
 
-                ) : tab === 'analytics' && analytics ? (
-
-                    /* Analytics tab */
-                    <div className="space-y-4 sm:space-y-6">
-                        {analyticsError && (
-                            <div className="skeuo-card p-4 sm:p-5 border-red-200 bg-red-50/40">
-                                <p className="text-sm text-red-700">{analyticsError}</p>
-                            </div>
-                        )}
-                        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4">
-                            {analytics.conversations?.isNewSystem ? (
-                                <>
-                                    <SkeuoStat label="Conversations" value={analytics.conversations.total} icon={faComment} />
-                                    <SkeuoStat label="Messages" value={analytics.conversations.totalMessages} icon={faBook} accent="text-emerald-700" />
-                                </>
-                            ) : (
-                                <>
-                                    <SkeuoStat label="Total Chats" value={analytics.totalChats} icon={faComment} />
-                                    <SkeuoStat label="RAG Answers" value={`${analytics.ragCount} (${analytics.ragPercent}%)`} icon={faBook} accent="text-emerald-700" />
-                                </>
-                            )}
-                            <SkeuoStat label="LLM Fallback" value={analytics.generalCount} icon={faRobot} accent="text-amber-700" />
-                            <SkeuoStat label="Feedback" value={analytics.feedback?.total ?? 0} icon={faStar} accent="text-[#CA8A04]" />
-                            <SkeuoStat label="Pending" value={analytics.unknownQuestions.pending} icon={faCircleExclamation} accent="text-red-700" />
-                        </div>
-
-                        <div className="skeuo-card p-4 sm:p-5">
-                            <h3 className="text-xs sm:text-sm font-semibold text-[#1C1917] uppercase tracking-wider mb-3 sm:mb-4 flex items-center gap-2">
-                                <FontAwesomeIcon icon={faCubes} className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-[#CA8A04]" /> Knowledge Base
-                            </h3>
-                            {Object.keys(analytics.knowledgeBase).length === 0 ? (
-                                <p className="text-sm text-[#78716C]">No knowledge base records found yet.</p>
-                            ) : (
-                                <div className="space-y-2">
-                                    {Object.entries(analytics.knowledgeBase).map(([source, info]) => (
-                                        <div key={source} className="flex items-center justify-between py-2 px-3 rounded-lg bg-[#F0EBE3] border border-[#D6CFC4] shadow-[inset_0_1px_2px_rgba(0,0,0,0.04)]">
-                                            <div className="flex items-center gap-2">
-                                                <span className={`w-2 h-2 rounded-full ${source === 'json' ? 'bg-blue-500' : source === 'pdf' ? 'bg-green-500' : source === 'admin' ? 'bg-[#CA8A04]' : 'bg-cyan-500'}`} />
-                                                <span className="text-xs sm:text-sm text-[#44403C]">{info.name}</span>
-                                            </div>
-                                            <span className="text-xs sm:text-sm text-[#78716C] font-mono">{info.count}</span>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
-
-                        {analytics.topUnknown.length > 0 && (
-                            <div className="skeuo-card p-4 sm:p-5">
-                                <h3 className="text-xs sm:text-sm font-semibold text-[#1C1917] uppercase tracking-wider mb-3 sm:mb-4 flex items-center gap-2">
-                                    <FontAwesomeIcon icon={faFire} className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-red-600" /> Top Unknown
-                                </h3>
-                                <div className="space-y-2">
-                                    {analytics.topUnknown.map((q, i) => (
-                                        <div key={i} className="flex items-center justify-between py-2 px-3 rounded-lg bg-[#F0EBE3] border border-[#D6CFC4] shadow-[inset_0_1px_2px_rgba(0,0,0,0.04)]">
-                                            <p className="text-xs sm:text-sm text-[#44403C] truncate flex-1 mr-3">{q.english_text}</p>
-                                            <span className="text-[10px] sm:text-xs text-red-700 bg-red-50 px-2 py-0.5 rounded-full border border-red-200 flex-shrink-0">
-                                                {q.frequency}x
-                                            </span>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
-
-                        <div className="skeuo-card p-4 sm:p-5">
-                            <h3 className="text-xs sm:text-sm font-semibold text-[#1C1917] uppercase tracking-wider mb-3 sm:mb-4 flex items-center gap-2">
-                                <FontAwesomeIcon icon={faClock} className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-[#0D9488]" /> Recent Sessions
-                            </h3>
-                            <div className="overflow-x-auto -mx-1">
-                                <table className="w-full text-xs sm:text-sm min-w-[480px]">
-                                    <thead><tr className="text-[#78716C] text-[10px] sm:text-xs uppercase">
-                                        <th className="text-left pb-3">Question</th>
-                                        <th className="text-center pb-3">Mode</th>
-                                        <th className="text-center pb-3">Score</th>
-                                        <th className="text-right pb-3">Time</th>
-                                    </tr></thead>
-                                    <tbody className="text-[#44403C]">
-                                        {analytics.recentSessions.map((s, i) => (
-                                            <tr key={i} className="border-t border-[#E8E0D4]">
-                                                <td className="py-2.5 pr-3 truncate max-w-[180px] sm:max-w-[250px]">{s.user_question}</td>
-                                                <td className="py-2.5 text-center">
-                                                    <span className={`text-[10px] sm:text-[11px] px-2 py-0.5 rounded-full shadow-[inset_0_1px_2px_rgba(0,0,0,0.06)] ${s.answer_mode === 'rag'
-                                                        ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
-                                                        : 'bg-amber-50 text-amber-800 border border-amber-200'
-                                                        }`}>
-                                                        {s.answer_mode?.toUpperCase() || '-'}
-                                                    </span>
-                                                </td>
-                                                <td className="py-2.5 text-center font-mono text-xs">
-                                                    {s.top_similarity ? `${(s.top_similarity * 100).toFixed(0)}%` : '-'}
-                                                </td>
-                                                <td className="py-2.5 text-right text-xs text-[#A8A29E]">
-                                                    {new Date(s.created_at).toLocaleTimeString()}
-                                                </td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    </div>
+                ) : tab === 'analytics' ? (
+                    <AdminAnalyticsDashboard />
 
                 ) : tab === 'users' ? (
 
