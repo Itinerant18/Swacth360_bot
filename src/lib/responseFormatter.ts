@@ -128,6 +128,19 @@ function appendFallbackNote(output: string, fallbackMessage: string): string {
     return `${output}\n\nNotes\n- ${fallbackMessage}`;
 }
 
+function deriveKeyPoints(text: string, explanation: string): string[] {
+    const explicitPoints = extractNumberedOrBulletedLines(text);
+    if (explicitPoints.length > 0) {
+        return explicitPoints.slice(0, 4);
+    }
+
+    return explanation
+        .split(/(?<=[.!?])\s+/)
+        .map((sentence) => cleanLead(sentence).replace(/[.!?]+$/, '').trim())
+        .filter((sentence) => sentence.length > 0)
+        .slice(0, 4);
+}
+
 export function formatResponse(rawAnswer: string, options: FormatResponseOptions = {}): string {
     const {
         intent = 'informational',
@@ -171,15 +184,21 @@ export function formatResponse(rawAnswer: string, options: FormatResponseOptions
         notes.unshift(fallbackMessage);
     }
 
+    const summaryHeading = intent === 'informational' ? 'Summary' : 'Short Answer';
     const sections: string[] = [
-        `Short Answer\n${shortAnswer}`,
+        `${summaryHeading}\n${shortAnswer}`,
     ];
 
     if (explanation) {
-        sections.push(`📖 Explanation\n${explanation}`);
+        sections.push(`${intent === 'informational' ? 'Explanation' : '📖 Explanation'}\n${explanation}`);
     }
 
-    if (steps.length > 0) {
+    if (intent === 'informational') {
+        const keyPoints = deriveKeyPoints(normalized, explanation);
+        if (keyPoints.length > 0) {
+            sections.push(`Key Points\n${keyPoints.map((point) => `- ${point}`).join('\n')}`);
+        }
+    } else if (steps.length > 0) {
         sections.push(`🛠 Steps\n${steps.map((step, index) => `${index + 1}. ${step}`).join('\n')}`);
     }
 

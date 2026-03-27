@@ -20,12 +20,13 @@ import { getSupabase } from './supabase';
 // Config
 
 const CACHE_CONFIG = {
-    TIER1_TTL_SECONDS: parseInt(process.env.CACHE_TTL_SECONDS || '86400'),
+    TIER1_TTL_SECONDS: parseInt(process.env.CACHE_TTL_SECONDS || '600'),
     TIER2_THRESHOLD: parseFloat(process.env.SEMANTIC_CACHE_THRESHOLD || '0.90'),
     REDIS_KEY_PREFIX: 'sai:cache:v1:',
     MAX_ANSWER_LENGTH: 8000,
     MIN_ANSWER_LENGTH: 20,
     LOCAL_CACHE_MAX_ENTRIES: 200,
+    MIN_CACHE_CONFIDENCE: parseFloat(process.env.MIN_CACHE_CONFIDENCE || '0.72'),
 };
 
 // Types
@@ -272,12 +273,14 @@ export async function storeCache(params: {
     answer: string;
     answerMode: string;
     language: string;
+    confidence?: number;
 }): Promise<void> {
-    const { answer, answerMode } = params;
+    const { answer, answerMode, confidence = 0 } = params;
 
     if (answerMode === 'general' || answerMode === 'rag_partial') return;
     if (answer.length < CACHE_CONFIG.MIN_ANSWER_LENGTH) return;
     if (answer.length > CACHE_CONFIG.MAX_ANSWER_LENGTH) return;
+    if (confidence < CACHE_CONFIG.MIN_CACHE_CONFIDENCE) return;
 
     await Promise.allSettled([
         tier1Set(params.query, answer),

@@ -1,11 +1,6 @@
 import { ChatOpenAI } from '@langchain/openai';
 import { rewriteWithContext, type ConversationMessage } from './conversation-retrieval';
-
-export interface ConversationMemory {
-    recentUserQueries: string[];
-    recentAssistantReplies: string[];
-    promptContext: string;
-}
+import { buildConversationMemory, type ConversationMemory } from './memory';
 
 export interface ProcessedQuery {
     original: string;
@@ -13,6 +8,8 @@ export interface ProcessedQuery {
     retrievalQuery: string;
     cacheQuery: string;
     memory: ConversationMemory;
+    keywords: string[];
+    entities: string[];
     wasContextRewritten: boolean;
     appliedTransforms: string[];
 }
@@ -20,6 +17,8 @@ export interface ProcessedQuery {
 const QUESTION_START = /^(how|what|why|when|where|which|who|can|could|should|is|are|do|does|did|will)\b/i;
 const ACTION_START = /^(install|configure|setup|set up|connect|wire|reset|restart|enable|disable|update|change|clear|measure|check|verify|open|select)\b/i;
 const TROUBLESHOOTING_HINT = /\b(not working|issue|problem|error|fault|failed|unable|cannot|can't|offline|down|slow)\b/i;
+
+export { buildConversationMemory } from './memory';
 
 function sentenceCase(input: string): string {
     if (!input) {
@@ -52,35 +51,35 @@ export function normalizeUserQuery(input: string): string {
     return normalized;
 }
 
-export function buildConversationMemory(history: ConversationMessage[]): ConversationMemory {
-    const recentUserQueries = history
-        .filter((message) => message.role === 'user')
-        .slice(-3)
-        .map((message) => normalizeUserQuery(message.content).slice(0, 180));
+function extractEntities(query: string): string[] {
+    const matches = [
+        ...query.matchAll(/\b[Ee]\d{3,4}\b/g),
+        ...query.matchAll(/\b(?:RS-?485|Modbus(?:\s+RTU)?|PROFIBUS(?:\s+DP)?|EtherNet\/IP|Anybus|WiFi)\b/gi),
+        ...query.matchAll(/\b(?:TB\d+[+-]?|pin\s*\d+|A\+|A-|B\+|B-)\b/gi),
+        ...query.matchAll(/\b(?:HMS-\d+|ABC-\d+|X-gateway)\b/gi),
+    ];
 
-    const recentAssistantReplies = history
-        .filter((message) => message.role === 'assistant')
-        .slice(-2)
-        .map((message) => message.content.replace(/\s+/g, ' ').trim().slice(0, 220));
+    return [...new Set(matches.map((match) => match[0]))];
+}
 
-    const sections: string[] = [];
+export function extractKeywords(query: string): string[] {
+    const stopWords = new Set([
+        'the', 'a', 'an', 'and', 'or', 'for', 'with', 'that', 'this', 'what', 'why', 'how',
+        'when', 'where', 'which', 'who', 'from', 'into', 'about', 'please', 'help', 'issue',
+    ]);
 
-    if (recentUserQueries.length > 0) {
-        sections.push(
-            `Recent user queries:\n${recentUserQueries.map((query, index) => `${index + 1}. ${query}`).join('\n')}`
-        );
-    }
+    return [...new Set(
+        normalizeUserQuery(query)
+            .toLowerCase()
+            .split(/\W+/)
+            .filter((word) => word.length > 2 && !stopWords.has(word))
+    )];
+}
 
-    if (recentAssistantReplies.length > 0) {
-        sections.push(
-            `Recent assistant replies:\n${recentAssistantReplies.map((reply, index) => `${index + 1}. ${reply}`).join('\n')}`
-        );
-    }
-
+export function extractKeywordsAndEntities(query: string): { keywords: string[]; entities: string[] } {
     return {
-        recentUserQueries,
-        recentAssistantReplies,
-        promptContext: sections.join('\n\n'),
+        keywords: extractKeywords(query),
+        entities: extractEntities(query),
     };
 }
 
@@ -142,7 +141,7 @@ export async function processQuery(params: {
 }): Promise<ProcessedQuery> {
     const { originalQuery, history, llm } = params;
     const normalizedOriginal = normalizeUserQuery(originalQuery);
-    const memory = buildConversationMemory(history);
+    const memory = buildConversationMemory(history, normalizedOriginal);
     const appliedTransforms: string[] = [];
 
     let contextualQuery = normalizedOriginal;
@@ -164,6 +163,7 @@ export async function processQuery(params: {
     }
 
     const retrievalQuery = normalizeUserQuery(searchRewrite.rewritten);
+    const { keywords, entities } = extractKeywordsAndEntities(retrievalQuery);
 
     return {
         original: originalQuery,
@@ -171,6 +171,8 @@ export async function processQuery(params: {
         retrievalQuery,
         cacheQuery: retrievalQuery,
         memory,
+        keywords,
+        entities,
         wasContextRewritten,
         appliedTransforms,
     };

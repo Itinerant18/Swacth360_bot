@@ -11,7 +11,7 @@ import { evaluateAndStore } from '@/lib/rag-evaluator';
 import { logicalRoute, formatRelationalAnswer } from '@/lib/logical-router';
 import { buildDecomposedPromptPrefix, decomposeQuery, mergeSubQueryResults, type SubQuery } from '@/lib/query-decomposer';
 import { logRoute, selectRoute } from '@/lib/router';
-import { classifyQuery, retrieve, type RAGResult, type RankedMatch } from '@/lib/rag-engine';
+import { classifyQuery, type RAGResult, type RankedMatch } from '@/lib/rag-engine';
 import { parseRAGSettings, type RAGSettings } from '@/lib/rag-settings';
 import { getSupabase } from '@/lib/supabase';
 import { createServerSupabaseClient } from '@/lib/auth-server';
@@ -22,9 +22,16 @@ import { type ConversationMessage } from '@/lib/conversation-retrieval';
 import { applyFeedbackBoost } from '@/lib/feedback-reranker';
 import { checkRateLimit, getClientIdentifier, rateLimitHeaders, RATE_LIMITS } from '@/lib/rate-limiter';
 import { buildCasualResponse, buildIntentStylePrompt, classifyIntent } from '@/lib/intentClassifier';
-import { processQuery } from '@/lib/queryProcessor';
+import { extractKeywordsAndEntities, processQuery } from '@/lib/queryProcessor';
 import { formatResponse } from '@/lib/responseFormatter';
-import { buildRetrievalPlan, optimizeRetrievalResult } from '@/lib/retrievalOptimizer';
+import { buildRetrievalPlan } from '@/lib/retrievalOptimizer';
+import { generateQueryExpansions } from '@/lib/queryExpansion';
+import { generateHydeEmbedding } from '@/lib/hydeGenerator';
+import { runMultiVectorSearch } from '@/lib/vectorSearch';
+import { retrieveRaptorContexts } from '@/lib/raptorRetrieval';
+import { rankAndDeduplicateContext } from '@/lib/contextRanker';
+import { answerModeFromConfidence, scoreConfidence } from '@/lib/confidence';
+import { sanitizeInput } from '@/lib/sanitize';
 
 dns.setDefaultResultOrder('ipv4first');
 
@@ -59,7 +66,7 @@ async function translateToEnglish(
     
     const result = await Promise.race([
         sarvamLlm.invoke(prompt),
-        new Promise<any>((_, reject) => 
+        new Promise<never>((_, reject) => 
             setTimeout(() => reject(new Error('LLM_TIMEOUT')), 15000)
         )
     ]);
@@ -265,39 +272,157 @@ async function persistAssistantMessage(params: {
         if (error) {
             console.warn('Assistant message persistence failed:', error.message);
         }
-    } catch {
-        // persistence is non-critical
+    } catch (err) {
+        console.error('[assistant message persistence error]', err);
     }
+}
+
+async function runRetrievalStages(params: {
+    query: string;
+    analysis: ReturnType<typeof classifyQuery>;
+    llm: ChatOpenAI;
+    retrieveOptions: ReturnType<typeof buildRetrievalPlan>;
+    queryEmbedding?: number[];
+    keywords?: string[];
+    entities?: string[];
+}): Promise<{
+    ragResult: RAGResult;
+    fallbackMessage?: string;
+}> {
+    const {
+        query,
+        analysis,
+        llm,
+        retrieveOptions,
+        queryEmbedding,
+        keywords = [],
+        entities = [],
+    } = params;
+
+    const fallbackKeywords = keywords.length > 0
+        ? keywords
+        : query.toLowerCase().split(/\W+/).filter((token) => token.length > 2).slice(0, 5);
+    const resolvedQueryEmbedding = queryEmbedding ?? await embedText(query);
+
+    const [expansionResult, hydeResult] = await Promise.all([
+        generateQueryExpansions({
+            query,
+            keywords: fallbackKeywords,
+            entities,
+            llm: retrieveOptions.useQueryExpansion ? llm : undefined,
+            maxVariations: 5,
+        }),
+        retrieveOptions.useHYDE
+            ? generateHydeEmbedding({
+                query,
+                queryType: analysis.type,
+                llm,
+            })
+            : Promise.resolve({ text: null, embedding: null, timedOut: false }),
+    ]);
+
+    const [vectorResult, raptorMatches] = await Promise.all([
+        runMultiVectorSearch({
+            query,
+            queryEmbedding: resolvedQueryEmbedding,
+            expandedQueries: expansionResult.variations,
+            hydeEmbedding: hydeResult.embedding,
+            similarityThreshold: retrieveOptions.similarityThreshold,
+            useMMR: retrieveOptions.useMMR,
+            useWeighted: retrieveOptions.useWeighted,
+            mmrLambda: retrieveOptions.mmrLambda,
+            recencyBoost: retrieveOptions.recencyBoost,
+            preferredChunkType: retrieveOptions.preferredChunkType,
+        }),
+        retrieveRaptorContexts({
+            queryEmbedding: resolvedQueryEmbedding,
+            analysis,
+            topK: Math.max(retrieveOptions.topK, 4),
+            threshold: retrieveOptions.similarityThreshold,
+        }),
+    ]);
+
+    const combinedMatches = [...vectorResult.matches, ...raptorMatches];
+    if (combinedMatches.length > 0) {
+        await applyFeedbackBoost(combinedMatches);
+    }
+
+    const rankedContext = rankAndDeduplicateContext({
+        query,
+        matches: combinedMatches,
+        maxContexts: retrieveOptions.topK,
+        preferredChunkType: retrieveOptions.preferredChunkType,
+    });
+    const confidenceResult = scoreConfidence({
+        query,
+        matches: rankedContext.matches,
+        baseConfidence: rankedContext.matches[0]?.finalScore ?? 0,
+    });
+
+    return {
+        ragResult: {
+            matches: rankedContext.matches,
+            queryAnalysis: analysis,
+            answerMode: answerModeFromConfidence(confidenceResult.score),
+            confidence: confidenceResult.score,
+            contextString: rankedContext.contextString,
+            retrievalStats: {
+                queryVectorHits: vectorResult.stats.queryVectorHits,
+                hydeVectorHits: vectorResult.stats.hydeVectorHits,
+                expandedVectorHits: vectorResult.stats.expandedVectorHits,
+                totalCandidates: combinedMatches.length,
+                afterRerank: rankedContext.matches.length,
+                latencyMs: 0,
+            },
+            retrievalMetadata: {
+                sourcesUsed: [...new Set(rankedContext.matches.map((match) => match.source_name || match.source))],
+                totalMatches: rankedContext.matches.length,
+                vectorSources: {
+                    query: vectorResult.stats.queryVectorHits,
+                    hyde: vectorResult.stats.hydeVectorHits,
+                    expanded: vectorResult.stats.expandedVectorHits,
+                },
+                topConfidence: confidenceResult.score,
+                retrievalMethod: `pipeline:exp=${expansionResult.variations.length}:hyde=${hydeResult.embedding ? 1 : 0}:raptor=${raptorMatches.length}:filtered=${rankedContext.filteredCount}:deduped=${rankedContext.duplicateCount}`,
+            },
+        },
+        fallbackMessage: confidenceResult.fallbackMessage,
+    };
 }
 
 export async function POST(req: Request) {
     const requestStart = performance.now();
 
     // ── Rate Limiting ─────────────────────────────────────────────
-    const clientIp = getClientIdentifier(req);
-    // Determine rate limit tier (will be refined after auth check)
-    const rateLimitResult = await checkRateLimit(clientIp, RATE_LIMITS.guest);
-    if (!rateLimitResult.allowed) {
-        return new Response(
-            JSON.stringify({ error: 'Rate limit exceeded. Please try again later.' }),
-            {
-                status: 429,
-                headers: {
-                    'Content-Type': 'application/json',
-                    ...rateLimitHeaders(rateLimitResult),
-                },
-            }
-        );
-    }
-
     try {
-        const {
-            messages,
-            userId,
-            language = 'en',
-            searchMode = 'standard',
-            conversationId: reqConversationId,
-        } = await req.json();
+        const body = await req.json();
+
+        if (!body || !Array.isArray(body.messages) || body.messages.length === 0) {
+            return new Response(
+                JSON.stringify({ error: 'Invalid messages format' }),
+                { status: 400, headers: { 'Content-Type': 'application/json' } }
+            );
+        }
+
+        const messages = body.messages;
+        const userId = body.userId ?? null;
+        const validLanguages = ['en', 'bn', 'hi'];
+        const language = validLanguages.includes(body.language) ? body.language : 'en';
+        const searchMode = body.searchMode ?? 'default';
+        const reqConversationId = body.conversationId ?? null;
+        const latestMessageRecord = messages[messages.length - 1];
+        const latestMessage = typeof latestMessageRecord?.content === 'string'
+            ? latestMessageRecord.content.trim()
+            : '';
+
+        if (!latestMessage) {
+            return new Response(
+                JSON.stringify({ error: 'Invalid messages format' }),
+                { status: 400, headers: { 'Content-Type': 'application/json' } }
+            );
+        }
+
+        const clientIp = getClientIdentifier(req);
         const languageNames = { en: 'English', bn: 'Bengali', hi: 'Hindi' } as const;
         const langName = languageNames[language as keyof typeof languageNames] || 'English';
 
@@ -320,9 +445,9 @@ export async function POST(req: Request) {
                     mmrLambda: data.mmr_lambda,
                 });
             }
-        } catch { /* use defaults if DB fails */ }
-
-        const latestMessage = messages[messages.length - 1].content;
+        } catch (err) {
+            console.error('[rag settings load error]', err);
+        }
 
         // ── Resolve authenticated user + conversation (if logged in) ──────
         let authUserId: string | null = null;
@@ -402,7 +527,6 @@ export async function POST(req: Request) {
         }
 
         // ── Rate Limiting (Tier-Aware) ────────────────────────────────
-        const clientIp = getClientIdentifier(req);
         const limitTier = authUserId ? RATE_LIMITS.authenticated : RATE_LIMITS.guest;
         const rateLimitResult = await checkRateLimit(clientIp, limitTier);
 
@@ -431,7 +555,9 @@ export async function POST(req: Request) {
                 if (saveUserMessageError) {
                     console.warn('User message persistence failed:', saveUserMessageError.message);
                 }
-            } catch { /* persistence is non-critical */ }
+            } catch (err) {
+                console.error('[user message persistence error]', err);
+            }
         }
 
         // Build conversation history from DB (preferred) or client messages
@@ -593,35 +719,99 @@ export async function POST(req: Request) {
 
         const ragStart = performance.now();
         let lastRagResult: RAGResult;
+        let fallbackMessage: string | undefined;
 
         if (decomposed.isDecomposed) {
             // Each sub-query has a different search string — do NOT reuse the parent embedding
             const subResults = await Promise.all(
-                decomposed.subQueries.map(async (subQuery) => ({
-                    subQuery,
-                    ragResult: await retrieve(subQuery.query, sarvamLlm, retrieveOptions),
-                }))
+                decomposed.subQueries.map(async (subQuery) => {
+                    const extracted = extractKeywordsAndEntities(subQuery.query);
+                    const stageResult = await runRetrievalStages({
+                        query: subQuery.query,
+                        analysis: classifyQuery(subQuery.query),
+                        llm: sarvamLlm,
+                        retrieveOptions,
+                        keywords: extracted.keywords,
+                        entities: extracted.entities,
+                    });
+
+                    return {
+                        subQuery,
+                        ragResult: stageResult.ragResult,
+                        fallbackMessage: stageResult.fallbackMessage,
+                    };
+                })
             );
-            lastRagResult = buildMergedRagResult(baseAnalysis, subResults, ragStart);
+            lastRagResult = buildMergedRagResult(
+                baseAnalysis,
+                subResults.map(({ subQuery, ragResult }) => ({ subQuery, ragResult })),
+                ragStart
+            );
         } else {
-            lastRagResult = await retrieve(retrievalQuestion, sarvamLlm, { ...retrieveOptions, precomputedQueryVector: cachedQueryEmbedding });
+            const stageResult = await runRetrievalStages({
+                query: retrievalQuestion,
+                analysis: baseAnalysis,
+                llm: sarvamLlm,
+                retrieveOptions,
+                queryEmbedding: cachedQueryEmbedding,
+                keywords: processedQuery.keywords,
+                entities: processedQuery.entities,
+            });
+
+            lastRagResult = stageResult.ragResult;
+            fallbackMessage = stageResult.fallbackMessage;
         }
 
         // ── Feedback-Driven Reranking Boost ──────────────────────────
         // Adjust scores based on historical user feedback (thumbs up/down)
-        if (lastRagResult.matches.length > 0) {
-            await applyFeedbackBoost(lastRagResult.matches);
+        if (decomposed.isDecomposed) {
+            const rerankedMerged = rankAndDeduplicateContext({
+                query: retrievalQuestion,
+                matches: lastRagResult.matches,
+                maxContexts: retrieveOptions.topK,
+                preferredChunkType: retrieveOptions.preferredChunkType,
+            });
+            const mergedConfidence = scoreConfidence({
+                query: retrievalQuestion,
+                matches: rerankedMerged.matches,
+                baseConfidence: lastRagResult.confidence,
+            });
+
+            lastRagResult = {
+                ...lastRagResult,
+                matches: rerankedMerged.matches,
+                confidence: mergedConfidence.score,
+                answerMode: answerModeFromConfidence(mergedConfidence.score),
+                contextString: rerankedMerged.contextString,
+                retrievalStats: {
+                    ...lastRagResult.retrievalStats,
+                    afterRerank: rerankedMerged.matches.length,
+                    latencyMs: performance.now() - ragStart,
+                },
+                retrievalMetadata: {
+                    sourcesUsed: [...new Set(rerankedMerged.matches.map((match) => match.source_name || match.source))],
+                    totalMatches: rerankedMerged.matches.length,
+                    vectorSources: lastRagResult.retrievalMetadata?.vectorSources ?? {
+                        query: lastRagResult.retrievalStats.queryVectorHits,
+                        hyde: lastRagResult.retrievalStats.hydeVectorHits,
+                        expanded: lastRagResult.retrievalStats.expandedVectorHits,
+                    },
+                    topConfidence: mergedConfidence.score,
+                    retrievalMethod: `${lastRagResult.retrievalMetadata?.retrievalMethod || 'pipeline'}:merged`,
+                },
+            };
+            fallbackMessage = mergedConfidence.fallbackMessage || fallbackMessage;
+        } else {
+            lastRagResult = {
+                ...lastRagResult,
+                retrievalStats: {
+                    ...lastRagResult.retrievalStats,
+                    latencyMs: performance.now() - ragStart,
+                },
+            };
         }
 
-        const optimizedRetrieval = optimizeRetrievalResult({
-            query: retrievalQuestion,
-            ragResult: lastRagResult,
-            intent,
-            language,
-        });
-        lastRagResult = optimizedRetrieval.ragResult;
-
-        console.log(`RAG Engine completed [${elapsed(ragStart)}]`);
+        console.log(`RAG pipeline completed [${elapsed(ragStart)}]`);
 
         const {
             answerMode,
@@ -631,7 +821,6 @@ export async function POST(req: Request) {
             retrievalStats,
             retrievalMetadata,
         } = lastRagResult;
-        const fallbackMessage = optimizedRetrieval.fallbackMessage;
 
         // ── Stored diagram short-circuit ────────────────────
         // If the top RAG match is a stored diagram with high confidence,
@@ -767,7 +956,7 @@ export async function POST(req: Request) {
             return sections.join('\n\n');
         };
 
-        const historySection = processedQuery.memory.promptContext.trim();
+        const historySection = sanitizeInput(processedQuery.memory.promptContext.trim());
 
         const systemPrompt = buildFinalSystemPrompt(
             routedPrompt.system,
@@ -783,7 +972,7 @@ export async function POST(req: Request) {
                 { role: 'system', content: systemPrompt },
                 { role: 'user', content: retrievalQuestion },
             ]),
-            new Promise<any>((_, reject) => 
+            new Promise<never>((_, reject) => 
                 setTimeout(() => reject(new Error('LLM_TIMEOUT')), 15000)
             )
         ]);
@@ -806,6 +995,8 @@ export async function POST(req: Request) {
             llm: sarvamLlm,
             latencyMs: performance.now() - requestStart,
             userId: userId ?? undefined,
+        }).catch((err) => {
+            console.error('[evaluation error]', err);
         });
 
         const dbAnswerMode = answerMode.startsWith('rag') ? 'rag' : answerMode;
@@ -826,6 +1017,7 @@ export async function POST(req: Request) {
             answer,
             answerMode,
             language,
+            confidence,
         });
 
         await persistAssistantMessage({

@@ -16,6 +16,7 @@
 
 import { ChatOpenAI } from '@langchain/openai';
 import { stripThinkTags } from './sarvam';
+import { sanitizeInput } from './sanitize';
 
 const MAX_HISTORY_MESSAGES = 6;
 
@@ -24,10 +25,41 @@ const FOLLOW_UP_INDICATORS = [
     /\b(what about|how about|and|also|more|another|other)\b/i,
     /^(why|how|when|where|can|does|is|are|do)\b/i,
 ];
+const TOPIC_SHIFT_THRESHOLD = 0.2;
 
 export interface ConversationMessage {
     role: 'user' | 'assistant';
     content: string;
+}
+
+function normalizeForSimilarity(text: string): string {
+    return text
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function computeSimilarity(left: string, right: string): number {
+    const leftTokens = new Set(normalizeForSimilarity(left).split(' ').filter((token) => token.length > 2));
+    const rightTokens = new Set(normalizeForSimilarity(right).split(' ').filter((token) => token.length > 2));
+
+    if (leftTokens.size === 0 || rightTokens.size === 0) {
+        return 0;
+    }
+
+    let overlap = 0;
+    for (const token of leftTokens) {
+        if (rightTokens.has(token)) {
+            overlap++;
+        }
+    }
+
+    return overlap / Math.max(leftTokens.size, rightTokens.size);
+}
+
+function isTopicShift(current: string, previous: string): boolean {
+    return computeSimilarity(current, previous) < TOPIC_SHIFT_THRESHOLD;
 }
 
 /**
@@ -65,9 +97,13 @@ export async function rewriteWithContext(
 
     // Take recent history only
     const recentHistory = history.slice(-MAX_HISTORY_MESSAGES);
+    const previousUserMessage = [...recentHistory].reverse().find((message) => message.role === 'user')?.content;
+    if (previousUserMessage && isTopicShift(query, previousUserMessage)) {
+        return { rewritten: query, wasRewritten: false };
+    }
 
     const historyText = recentHistory
-        .map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content.slice(0, 200)}`)
+        .map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${sanitizeInput(m.content).slice(0, 200)}`)
         .join('\n');
 
     const prompt = `You are a query rewriter for a technical support chatbot about HMS industrial panels.
@@ -85,10 +121,15 @@ Rules:
 - Keep the rewritten query concise (under 30 words)
 - Output ONLY the rewritten query, nothing else
 
-Rewritten query:`;
+    Rewritten query:`;
 
     try {
-        const result = await llm.invoke(prompt);
+        const result = await Promise.race([
+            llm.invoke(prompt),
+            new Promise<never>((_, reject) =>
+                setTimeout(() => reject(new Error('Rewrite timeout')), 3000)
+            ),
+        ]);
         const rewritten = stripThinkTags(String(result.content)).trim();
 
         // Sanity check — don't use rewrites that are too long or empty
@@ -97,7 +138,8 @@ Rewritten query:`;
         }
 
         return { rewritten, wasRewritten: true };
-    } catch {
+    } catch (err) {
+        console.error('[conversation rewrite error]', err);
         return { rewritten: query, wasRewritten: false };
     }
 }
