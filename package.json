@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "test:smoke": "tsx tests/admin-smoke.test.ts",
+    "test:unit": "tsx tests/unit-lib.test.ts",
     "benchmark": "tsx scripts/run-rag-benchmark.ts",
     "benchmark:factual": "tsx scripts/run-rag-benchmark.ts --category factual",
     "benchmark:diagnostic": "tsx scripts/run-rag-benchmark.ts --category diagnostic"
