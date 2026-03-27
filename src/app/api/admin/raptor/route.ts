@@ -11,10 +11,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { ChatOpenAI } from '@langchain/openai';
 import { buildRaptorTree, RaptorBuildInProgressError } from '@/lib/raptor-builder';
 import { getSupabase } from '@/lib/supabase';
+import { requireAdmin } from '@/lib/admin-auth';
 
 const RAPTOR_CONFIG_TOKENS = 300;
 
 export async function POST(req: NextRequest) {
+    const auth = await requireAdmin();
+    if (!auth.authorized) return auth.response!;
+
     void req;
     try {
         console.info('[admin.raptor.post] request');
@@ -79,6 +83,9 @@ export async function POST(req: NextRequest) {
 }
 
 export async function GET() {
+    const auth = await requireAdmin();
+    if (!auth.authorized) return auth.response!;
+
     try {
         console.info('[admin.raptor.get] request');
         const supabase = getSupabase();

@@ -2,8 +2,12 @@ import { getSupabase } from '@/lib/supabase';
 import { embedText } from '@/lib/embeddings';
 import { invalidateCache } from '@/lib/cache';
 import { NextRequest, NextResponse } from 'next/server';
+import { requireAdmin } from '@/lib/admin-auth';
 
 export async function POST(req: NextRequest) {
+    const auth = await requireAdmin();
+    if (!auth.authorized) return auth.response!;
+
     const supabase = getSupabase();
 
     try {

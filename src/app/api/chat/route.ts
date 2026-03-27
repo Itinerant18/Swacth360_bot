@@ -31,7 +31,7 @@ import { createEmbeddingStore, runMultiVectorSearch } from '@/lib/vectorSearch';
 import { retrieveRaptorContexts } from '@/lib/raptorRetrieval';
 import { rankAndDeduplicateContext } from '@/lib/contextRanker';
 import { answerModeFromConfidence, deriveAdaptiveTopK, isFastPathCandidate, scoreConfidence, shouldUseVerificationPass } from '@/lib/confidence';
-import { sanitizeInput } from '@/lib/sanitize';
+import { hasInjectionSignals, sanitizeInput } from '@/lib/sanitize';
 import { createStageTimer, recordMetric, type PipelineMetric } from '@/lib/pipelineMetrics';
 import { checkSemanticCache, storeSemanticCache } from '@/lib/semanticCache';
 import { mergeHybridMatches, searchKeywordMatches } from '@/lib/hybridSearch';
@@ -773,7 +773,11 @@ export async function POST(req: Request) {
             history: contextMessages,
             llm: shouldUseRewriteModel ? sarvamLlm : undefined,
         });
-        const retrievalQuestion = processedQuery.retrievalQuery;
+        let retrievalQuestion = processedQuery.retrievalQuery;
+        if (hasInjectionSignals(retrievalQuestion)) {
+            console.warn(`[chat] Injection attempt detected from IP ${clientIp}: "${retrievalQuestion.slice(0, 100)}"`);
+        }
+        retrievalQuestion = sanitizeInput(retrievalQuestion);
         const baseAnalysis = classifyQuery(retrievalQuestion);
         const intent = classifyIntent(retrievalQuestion, baseAnalysis);
         rewrittenQueryForLog = retrievalQuestion;
@@ -1346,6 +1350,52 @@ export async function POST(req: Request) {
                     console.warn(`Unknown log skipped: ${error.message}`);
                 }
             });
+        }
+
+        // Hard gate: block hallucination in general mode when context is negligible.
+        if (answerMode === 'general' && (!contextString || contextString.trim().length < 30)) {
+            console.log(`[chat] Hallucination gate triggered - answerMode=general, contextLength=${contextString?.length ?? 0}`);
+
+            await persistAssistantMessage({
+                enabled: Boolean(authUserId),
+                conversationId: activeConversationId,
+                content: notFoundMsg,
+                answerMode: 'not_found',
+                topSimilarity: confidence,
+            });
+
+            void supabase.from('chat_sessions').insert({
+                user_question: latestMessage,
+                english_translation: englishQuestion,
+                answer_mode: 'not_found',
+                top_similarity: confidence,
+                user_id: authUserId || userId || null,
+                conversation_id: activeConversationId || null,
+            }).then(({ error }) => {
+                if (error) {
+                    console.warn('chat_sessions insert failed:', error.message);
+                }
+            });
+
+            recordChatLog({
+                requestId,
+                query: originalQueryForLog || latestMessage,
+                rewrittenQuery: retrievalQuestion,
+                intent: intentForLog,
+                retrievedChunks: [],
+                finalChunks: [],
+                confidence,
+                responseTimeMs: performance.now() - requestStart,
+                success: true,
+                fallbackTriggered: true,
+                cacheSource,
+                hydeUsed: retrievalDiagnostics.hydeUsed,
+                queryExpansionUsed: retrievalDiagnostics.queryExpansionUsed,
+                llmCalls: llmCallCount,
+                error: null,
+            });
+
+            return buildChatResponse(notFoundMsg, activeConversationId, rateLimitResult);
         }
 
         const routedPrompt = selectRoute(baseAnalysis, langName, notFoundMsg, lastRagResult.answerMode);

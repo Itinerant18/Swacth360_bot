@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { addEntities, findRelatedEntities, findPath, extractEntities } from '@/lib/knowledge-graph';
 import { getSupabase } from '@/lib/supabase';
+import { requireAdmin } from '@/lib/admin-auth';
 
 // Types for the API
 interface Entity {
@@ -55,6 +56,9 @@ function inferEntityType(name: string): string {
 }
 
 export async function POST(request: NextRequest) {
+    const auth = await requireAdmin();
+    if (!auth.authorized) return auth.response!;
+
     try {
         const body = await request.json();
         const { action, data } = body;
@@ -241,6 +245,9 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
+    const auth = await requireAdmin();
+    if (!auth.authorized) return auth.response!;
+
     void request;
     // Get knowledge graph statistics
     const supabase = getSupabase();

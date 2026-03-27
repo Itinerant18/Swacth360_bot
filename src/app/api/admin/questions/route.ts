@@ -1,6 +1,7 @@
 import dns from 'node:dns';
 import { getSupabase } from '@/lib/supabase';
 import { NextRequest, NextResponse } from 'next/server';
+import { requireAdmin } from '@/lib/admin-auth';
 
 dns.setDefaultResultOrder('ipv4first');
 
@@ -9,6 +10,9 @@ const VALID_STATUSES = new Set(['pending', 'reviewed', 'dismissed']);
 
 // GET - List unknown questions
 export async function GET(req: NextRequest) {
+    const auth = await requireAdmin();
+    if (!auth.authorized) return auth.response!;
+
     try {
         const status = req.nextUrl.searchParams.get('status') || 'pending';
         console.info('[admin.questions] request', { status });
@@ -47,6 +51,9 @@ export async function GET(req: NextRequest) {
 
 // PATCH - Update question status (reviewed/dismissed)
 export async function PATCH(req: NextRequest) {
+    const auth = await requireAdmin();
+    if (!auth.authorized) return auth.response!;
+
     try {
         const { id, status } = await req.json();
         console.info('[admin.questions.patch] request', { id, status });

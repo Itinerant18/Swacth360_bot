@@ -1,9 +1,13 @@
 import { getSupabase } from '@/lib/supabase';
 import { getAnalyticsSummary } from '@/lib/logger';
 import { NextResponse } from 'next/server';
+import { requireAdmin } from '@/lib/admin-auth';
 
 // GET - Return analytics data
 export async function GET() {
+    const auth = await requireAdmin();
+    if (!auth.authorized) return auth.response!;
+
     const supabase = getSupabase();
     console.info('[admin.analytics] request');
 

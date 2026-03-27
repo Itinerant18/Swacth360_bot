@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabase } from '@/lib/supabase';
 import { invalidateAllCache } from '@/lib/cache';
+import { requireAdmin } from '@/lib/admin-auth';
 
 export async function GET() {
+    const auth = await requireAdmin();
+    if (!auth.authorized) return auth.response!;
+
     const supabase = getSupabase();
 
     try {
@@ -34,6 +38,9 @@ export async function GET() {
 }
 
 export async function PUT(request: NextRequest) {
+    const auth = await requireAdmin();
+    if (!auth.authorized) return auth.response!;
+
     const supabase = getSupabase();
 
     try {

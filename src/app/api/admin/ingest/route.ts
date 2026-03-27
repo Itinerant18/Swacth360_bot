@@ -39,6 +39,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSupabase } from '@/lib/supabase';
 import { embedText } from '@/lib/embeddings';
 import { extractPdfText } from '@/lib/pdf-extract';
+import { requireAdmin } from '@/lib/admin-auth';
 import { ChatOpenAI } from '@langchain/openai';
 import { semanticChunk } from '@/lib/semantic-chunker';
 import { invalidateAllCache } from '@/lib/cache';
@@ -528,6 +529,9 @@ If NO technical images: return []`;
 
 // ─── Main Handler ─────────────────────────────────────────────
 export async function POST(req: NextRequest) {
+    const auth = await requireAdmin();
+    if (!auth.authorized) return auth.response!;
+
     const sarvamKey = process.env.SARVAM_API_KEY;
     const openaiKey = process.env.OPENAI_API_KEY;
     const geminiKey = process.env.GEMINI_API_KEY;

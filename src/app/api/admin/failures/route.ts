@@ -1,7 +1,11 @@
 import { NextResponse } from 'next/server';
 import { getFailureSummary } from '@/lib/logger';
+import { requireAdmin } from '@/lib/admin-auth';
 
 export async function GET(req: Request) {
+    const auth = await requireAdmin();
+    if (!auth.authorized) return auth.response!;
+
     try {
         const url = new URL(req.url);
         const limit = Math.min(

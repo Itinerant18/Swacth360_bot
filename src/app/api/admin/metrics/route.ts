@@ -9,6 +9,7 @@
 import { NextResponse } from 'next/server';
 import { getSupabase } from '@/lib/supabase';
 import { getRecentMetrics, computeAggregates } from '@/lib/pipelineMetrics';
+import { requireAdmin } from '@/lib/admin-auth';
 
 const WINDOWS: Record<string, number> = {
     '1h': 60 * 60 * 1000,
@@ -17,6 +18,9 @@ const WINDOWS: Record<string, number> = {
 };
 
 export async function GET(req: Request) {
+    const auth = await requireAdmin();
+    if (!auth.authorized) return auth.response!;
+
     try {
         const url = new URL(req.url);
         const window = url.searchParams.get('window') || '24h';
