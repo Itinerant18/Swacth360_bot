@@ -126,9 +126,9 @@ function MetricTile({
     accent?: string;
 }) {
     return (
-        <div className="skeuo-card p-4 sm:p-5">
-            <div className="flex items-start justify-between gap-3">
-                <div>
+        <div className="skeuo-card p-5 md:p-6 rounded-xl min-w-0 overflow-hidden h-full">
+            <div className="flex items-start justify-between gap-4 min-w-0">
+                <div className="min-w-0">
                     <p className="text-[11px] uppercase tracking-wider text-[#78716C]">{label}</p>
                     <p className={`mt-2 text-2xl sm:text-3xl font-bold tracking-tight ${accent}`}>{value}</p>
                     {hint ? <p className="mt-1 text-xs text-[#A8A29E]">{hint}</p> : null}
@@ -153,12 +153,12 @@ function SectionCard({
     children: ReactNode;
 }) {
     return (
-        <div className="skeuo-card p-4 sm:p-5">
-            <div className="flex items-start gap-3 mb-4">
+        <div className="skeuo-card p-5 md:p-6 rounded-xl min-w-0 overflow-hidden">
+            <div className="flex items-start gap-4 mb-6 min-w-0">
                 <div className="w-10 h-10 rounded-xl bg-[#0D9488]/10 border border-[#0D9488]/20 text-[#0D9488] flex items-center justify-center flex-shrink-0">
                     <FontAwesomeIcon icon={icon} className="w-4 h-4" />
                 </div>
-                <div>
+                <div className="min-w-0">
                     <h3 className="text-sm sm:text-base font-semibold text-[#1C1917]">{title}</h3>
                     {subtitle ? <p className="text-xs sm:text-sm text-[#78716C] mt-1">{subtitle}</p> : null}
                 </div>
@@ -190,12 +190,12 @@ function BarList({
     const maxValue = items.reduce((max, item) => Math.max(max, item.value), 0);
 
     return (
-        <div className="rounded-2xl border border-[#E8E0D4] bg-[#FAF7F2] p-4">
-            <h4 className="text-xs uppercase tracking-wider text-[#78716C] mb-3">{title}</h4>
+        <div className="w-full h-full min-w-0 overflow-hidden rounded-xl border border-[#E8E0D4] bg-[#FAF7F2] p-5 md:p-6">
+            <h4 className="text-xs uppercase tracking-wider text-[#78716C] mb-4">{title}</h4>
             {items.length === 0 ? (
                 <EmptyState message={emptyLabel} />
             ) : (
-                <div className="space-y-3">
+                <div className="space-y-4">
                     {items.map((item) => (
                         <div key={item.key}>
                             <div className="flex items-center justify-between gap-3 text-xs sm:text-sm mb-1.5">
@@ -319,7 +319,7 @@ export default function AdminAnalyticsDashboard() {
 
     if (loading) {
         return (
-            <div className="skeuo-card p-6 sm:p-8 text-center">
+            <div className="skeuo-card p-6 md:p-8 rounded-xl min-w-0 overflow-hidden text-center">
                 <p className="text-sm text-[#78716C]">Loading dashboard...</p>
             </div>
         );
@@ -327,7 +327,7 @@ export default function AdminAnalyticsDashboard() {
 
     if (!data) {
         return (
-            <div className="skeuo-card p-6 sm:p-8 text-center">
+            <div className="skeuo-card p-6 md:p-8 rounded-xl min-w-0 overflow-hidden text-center">
                 <p className="text-sm text-[#78716C]">No data available</p>
                 {error ? <p className="text-xs text-red-700 mt-2">{error}</p> : null}
             </div>
@@ -335,16 +335,16 @@ export default function AdminAnalyticsDashboard() {
     }
 
     return (
-        <div className="space-y-4 sm:space-y-6">
-            <div className="skeuo-card p-4 sm:p-5">
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div className="space-y-6">
+            <div className="skeuo-card p-5 md:p-6 rounded-xl min-w-0 overflow-hidden">
+                <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
                     <div>
                         <h2 className="text-sm sm:text-base font-semibold text-[#1C1917]">Assistant Monitoring</h2>
                         <p className="text-xs sm:text-sm text-[#78716C] mt-1">
                             Historical analytics stay separate from the real-time pipeline feed.
                         </p>
                     </div>
-                    <div className="flex items-center gap-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-4">
                         {lastUpdated ? (
                             <span className="text-xs text-[#A8A29E]">Updated {formatDateTime(lastUpdated)}</span>
                         ) : null}
@@ -360,18 +360,18 @@ export default function AdminAnalyticsDashboard() {
             </div>
 
             {error ? (
-                <div className="skeuo-card p-4 sm:p-5 border-red-200 bg-red-50/40">
+                <div className="skeuo-card p-5 md:p-6 rounded-xl min-w-0 overflow-hidden border-red-200 bg-red-50/40">
                     <p className="text-sm text-red-700">{error}</p>
                 </div>
             ) : null}
 
             {warning ? (
-                <div className="skeuo-card p-4 sm:p-5 border-amber-200 bg-amber-50/40">
+                <div className="skeuo-card p-5 md:p-6 rounded-xl min-w-0 overflow-hidden border-amber-200 bg-amber-50/40">
                     <p className="text-sm text-amber-800">{warning}</p>
                 </div>
             ) : null}
 
-            <div className="grid grid-cols-2 xl:grid-cols-6 gap-3 sm:gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-6">
                 <MetricTile
                     label="Avg Latency"
                     value={formatMs(data.analytics.monitoring.avgLatency)}
@@ -417,10 +417,10 @@ export default function AdminAnalyticsDashboard() {
 
             <SectionCard
                 title="Real-Time Pipeline"
-                subtitle={`Live metrics from /api/admin/metrics?realtime=true${data.realtime.source ? ` (${data.realtime.source})` : ''}`}
+                subtitle="Live system metrics (real-time)"
                 icon={faWaveSquare}
             >
-                <div className="grid grid-cols-2 xl:grid-cols-5 gap-3 sm:gap-4 mb-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6 mb-6">
                     <MetricTile label="P50" value={formatMs(data.realtime.p50Latency)} icon={faClock} />
                     <MetricTile label="P95" value={formatMs(data.realtime.p95Latency)} icon={faClock} accent="text-amber-700" />
                     <MetricTile label="P99" value={formatMs(data.realtime.p99Latency)} icon={faClock} accent="text-red-700" />
@@ -428,7 +428,7 @@ export default function AdminAnalyticsDashboard() {
                     <MetricTile label="Error Rate" value={formatPercent(data.realtime.errorRate)} icon={faCircleExclamation} accent="text-red-700" />
                 </div>
 
-                <div className="grid lg:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-2 gap-6">
                     <BarList
                         title="Average Stage Timing"
                         items={data.realtime.stages}
@@ -444,7 +444,7 @@ export default function AdminAnalyticsDashboard() {
                 </div>
 
                 {data.realtime.costSavings ? (
-                    <div className="grid grid-cols-3 gap-3 sm:gap-4 mt-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6 mt-8 first:mt-0">
                         <MetricTile
                             label="HYDE Skip Savings"
                             value={`$${data.realtime.costSavings.hydeSkipSavings}`}
@@ -472,10 +472,10 @@ export default function AdminAnalyticsDashboard() {
 
             <SectionCard
                 title="Historical Assistant Analytics"
-                subtitle="Historical monitoring from /api/admin/analytics"
+                subtitle="Historical assistant monitoring and quality trends"
                 icon={faServer}
             >
-                <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4 mb-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
                     <MetricTile
                         label="Samples"
                         value={formatCount(data.analytics.monitoring.count)}
@@ -504,7 +504,7 @@ export default function AdminAnalyticsDashboard() {
                     />
                 </div>
 
-                <div className="grid lg:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-2 gap-6">
                     <BarList
                         title="Top Queries"
                         items={data.analytics.monitoring.topQueries.map((entry) => ({
@@ -515,15 +515,15 @@ export default function AdminAnalyticsDashboard() {
                         formatter={formatCount}
                         emptyLabel="No historical queries yet."
                     />
-                    <div className="rounded-2xl border border-[#E8E0D4] bg-[#FAF7F2] p-4">
-                        <h4 className="text-xs uppercase tracking-wider text-[#78716C] mb-3">Low Confidence Queries</h4>
+                    <div className="w-full h-full min-w-0 overflow-hidden rounded-xl border border-[#E8E0D4] bg-[#FAF7F2] p-5 md:p-6">
+                        <h4 className="text-xs uppercase tracking-wider text-[#78716C] mb-4">Low Confidence Queries</h4>
                         {data.analytics.monitoring.lowConfidence.length === 0 ? (
                             <EmptyState message="No low-confidence queries recorded." />
                         ) : (
-                            <div className="space-y-3">
+                            <div className="space-y-4">
                                 {data.analytics.monitoring.lowConfidence.map((entry, index) => (
-                                    <div key={`${entry.query}-${entry.createdAt}-${index}`} className="rounded-xl border border-[#E8E0D4] bg-white/70 px-3 py-3">
-                                        <div className="flex items-start justify-between gap-3">
+                                    <div key={`${entry.query}-${entry.createdAt}-${index}`} className="rounded-xl border border-[#E8E0D4] bg-white/70 px-4 py-4">
+                                        <div className="flex items-start justify-between gap-4">
                                             <p className="text-sm text-[#44403C] line-clamp-2">{entry.query || 'Untitled query'}</p>
                                             <span className="text-xs font-mono text-red-700">{formatPercent(entry.confidence)}</span>
                                         </div>
@@ -538,25 +538,25 @@ export default function AdminAnalyticsDashboard() {
 
             <SectionCard
                 title="Performance Diagnostics"
-                subtitle="Historical diagnostics from /api/admin/performance"
+                subtitle="Historical latency, cache, and performance trends"
                 icon={faGaugeHigh}
             >
-                <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4 mb-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
                     <MetricTile label="Avg Latency" value={formatMs(data.performance.avgLatency)} icon={faClock} />
                     <MetricTile label="Cache Hit Rate" value={formatPercent(data.performance.cacheHitRate)} icon={faDatabase} accent="text-emerald-700" />
                     <MetricTile label="Failure Rate" value={formatPercent(data.performance.failureRate)} icon={faTriangleExclamation} accent="text-red-700" />
                     <MetricTile label="HYDE Usage" value={formatPercent(data.performance.hydeUsageRate)} icon={faBrain} accent="text-[#0D9488]" />
                 </div>
 
-                <div className="rounded-2xl border border-[#E8E0D4] bg-[#FAF7F2] p-4">
-                    <h4 className="text-xs uppercase tracking-wider text-[#78716C] mb-3">Slowest Requests</h4>
+                <div className="w-full h-full min-w-0 overflow-hidden rounded-xl border border-[#E8E0D4] bg-[#FAF7F2] p-5 md:p-6">
+                    <h4 className="text-xs uppercase tracking-wider text-[#78716C] mb-4">Slowest Requests</h4>
                     {data.performance.slowestRequests.length === 0 ? (
                         <EmptyState message="No historical slow-request data available." />
                     ) : (
-                        <div className="space-y-3">
+                        <div className="space-y-4">
                             {data.performance.slowestRequests.map((entry, index) => (
-                                <div key={`${entry.query}-${entry.createdAt}-${index}`} className="rounded-xl border border-[#E8E0D4] bg-white/70 px-3 py-3">
-                                    <div className="flex items-start justify-between gap-3">
+                                <div key={`${entry.query}-${entry.createdAt}-${index}`} className="rounded-xl border border-[#E8E0D4] bg-white/70 px-4 py-4">
+                                    <div className="flex items-start justify-between gap-4">
                                         <p className="text-sm text-[#44403C] line-clamp-2">{entry.query || 'Untitled query'}</p>
                                         <span className="text-xs font-mono text-[#0D9488]">{formatMs(entry.responseTimeMs)}</span>
                                     </div>
@@ -570,10 +570,10 @@ export default function AdminAnalyticsDashboard() {
 
             <SectionCard
                 title="Failures"
-                subtitle="Recent failure signals from /api/admin/failures"
+                subtitle="Recent failure signals and fallback events"
                 icon={faTriangleExclamation}
             >
-                <div className="grid lg:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-2 gap-6">
                     <BarList
                         title="Failure Reasons"
                         items={data.failures.reasons.map((entry) => ({
@@ -584,15 +584,15 @@ export default function AdminAnalyticsDashboard() {
                         formatter={formatCount}
                         emptyLabel="No failure reasons recorded."
                     />
-                    <div className="rounded-2xl border border-[#E8E0D4] bg-[#FAF7F2] p-4">
-                        <h4 className="text-xs uppercase tracking-wider text-[#78716C] mb-3">Recent Failures</h4>
+                    <div className="w-full h-full min-w-0 overflow-hidden rounded-xl border border-[#E8E0D4] bg-[#FAF7F2] p-5 md:p-6">
+                        <h4 className="text-xs uppercase tracking-wider text-[#78716C] mb-4">Recent Failures</h4>
                         {data.failures.recent.length === 0 ? (
                             <EmptyState message="No recent failures recorded." />
                         ) : (
-                            <div className="space-y-3">
+                            <div className="space-y-4">
                                 {data.failures.recent.map((entry) => (
-                                    <div key={`${entry.requestId}-${entry.createdAt}`} className="rounded-xl border border-[#E8E0D4] bg-white/70 px-3 py-3">
-                                        <div className="flex items-start justify-between gap-3">
+                                    <div key={`${entry.requestId}-${entry.createdAt}`} className="rounded-xl border border-[#E8E0D4] bg-white/70 px-4 py-4">
+                                        <div className="flex items-start justify-between gap-4">
                                             <div>
                                                 <p className="text-sm font-medium text-[#44403C]">{entry.reason || 'Unknown reason'}</p>
                                                 <p className="text-xs text-[#78716C] mt-1 line-clamp-2">{entry.query || 'Untitled query'}</p>
@@ -610,10 +610,10 @@ export default function AdminAnalyticsDashboard() {
 
             <SectionCard
                 title="Usage Overview"
-                subtitle="Business-facing analytics from /api/admin/analytics"
+                subtitle="Operational usage overview for the assistant"
                 icon={faComment}
             >
-                <div className="grid grid-cols-2 xl:grid-cols-5 gap-3 sm:gap-4 mb-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6 mb-6">
                     {data.analytics.conversations.isNewSystem ? (
                         <>
                             <MetricTile label="Conversations" value={formatCount(data.analytics.conversations.total)} icon={faComment} />
@@ -630,13 +630,13 @@ export default function AdminAnalyticsDashboard() {
                     <MetricTile label="Token Requests" value={formatCount(data.analytics.tokenUsage.totalRequests)} icon={faDatabase} hint={`${formatCount(data.analytics.tokenUsage.totalTokens)} total tokens`} />
                 </div>
 
-                <div className="grid lg:grid-cols-2 gap-4">
-                    <div className="rounded-2xl border border-[#E8E0D4] bg-[#FAF7F2] p-4">
-                        <h4 className="text-xs uppercase tracking-wider text-[#78716C] mb-3">Knowledge Base</h4>
+                <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-2 gap-6">
+                    <div className="w-full h-full min-w-0 overflow-hidden rounded-xl border border-[#E8E0D4] bg-[#FAF7F2] p-5 md:p-6">
+                        <h4 className="text-xs uppercase tracking-wider text-[#78716C] mb-4">Knowledge Base</h4>
                         {data.analytics.knowledgeBase.length === 0 ? (
                             <EmptyState message="No knowledge base records found." />
                         ) : (
-                            <div className="space-y-2">
+                            <div className="space-y-4">
                                 {data.analytics.knowledgeBase.map((entry) => (
                                     <div key={entry.source} className="flex items-center justify-between rounded-xl border border-[#E8E0D4] bg-white/70 px-3 py-2.5">
                                         <span className="text-sm text-[#44403C]">{entry.name}</span>
@@ -647,15 +647,15 @@ export default function AdminAnalyticsDashboard() {
                         )}
                     </div>
 
-                    <div className="rounded-2xl border border-[#E8E0D4] bg-[#FAF7F2] p-4">
-                        <h4 className="text-xs uppercase tracking-wider text-[#78716C] mb-3">Top Unknown Questions</h4>
+                    <div className="w-full h-full min-w-0 overflow-hidden rounded-xl border border-[#E8E0D4] bg-[#FAF7F2] p-5 md:p-6">
+                        <h4 className="text-xs uppercase tracking-wider text-[#78716C] mb-4">Top Unknown Questions</h4>
                         {data.analytics.topUnknown.length === 0 ? (
                             <EmptyState message="No unknown-question records yet." />
                         ) : (
-                            <div className="space-y-3">
+                            <div className="space-y-4">
                                 {data.analytics.topUnknown.map((entry, index) => (
-                                    <div key={`${entry.englishText}-${index}`} className="rounded-xl border border-[#E8E0D4] bg-white/70 px-3 py-3">
-                                        <div className="flex items-start justify-between gap-3">
+                                    <div key={`${entry.englishText}-${index}`} className="rounded-xl border border-[#E8E0D4] bg-white/70 px-4 py-4">
+                                        <div className="flex items-start justify-between gap-4">
                                             <p className="text-sm text-[#44403C] line-clamp-2">{entry.englishText || entry.userQuestion || 'Untitled question'}</p>
                                             <span className="text-xs font-mono text-red-700">{formatCount(entry.frequency)}x</span>
                                         </div>
@@ -666,12 +666,12 @@ export default function AdminAnalyticsDashboard() {
                     </div>
                 </div>
 
-                <div className="rounded-2xl border border-[#E8E0D4] bg-[#FAF7F2] p-4 mt-4">
-                    <h4 className="text-xs uppercase tracking-wider text-[#78716C] mb-3">Recent Sessions</h4>
+                <div className="w-full min-w-0 overflow-hidden rounded-xl border border-[#E8E0D4] bg-[#FAF7F2] p-5 md:p-6 mt-8 first:mt-0">
+                    <h4 className="text-xs uppercase tracking-wider text-[#78716C] mb-4">Recent Sessions</h4>
                     {data.analytics.recentSessions.length === 0 ? (
                         <EmptyState message="No recent sessions available." />
                     ) : (
-                        <div className="overflow-x-auto">
+                        <div className="w-full min-w-0 overflow-x-auto">
                             <table className="w-full min-w-[520px] text-xs sm:text-sm">
                                 <thead>
                                     <tr className="text-left text-[#78716C] uppercase text-[10px] sm:text-xs">

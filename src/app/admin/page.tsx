@@ -345,64 +345,69 @@ export default function AdminDashboard() {
                 </div>
             )}
 
-            {/* Header */}
-            <header className="sticky top-0 z-20 skeuo-metal">
-                <div className="max-w-5xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl skeuo-leather flex items-center justify-center">
-                            <FontAwesomeIcon icon={faGear} className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white" />
+            {/* Unified sticky header + tabs */}
+            <div className="sticky top-0 z-50">
+                <header className="skeuo-metal">
+                    <div className="w-full max-w-[1600px] mx-auto px-4 md:px-6 xl:px-10 py-4 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                        <div className="flex items-center gap-3">
+                            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl skeuo-leather flex items-center justify-center">
+                                <FontAwesomeIcon icon={faGear} className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white" />
+                            </div>
+                            <div>
+                                <h1 className="text-base sm:text-lg font-semibold tracking-tight text-[#1C1917]">
+                                    Admin <span className="text-[#CA8A04]">Dashboard</span>
+                                </h1>
+                                <p className="text-[10px] sm:text-[11px] text-[#78716C]">SAI Admin - Train & Monitor</p>
+                            </div>
                         </div>
-                        <div>
-                            <h1 className="text-base sm:text-lg font-semibold tracking-tight text-[#1C1917]">
-                                Admin <span className="text-[#CA8A04]">Dashboard</span>
-                            </h1>
-                            <p className="text-[10px] sm:text-[11px] text-[#78716C]">SAI Admin - Train & Monitor</p>
+                        <div className="flex items-center gap-2">
+                            <button onClick={handleSignOut} className="skeuo-raised flex items-center gap-1.5 text-xs text-[#78716C] px-2.5 py-1.5 sm:px-3 sm:py-2 hover:text-red-600 transition-colors">
+                                <FontAwesomeIcon icon={faSignOutAlt} className="w-3 h-3" />
+                                <span className="hidden sm:inline">Sign Out</span>
+                            </button>
                         </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                        <button onClick={handleSignOut} className="skeuo-raised flex items-center gap-1.5 text-xs text-[#78716C] px-2.5 py-1.5 sm:px-3 sm:py-2 hover:text-red-600 transition-colors">
-                            <FontAwesomeIcon icon={faSignOutAlt} className="w-3 h-3" />
-                            <span className="hidden sm:inline">Sign Out</span>
-                        </button>
-                    </div>
-                </div>
-            </header>
+                </header>
 
-            {/* Tabs */}
-            <div className="max-w-5xl mx-auto px-4 sm:px-6 pt-5 sm:pt-6">
-                <div className="inline-flex gap-1 rounded-2xl p-1.5 bg-white/50 backdrop-blur-sm border border-[#D6CFC4]/50 flex-wrap">
-                    {([
-                        { key: 'review' as const, label: 'Review', icon: faPenToSquare, badge: questions.length },
-                        { key: 'analytics' as const, label: 'Analytics', icon: faChartLine },
-                        { key: 'users' as const, label: 'Users', icon: faUsers, badge: users.length },
-                        { key: 'ingest' as const, label: 'Train Bot', icon: faCloudUploadAlt },
-                        { key: 'graph' as const, label: 'Graph', icon: faDiagramProject },
-                        { key: 'settings' as const, label: 'RAG Settings', icon: faSliders },
-                        { key: 'feedback' as const, label: 'Feedback', icon: faStar },
-                        { key: 'raptor' as const, label: 'RAPTOR', icon: faLayerGroup },
-                    ]).map(({ key, label, icon, badge }) => (
-                        <button
-                            key={key}
-                            onClick={() => setTab(key)}
-                            className={`flex items-center gap-1.5 px-3.5 sm:px-5 py-2 rounded-xl text-xs sm:text-sm font-medium transition-all duration-200 cursor-pointer ${tab === key
-                                ? 'bg-white text-[#1C1917] shadow-md border border-[#D6CFC4]/40'
-                                : 'text-[#78716C] hover:text-[#44403C] hover:bg-white/40'
-                                } ${key === 'ingest' ? 'text-[#0D9488]' : ''}`}
-                        >
-                            <FontAwesomeIcon icon={icon} className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
-                            <span className="hidden sm:inline">{label}</span>
-                            {badge !== undefined && badge > 0 && tab !== key && (
-                                <span className="ml-1 bg-gradient-to-r from-[#EAB308] to-[#CA8A04] text-white text-[10px] px-1.5 py-0.5 rounded-full font-medium shadow-sm">
-                                    {badge}
-                                </span>
-                            )}
-                        </button>
-                    ))}
-                </div>
+                <nav className="bg-white/95 backdrop-blur-sm border-b border-[#D6CFC4]/60 shadow-sm">
+                    <div className="w-full max-w-[1600px] mx-auto px-4 md:px-6 xl:px-10 py-3">
+                        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-8 gap-2 w-full">
+                            {([
+                                { key: 'review' as const, label: 'Review', icon: faPenToSquare, badge: questions.length },
+                                { key: 'analytics' as const, label: 'Analytics', icon: faChartLine },
+                                { key: 'users' as const, label: 'Users', icon: faUsers, badge: users.length },
+                                { key: 'ingest' as const, label: 'Train Bot', icon: faCloudUploadAlt },
+                                { key: 'graph' as const, label: 'Graph', icon: faDiagramProject },
+                                { key: 'settings' as const, label: 'RAG Settings', icon: faSliders },
+                                { key: 'feedback' as const, label: 'Feedback', icon: faStar },
+                                { key: 'raptor' as const, label: 'RAPTOR', icon: faLayerGroup },
+                            ]).map(({ key, label, icon, badge }) => (
+                                <button
+                                    key={key}
+                                    onClick={() => setTab(key)}
+                                    aria-current={tab === key ? 'page' : undefined}
+                                    className={`w-full min-h-[44px] px-3 py-2.5 rounded-lg border text-center text-xs sm:text-sm font-medium transition-all duration-200 cursor-pointer flex items-center justify-center gap-2 ${tab === key
+                                        ? 'bg-[var(--accent-brass)] text-white border-[var(--accent-brass)] shadow-sm hover:bg-[#B45309]'
+                                        : 'bg-[#F5F5F4] text-[#57534E] border-[#E7E5E4] hover:bg-[#E7E5E4]'
+                                        }`}
+                                >
+                                    <FontAwesomeIcon icon={icon} className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+                                    <span className="leading-tight text-center">{label}</span>
+                                    {badge !== undefined && badge > 0 && tab !== key && (
+                                        <span className="ml-1 bg-gradient-to-r from-[#EAB308] to-[#CA8A04] text-white text-[10px] px-1.5 py-0.5 rounded-full font-medium shadow-sm">
+                                            {badge}
+                                        </span>
+                                    )}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                </nav>
             </div>
 
-            {/* Content */}
-            <main className="max-w-5xl mx-auto px-4 sm:px-6 py-5 sm:py-6">
+            {/* Scrollable content */}
+            <div className="w-full max-w-[1600px] mx-auto px-4 md:px-6 xl:px-10">
+                <main className="min-w-0 pt-6 pb-6 md:pb-8">
 
                 {/* Loading */}
                 {((tab === 'review' && reviewLoading) || (tab === 'users' && usersLoading)) ? (
@@ -416,9 +421,9 @@ export default function AdminDashboard() {
                 ) : tab === 'review' ? (
 
                     /* Review tab */
-                    <div className="space-y-3 sm:space-y-4">
+                    <div className="space-y-6">
                         {reviewError && (
-                            <div className="skeuo-card p-4 sm:p-5 border-red-200 bg-red-50/40">
+                            <div className="skeuo-card p-5 md:p-6 border-red-200 bg-red-50/40">
                                 <p className="text-sm text-red-700">{reviewError}</p>
                             </div>
                         )}
@@ -436,7 +441,7 @@ export default function AdminDashboard() {
                             <div key={q.id} className={`skeuo-card overflow-hidden ${expandedId === q.id ? 'border-[#CA8A04]/40 shadow-lg' : ''}`}>
                                 <button
                                     onClick={() => { setExpandedId(expandedId === q.id ? null : q.id); setAnswerText(''); setCategory(''); }}
-                                    className="w-full text-left p-4 sm:p-5 flex items-start justify-between gap-3 sm:gap-4 cursor-pointer"
+                                    className="w-full text-left p-5 md:p-6 flex items-start justify-between gap-4 md:gap-5 cursor-pointer"
                                 >
                                     <div className="flex-1 min-w-0">
                                         <p className="text-[#1C1917] font-medium truncate text-sm sm:text-base">{q.english_text}</p>
@@ -452,7 +457,7 @@ export default function AdminDashboard() {
                                     </div>
                                 </button>
                                 {expandedId === q.id && (
-                                    <div className="px-4 sm:px-5 pb-4 sm:pb-5 pt-0 border-t border-[#D6CFC4] space-y-3 sm:space-y-4">
+                                    <div className="px-5 md:px-6 pb-5 md:pb-6 pt-0 border-t border-[#D6CFC4] space-y-4">
                                         <div className="pt-3 sm:pt-4">
                                             <label className="text-[10px] sm:text-xs text-[#78716C] uppercase tracking-wider font-medium">Category</label>
                                             <input
@@ -472,7 +477,7 @@ export default function AdminDashboard() {
                                                 className="skeuo-input mt-1 w-full p-2.5 sm:p-3 text-sm resize-none"
                                             />
                                         </div>
-                                        <div className="flex gap-2 sm:gap-3">
+                                        <div className="flex flex-col sm:flex-row gap-4">
                                             <button
                                                 onClick={() => handleSaveAndTrain(q)}
                                                 disabled={saving || activeQuestionId === q.id || !answerText.trim()}
@@ -501,19 +506,19 @@ export default function AdminDashboard() {
                 ) : tab === 'users' ? (
 
                     /* Users tab */
-                    <div className="space-y-4 sm:space-y-6">
+                    <div className="space-y-6">
                         {usersError && (
-                            <div className="skeuo-card p-4 sm:p-5 border-red-200 bg-red-50/40">
+                            <div className="skeuo-card p-5 md:p-6 border-red-200 bg-red-50/40">
                                 <p className="text-sm text-red-700">{usersError}</p>
                             </div>
                         )}
-                        <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
                             <SkeuoStat label="Total Users" value={users.length} icon={faUsers} accent="text-[#CA8A04]" />
                             <SkeuoStat label="Total Queries" value={users.reduce((sum, u) => sum + u.queryCount, 0)} icon={faComment} />
                             <SkeuoStat label="Active Today" value={users.filter(u => new Date(u.lastActive).toDateString() === new Date().toDateString()).length} icon={faClock} accent="text-emerald-700" />
                         </div>
-                        <div className="skeuo-card p-4 sm:p-5">
-                            <h3 className="text-xs sm:text-sm font-semibold text-[#1C1917] uppercase tracking-wider mb-3 sm:mb-4 flex items-center gap-2">
+                        <div className="skeuo-card p-5 md:p-6 min-w-0 overflow-hidden">
+                            <h3 className="text-xs sm:text-sm font-semibold text-[#1C1917] uppercase tracking-wider mb-6 flex items-center gap-2">
                                 <FontAwesomeIcon icon={faUsers} className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-[#CA8A04]" /> Registered Users
                             </h3>
                             {users.length === 0 ? (
@@ -522,8 +527,9 @@ export default function AdminDashboard() {
                                     <p className="text-[#78716C] text-sm">No users registered yet.</p>
                                 </div>
                             ) : (
-                                <div className="overflow-x-auto -mx-1">
-                                    <table className="w-full text-xs sm:text-sm min-w-[600px]">
+                                <div className="min-w-0 overflow-hidden">
+                                    <div className="overflow-x-auto">
+                                    <table className="w-full text-xs sm:text-sm min-w-[720px]">
                                         <thead><tr className="text-[#78716C] text-[10px] sm:text-xs uppercase">
                                             <th className="text-left pb-3">Name</th>
                                             <th className="text-left pb-3">Phone</th>
@@ -557,6 +563,7 @@ export default function AdminDashboard() {
                                             ))}
                                         </tbody>
                                     </table>
+                                    </div>
                                 </div>
                             )}
                         </div>
@@ -565,10 +572,10 @@ export default function AdminDashboard() {
                 ) : tab === 'ingest' ? (
 
                     /* Ingest / train bot tab */
-                    <div className="space-y-4 sm:space-y-6">
+                    <div className="space-y-6">
 
                         {/* Header card */}
-                        <div className="skeuo-card p-4 sm:p-5 border-[#0D9488]/30">
+                        <div className="skeuo-card p-5 md:p-6 border-[#0D9488]/30">
                             <div className="flex items-start gap-3 sm:gap-4">
                                 <div className="w-10 h-10 rounded-xl bg-[#0D9488]/10 border border-[#0D9488]/20 flex items-center justify-center flex-shrink-0">
                                     <FontAwesomeIcon icon={faDatabase} className="w-4 h-4 text-[#0D9488]" />
@@ -590,7 +597,7 @@ export default function AdminDashboard() {
 
                         {/* Mode selector + input area */}
                         {!ingestResult && (
-                            <div className="skeuo-card p-4 sm:p-5 space-y-4 sm:space-y-5">
+                            <div className="skeuo-card p-5 md:p-6 space-y-6 min-w-0 overflow-hidden">
 
                                 {/* Mode toggle */}
                                 <div>
@@ -762,31 +769,31 @@ export default function AdminDashboard() {
 
                         {/* Results */}
                         {ingestResult && (
-                            <div className="space-y-3 sm:space-y-4 animate-fade-up">
+                            <div className="space-y-6 animate-fade-up">
 
                                 {/* Summary stats - shows text vs image breakdown */}
-                                <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-                                    <div className="skeuo-card p-3 sm:p-4 text-center">
+                                <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-5">
+                                    <div className="skeuo-card p-5 md:p-6 text-center">
                                         <FontAwesomeIcon icon={faCheckCircle} className="w-5 h-5 text-emerald-600 mb-1" />
                                         <p className="text-xl font-bold text-emerald-700">{ingestResult.successCount}</p>
                                         <p className="text-[10px] text-[#78716C] uppercase tracking-wider">Total Added</p>
                                     </div>
-                                    <div className="skeuo-card p-3 sm:p-4 text-center">
+                                    <div className="skeuo-card p-5 md:p-6 text-center">
                                         <FontAwesomeIcon icon={faFileAlt} className="w-5 h-5 text-blue-500 mb-1" />
                                         <p className="text-xl font-bold text-blue-600">{ingestResult.textSuccess}</p>
                                         <p className="text-[10px] text-[#78716C] uppercase tracking-wider">From Text</p>
                                     </div>
-                                    <div className="skeuo-card p-3 sm:p-4 text-center border-[#0D9488]/30">
+                                    <div className="skeuo-card p-5 md:p-6 text-center border-[#0D9488]/30">
                                         <FontAwesomeIcon icon={faDiagramProject} className="w-5 h-5 text-[#0D9488] mb-1 mx-auto" />
                                         <p className="text-xl font-bold text-[#0D9488]">{ingestResult.imageSuccess}</p>
                                         <p className="text-[10px] text-[#78716C] uppercase tracking-wider">From Images</p>
                                     </div>
-                                    <div className="skeuo-card p-3 sm:p-4 text-center">
+                                    <div className="skeuo-card p-5 md:p-6 text-center">
                                         <FontAwesomeIcon icon={faMinusCircle} className="w-5 h-5 text-[#A8A29E] mb-1" />
                                         <p className="text-xl font-bold text-[#78716C]">{ingestResult.duplicateCount}</p>
                                         <p className="text-[10px] text-[#78716C] uppercase tracking-wider">Duplicates</p>
                                     </div>
-                                    <div className="skeuo-card p-3 sm:p-4 text-center">
+                                    <div className="skeuo-card p-5 md:p-6 text-center">
                                         <FontAwesomeIcon icon={faTimesCircle} className="w-5 h-5 text-red-500 mb-1" />
                                         <p className="text-xl font-bold text-red-600">{ingestResult.errorCount}</p>
                                         <p className="text-[10px] text-[#78716C] uppercase tracking-wider">Errors</p>
@@ -794,7 +801,7 @@ export default function AdminDashboard() {
                                 </div>
 
                                 {/* Success banner */}
-                                <div className="skeuo-card p-3 sm:p-4 border-emerald-200 bg-emerald-50/30">
+                                <div className="skeuo-card p-5 md:p-6 border-emerald-200 bg-emerald-50/30">
                                     <p className="text-sm font-semibold text-[#1C1917]">
                                         Trained from: <span className="text-[#0D9488]">{ingestResult.sourceName}</span>
                                     </p>
@@ -844,7 +851,7 @@ export default function AdminDashboard() {
                                 </div>
 
                                 {/* Q&A pairs - separated by type */}
-                                <div className="skeuo-card p-4 sm:p-5">
+                                <div className="skeuo-card p-5 md:p-6 min-w-0 overflow-hidden">
                                     <h3 className="text-xs sm:text-sm font-semibold text-[#1C1917] uppercase tracking-wider mb-3 flex items-center gap-2">
                                         <FontAwesomeIcon icon={faDatabase} className="w-3 h-3 text-[#0D9488]" />
                                         All Generated Q&amp;A Pairs ({ingestResult.results.filter(r => r.status === 'success').length})
@@ -934,7 +941,7 @@ export default function AdminDashboard() {
                                 </div>
 
                                 {/* Action buttons */}
-                                <div className="flex gap-3">
+                                <div className="flex flex-col md:flex-row gap-4">
                                     <button onClick={resetIngest} className="skeuo-brass flex-1 py-2.5 text-sm flex items-center justify-center gap-2">
                                         <FontAwesomeIcon icon={faUpload} className="w-3.5 h-3.5" />
                                         Train from Another Document
@@ -953,8 +960,8 @@ export default function AdminDashboard() {
                 ) : tab === 'feedback' ? (
                     <FeedbackTab />
                 ) : tab === 'raptor' ? (
-                    <div className="space-y-4 animate-fade-up">
-                        <div className="skeuo-card p-4 sm:p-5 border-[#0D9488]/30">
+                    <div className="space-y-6 animate-fade-up">
+                        <div className="skeuo-card p-5 md:p-6 border-[#0D9488]/30">
                             <div className="flex items-start gap-3 sm:gap-4">
                                 <div className="w-10 h-10 rounded-xl bg-[#0D9488]/10 border border-[#0D9488]/20 flex items-center justify-center flex-shrink-0">
                                     <FontAwesomeIcon icon={faLayerGroup} className="w-4 h-4 text-[#0D9488]" />
@@ -970,7 +977,7 @@ export default function AdminDashboard() {
                         </div>
 
                         {raptorError && (
-                            <div className="skeuo-card p-4 sm:p-5 border-red-200 bg-red-50/40">
+                            <div className="skeuo-card p-5 md:p-6 border-red-200 bg-red-50/40">
                                 <p className="text-sm text-red-700">{raptorError}</p>
                             </div>
                         )}
@@ -985,8 +992,8 @@ export default function AdminDashboard() {
                             </div>
                         ) : (
                             <>
-                                <div className="skeuo-card p-4 sm:p-5">
-                                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+                                <div className="skeuo-card p-5 md:p-6 min-w-0 overflow-hidden">
+                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-5 mb-6">
                                         <div className="bg-[#FAF7F2] rounded-lg p-3 text-center">
                                             <p className="text-xl font-bold text-[#0D9488]">
                                                 {raptorHealth.reduce((sum, h) => sum + h.cluster_count, 0) || '0'}
@@ -1015,7 +1022,7 @@ export default function AdminDashboard() {
 
                                     {/* Per-level breakdown */}
                                     {raptorHealth.length > 0 && (
-                                        <div className="space-y-2 mb-4">
+                                        <div className="space-y-4 mb-6">
                                             <h3 className="text-xs text-[#78716C] uppercase tracking-wider font-medium">Hierarchy Levels</h3>
                                             {raptorHealth.map((h) => (
                                                 <div key={h.level} className="flex items-center justify-between py-2 px-3 rounded-lg bg-[#F0EBE3] border border-[#D6CFC4]">
@@ -1037,20 +1044,18 @@ export default function AdminDashboard() {
 
                                     {/* Build log */}
                                     {raptorBuildLog.length > 0 && (
-                                        <div className="space-y-2">
+                                        <div className="space-y-4">
                                             <h3 className="text-xs text-[#78716C] uppercase tracking-wider font-medium">Build History</h3>
                                             {raptorBuildLog.map((log) => (
-                                                <div key={log.id} className={`flex items-center justify-between py-2 px-3 rounded-lg border ${
-                                                    log.status === 'completed' ? 'bg-emerald-50/50 border-emerald-200'
+                                                <div key={log.id} className={`flex items-center justify-between py-2 px-3 rounded-lg border ${log.status === 'completed' ? 'bg-emerald-50/50 border-emerald-200'
                                                     : log.status === 'running' ? 'bg-blue-50/50 border-blue-200'
-                                                    : 'bg-red-50/50 border-red-200'
-                                                }`}>
+                                                        : 'bg-red-50/50 border-red-200'
+                                                    }`}>
                                                     <div className="flex items-center gap-2">
-                                                        <span className={`w-2 h-2 rounded-full ${
-                                                            log.status === 'completed' ? 'bg-emerald-500'
+                                                        <span className={`w-2 h-2 rounded-full ${log.status === 'completed' ? 'bg-emerald-500'
                                                             : log.status === 'running' ? 'bg-blue-500 animate-pulse'
-                                                            : 'bg-red-500'
-                                                        }`} />
+                                                                : 'bg-red-500'
+                                                            }`} />
                                                         <span className="text-xs text-[#44403C] capitalize">{log.status}</span>
                                                         {log.clusters_built != null && <span className="text-xs text-[#78716C]">({log.clusters_built} clusters)</span>}
                                                     </div>
@@ -1103,6 +1108,7 @@ export default function AdminDashboard() {
                     </div>
                 ) : null}
             </main>
+            </div>
         </div>
     );
 }
@@ -1111,7 +1117,7 @@ function SkeuoStat({ label, value, icon, accent }: {
     label: string; value: string | number; icon: IconDefinition; accent?: string;
 }) {
     return (
-        <div className="skeuo-card p-4 sm:p-5 cursor-pointer group">
+        <div className="skeuo-card p-5 md:p-6 rounded-xl min-w-0 overflow-hidden cursor-pointer group">
             <div className={`w-9 h-9 rounded-xl flex items-center justify-center mb-3 transition-transform duration-200 group-hover:scale-105 ${accent === 'text-emerald-700' ? 'bg-emerald-50 text-emerald-600'
                 : accent === 'text-amber-700' ? 'bg-amber-50 text-amber-600'
                     : accent === 'text-red-700' ? 'bg-red-50 text-red-600'
