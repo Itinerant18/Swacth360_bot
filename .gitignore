@@ -48,3 +48,6 @@ data/
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# AI Assistant Orchestrator
+orchestrator/
