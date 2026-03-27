@@ -120,6 +120,7 @@ async function main() {
 
         assert.match(html, /Knowledge Graph/);
         assert.match(html, /entities/);
+        assert.match(html, /error codes \(E001\)/);
     });
 
     await run('feedback tab renders its primary heading', () => {

@@ -24,8 +24,13 @@ import {
 } from '@/lib/rate-limiter';
 
 async function run(name: string, fn: () => Promise<void> | void) {
-    await fn();
-    console.log(`PASS ${name}`);
+    try {
+        await fn();
+        console.log(`PASS ${name}`);
+    } catch (error) {
+        console.error(`FAIL ${name}`);
+        throw error;
+    }
 }
 
 async function main() {
@@ -101,8 +106,14 @@ async function main() {
 
     await run('buildCasualResponse supports multilingual fallback', () => {
         const english = buildCasualResponse('thanks', 'en');
+        const bengali = buildCasualResponse('thanks', 'bn');
+        const hindi = buildCasualResponse('thanks', 'hi');
         const fallback = buildCasualResponse('thanks', 'unsupported-lang');
         assert.ok(english.length > 0);
+        assert.ok(bengali.length > 0);
+        assert.ok(hindi.length > 0);
+        assert.notEqual(bengali, english);
+        assert.notEqual(hindi, english);
         assert.equal(fallback, english);
     });
 
@@ -156,6 +167,12 @@ async function main() {
     await run('extractJsonFromSarvam returns null on invalid JSON', () => {
         const parsed = extractJsonFromSarvam('not-json');
         assert.equal(parsed, null);
+    });
+
+    await run('extractJsonFromSarvam parses plain raw JSON without wrappers', () => {
+        const raw = '{"mode":"ok","value":42}';
+        const parsed = extractJsonFromSarvam<{ mode: string; value: number }>(raw);
+        assert.deepEqual(parsed, { mode: 'ok', value: 42 });
     });
 
     await run('getClientIdentifier prefers forwarded IP then real IP then unknown', () => {
