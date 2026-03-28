@@ -2,6 +2,7 @@ import type { IntentClassification } from './intentClassifier';
 import type { QueryAnalysis, RAGResult, RankedMatch } from './rag-engine';
 import type { RAGSettings } from './rag-settings';
 import type { RouteConfig } from './router';
+import { answerModeFromConfidence } from './confidence';
 
 type PreferredChunkType = NonNullable<RouteConfig['retrieval']['preferChunkType']>;
 
@@ -138,7 +139,7 @@ function rebuildContextString(query: string, matches: RankedMatch[]): string {
         const snippet = (match.relevantPassage || match.answer)
             .replace(/\s+/g, ' ')
             .trim()
-            .slice(0, 260);
+            .slice(0, 600);
 
         return `[${index + 1}] Q: ${match.question}\n    A: ${snippet}`;
     }).join('\n\n');
@@ -166,22 +167,6 @@ function deriveConfidence(query: string, ragResult: RAGResult, matches: RankedMa
         0,
         1,
     );
-}
-
-function answerModeFromConfidence(confidence: number): RAGResult['answerMode'] {
-    if (confidence >= 0.72) {
-        return 'rag_high';
-    }
-
-    if (confidence >= 0.55) {
-        return 'rag_medium';
-    }
-
-    if (confidence >= 0.38) {
-        return 'rag_partial';
-    }
-
-    return 'general';
 }
 
 export function optimizeRetrievalResult(params: {
@@ -233,9 +218,9 @@ export function optimizeRetrievalResult(params: {
     const optimizedMatches = filtered;
     const confidence = deriveConfidence(query, ragResult, optimizedMatches);
     const answerMode = answerModeFromConfidence(confidence);
-    const shouldUseFallback = optimizedMatches.length === 0 || confidence < 0.52;
+    const shouldUseFallback = optimizedMatches.length === 0 || confidence < 0.30;
     const fallbackMessage = shouldUseFallback
-        ? "I might not have the exact answer, but here's the closest information I found."
+        ? 'Coverage is limited — synthesize the best answer from available context.'
         : undefined;
 
     const retrievalMetadata = {

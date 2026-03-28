@@ -150,9 +150,8 @@ async function runBenchmark() {
     console.log(`Running ${queries.length} benchmark queries...\n`);
 
     const llm = new ChatOpenAI({
-        modelName: 'sarvam-m',
-        apiKey: process.env.SARVAM_API_KEY,
-        configuration: { baseURL: 'https://api.sarvam.ai/v1' },
+        modelName: 'gpt-4o',
+        apiKey: process.env.OPENAI_API_KEY,
         temperature: 0.05,
         maxTokens: 512,
     });

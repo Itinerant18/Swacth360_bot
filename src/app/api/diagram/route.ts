@@ -1,36 +1,18 @@
-
 /**
  * src/app/api/diagram/route.ts
  *
  * Text-Based Diagram Generation Pipeline
  *
  * Generates markdown + ASCII art diagrams that render beautifully
- * in the chat UI — no SVG, no Gemini required.
+ * in the chat UI — no SVG required.
  *
- * Sarvam AI (sarvam-m) is a TEXT model — it is excellent at generating
- * structured ASCII/markdown diagrams like:
- *
- *   ┌─────────────┐     A+ (Blue)    ┌──────────────┐
- *   │  HMS Panel  │ ───────────────► │  Slave Dev   │
- *   │  TB1+       │     B- (White)   │              │
- *   └─────────────┘ ◄─────────────── └──────────────┘
- *
- * This approach:
- *   ✅ Works 100% with Sarvam AI (no Gemini needed)
- *   ✅ Renders perfectly via react-markdown + remark-gfm
- *   ✅ Copy-pasteable into any .md file or documentation
- *   ✅ Works in Bengali/Hindi descriptions
- *   ✅ Accurate specs pulled from KB (uploaded PDFs)
- *   ✅ No external dependencies, no SVG rendering issues
+ * Refactored to use OpenAI GPT-4o.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabase } from '@/lib/supabase';
 import { embedText } from '@/lib/embeddings';
-import { stripThinkTags } from '@/lib/sarvam';
-import { ChatOpenAI } from '@langchain/openai';
-
-
+import { getLLM } from '@/lib/llm';
 
 // ─── Diagram intent detection ─────────────────────────────────
 const DIAGRAM_KEYWORDS = [
@@ -74,8 +56,7 @@ const DIAGRAM_TYPE_MAP: Record<string, string[]> = {
     firmware: ['firmware', 'update', 'ota', 'software', 'version', 'upgrade', 'reboot', 'restart', 'default', 'factory reset']
 };
 
-// Strong wiring intent keywords — if the user explicitly says "wire" or "wiring"
-// alongside a protocol like RS-485, the intent is wiring, not network config.
+// Strong wiring intent keywords
 const STRONG_WIRING_KEYWORDS = ['wiring', 'wire ', 'wire?', 'how to wire', 'how do i wire', 'terminal'];
 
 export function isDiagramRequest(text: string): { isDiagram: boolean; diagramType: string } {
@@ -86,7 +67,6 @@ export function isDiagramRequest(text: string): { isDiagram: boolean; diagramTyp
     });
     if (!hasDiagramIntent) return { isDiagram: false, diagramType: '' };
 
-    // Score-based matching: count how many keywords match per type
     const scores: Record<string, number> = {};
     for (const [type, keywords] of Object.entries(DIAGRAM_TYPE_MAP)) {
         let score = 0;
@@ -100,12 +80,10 @@ export function isDiagramRequest(text: string): { isDiagram: boolean; diagramTyp
         return { isDiagram: true, diagramType: 'wiring' };
     }
 
-    // Boost wiring score if user explicitly uses wiring-intent words
     if (scores.wiring && STRONG_WIRING_KEYWORDS.some(kw => lower.includes(kw))) {
         scores.wiring += 3;
     }
 
-    // Pick the type with the highest score
     let bestType = 'wiring';
     let bestScore = 0;
     for (const [type, score] of Object.entries(scores)) {
@@ -118,7 +96,6 @@ export function isDiagramRequest(text: string): { isDiagram: boolean; diagramTyp
     return { isDiagram: true, diagramType: bestType };
 }
 
-// ─── Search KB for relevant specs ────────────────────────────
 async function searchKBForDiagram(query: string, diagramType: string): Promise<string> {
     try {
         const supabase = getSupabase();
@@ -130,7 +107,6 @@ async function searchKBForDiagram(query: string, diagramType: string): Promise<s
         });
         if (!matches?.length) return '';
 
-        // Prioritise wiring/visual/connection entries
         const relevant = matches.filter((m: { question: string; answer: string; content?: string; subcategory?: string }) => {
             const t = `${m.question} ${m.answer} ${m.content || ''}`.toLowerCase();
             return (
@@ -151,11 +127,7 @@ async function searchKBForDiagram(query: string, diagramType: string): Promise<s
     }
 }
 
-// ─── Diagram prompt templates per type ───────────────────────
-// Each template tells Sarvam exactly what ASCII/markdown structure to produce.
-
 const DIAGRAM_PROMPTS: Record<string, string> = {
-
   wiring: `You are a senior technical writer for HMS industrial panels at SEPLe.
 Generate a COMPLETE, PROFESSIONAL wiring diagram document for: {panelType}
 
@@ -567,32 +539,22 @@ Update zone names, detector types, and outputs using actual KB data for {panelTy
 - Never share 0V (GND) between alarm output devices and input zones`,
 };
 
-// ─── Generate text diagram via Sarvam ────────────────────────
+// ─── Generate text diagram via OpenAI ────────────────────────
 async function generateTextDiagram(
     panelType: string,
     diagramType: string,
     kbContext: string,
-    sarvamKey: string,
     language: string
 ): Promise<{ markdown: string; title: string; diagramType: string }> {
 
-    const sarvam = new ChatOpenAI({
-        modelName: 'sarvam-m',
-        apiKey: sarvamKey,
-        configuration: { baseURL: 'https://api.sarvam.ai/v1' },
-        temperature: 0.1,
-        maxTokens: 2048,
-    });
+    const llm = getLLM('complex', { temperature: 0.1, maxTokens: 2048 });
 
-    // Build KB context section
     const kbSection = kbContext
         ? `**Knowledge Base (from uploaded manuals — use these exact specs):**\n\n${kbContext}\n\n---\n`
         : `**Note:** No manual uploaded yet. Generate a standard HMS panel diagram.\nAdmin can upload manuals via Admin → Train Bot for panel-specific specs.\n\n---\n`;
 
-    // Get the template for this diagram type
     const templateStr = DIAGRAM_PROMPTS[diagramType] || DIAGRAM_PROMPTS.wiring;
 
-    // Build the full prompt
     const fullPrompt = templateStr
         .replace(/{panelType}/g, panelType)
         .replace(/{kbSection}/g, kbSection);
@@ -605,46 +567,42 @@ Your output standards:
 3. COMPLETENESS — Fill ALL table cells. Use standard HMS reference values when KB data is unavailable.
 4. STRUCTURE — Follow the exact section order from the template. Do not add extra sections.
 5. DIAGRAM FORMAT — If the template uses \`\`\`mermaid, generate valid Mermaid flowchart/sequence syntax. If the template uses plain \`\`\`, generate ASCII art with Unicode box-drawing characters (┌┐└┘├┤─│►◄). Do NOT mix the two formats.
-6. MERMAID RULES — When generating Mermaid: use quoted labels "like this" for special chars, use <br/> for line breaks in nodes, keep node IDs simple (A, B, C...), use subgraph for grouping. NEVER use backticks inside edge labels or node labels — use double quotes instead. Wrong: -->|\`18 AWG Red\`| Correct: -->|"18 AWG Red"| CRITICAL: Never use emoji inside Mermaid node labels or edge labels — they cause parser failures. Plain ASCII text only inside [""] and |""| labels.
+6. MERMAID RULES — When generating Mermaid: use quoted labels "like this" for special chars, use <br/> for line breaks in nodes, keep node IDs simple (A, B, C...). use subgraph for grouping. NEVER use backticks inside edge labels or node labels.
 7. FORMATTING — Terminal names, voltages, error codes, and measurements must be in backtick \`inline code\`.
 8. WIRE COLOURS — Use emoji circles: 🔴 Red, ⚫ Black, 🔵 Blue, ⚪ White, 🟡 Yellow, 🟢 Green, 🟠 Orange, 🟤 Brown.
 9. ACTIONABLE — Every diagram must include numbered installation/verification steps.
-10. NO THINKING — Do NOT use <think> tags. Output ONLY the markdown diagram document directly. No preamble, no reasoning, no closing remarks.
+10. NO PREAMBLE — Output ONLY the markdown diagram document directly. No reasoning, no closing remarks.
 
 Output valid markdown that renders correctly. Start immediately with the diagram content.`;
 
     try {
-        const result = await sarvam.invoke([
+        const result = await llm.invoke([
             { role: 'system', content: systemPrompt },
             { role: 'user', content: fullPrompt },
         ]);
 
-        let markdown = stripThinkTags((result.content as string)).trim();
+        let markdown = (result.content as string).trim();
 
-        // Add KB source note if we used real data
         if (kbContext) {
             markdown += `\n\n---\n> 📚 **Source:** Generated from uploaded manual data in knowledge base.\n> Always verify with official documentation before installation.`;
         } else {
             markdown += `\n\n---\n> ℹ️ **Note:** Standard HMS panel diagram. Upload the specific panel manual via **Admin → Train Bot** for exact specifications.`;
         }
 
-        // Add language-specific note
         if (language === 'bn') {
             markdown += `\n> 📋 বিস্তারিত স্পেসিফিকেশনের জন্য অফিসিয়াল ম্যানুয়াল দেখুন।`;
         } else if (language === 'hi') {
             markdown += `\n> 📋 विस्तृत विनिर्देशों के लिए आधिकारिक मैनुअल देखें।`;
         }
 
-        // Extract title from first heading
         const titleMatch = markdown.match(/^#{1,3}\s+(.+)$/m);
         const title = titleMatch ? titleMatch[1].replace(/[🔌⚡🌐📋🔷🔗💡]/g, '').trim() : `${diagramType} diagram for ${panelType}`;
 
         return { markdown, title, diagramType };
 
     } catch (err: unknown) {
-        console.error('Sarvam diagram generation failed:', (err as Error).message);
+        console.error('OpenAI diagram generation failed:', (err as Error).message);
 
-        // Structured fallback
         const fallback = buildFallbackMarkdown(panelType, diagramType, kbContext);
         return {
             markdown: fallback,
@@ -654,7 +612,6 @@ Output valid markdown that renders correctly. Start immediately with the diagram
     }
 }
 
-// ─── Fallback markdown when Sarvam fails ─────────────────────
 function buildFallbackMarkdown(panelType: string, diagramType: string, kbContext: string): string {
     const typeLabel = diagramType.charAt(0).toUpperCase() + diagramType.slice(1);
     const emoji: Record<string, string> = { wiring: '🔌', power: '⚡', network: '🌐', panel: '📋', block: '🔷', connector: '🔗', led: '💡', alarm: '🚨' };
@@ -713,8 +670,6 @@ ${kbBlock}### Standard HMS Panel Reference
 ${sourceNote}`;
 }
 
-// ─── Main Handler ─────────────────────────────────────────────
-
 export interface DiagramResult {
     success: boolean;
     markdown: string;
@@ -727,14 +682,6 @@ export interface DiagramResult {
     error?: string;
 }
 
-/**
- * Shared internal logic for generating diagrams.
- * Called directly by the chat API (to avoid HTTP fetch in Netlify)
- * and by the /api/diagram POST handler.
- * 
- * ENHANCEMENT: Now accepts optional ragContext for context-aware diagrams.
- * If ragContext is provided, uses it directly instead of doing separate KB search.
- */
 export async function generateDiagramInternal(
     query: string,
     englishQuery: string,
@@ -746,34 +693,25 @@ export async function generateDiagramInternal(
         detailLevel?: 'basic' | 'context-rich';
     } = {}
 ): Promise<DiagramResult> {
-    const sarvamKey = process.env.SARVAM_API_KEY;
-    if (!sarvamKey) {
-        throw new Error('SARVAM_API_KEY not configured');
-    }
-
     const panelType = englishQuery || query;
     const { ragContext, ragMatches, detailLevel = 'context-rich' } = options;
     
     console.log(`📐 Internal diagram gen: "${panelType}" | type: ${diagramType} | lang: ${language} | level: ${detailLevel}`);
 
-    // Use provided RAG context or search KB if not provided
     let kbContext: string;
     let hasKBContext: boolean;
     
     if (ragContext && ragContext.length > 50) {
-        // Use pre-fetched RAG context - this makes diagrams context-specific!
         kbContext = formatRAGContextForDiagram(ragMatches, ragContext);
         hasKBContext = true;
         console.log(`📚 Using provided RAG context: ${kbContext.length} chars`);
     } else {
-        // Fallback to KB search
         kbContext = await searchKBForDiagram(panelType, diagramType);
         hasKBContext = kbContext.length > 50;
         console.log(`📚 KB: ${hasKBContext ? `${kbContext.length} chars` : 'none'}`);
     }
 
-    // Generate markdown diagram via Sarvam
-    const result = await generateTextDiagram(panelType, diagramType, kbContext, sarvamKey, language);
+    const result = await generateTextDiagram(panelType, diagramType, kbContext, language);
 
     console.log(`✅ Diagram generated: ${result.markdown.length} chars`);
 
@@ -784,15 +722,11 @@ export async function generateDiagramInternal(
         diagramType: result.diagramType,
         panelType,
         hasKBContext,
-        generatedBy: 'sarvam',
+        generatedBy: 'openai',
         detailLevel,
     };
 }
 
-/**
- * Formats RAG context specifically for diagram generation.
- * Extracts relevant specs (terminals, wire colors, voltages) from retrieved content.
- */
 function formatRAGContextForDiagram(
     matches: Array<{question: string; answer: string; category: string; finalScore: number}> | undefined,
     contextString: string
@@ -801,30 +735,24 @@ function formatRAGContextForDiagram(
         return contextString;
     }
 
-    // Extract specific technical specs from RAG matches for diagram use
     const specs: string[] = [];
     
     for (const match of matches) {
         const content = `${match.question} ${match.answer}`;
         
-        // Extract terminal references
         const terminals = content.match(/TB\d*[+-]?/gi);
         if (terminals) specs.push(`Terminals: ${[...new Set(terminals)].join(', ')}`);
         
-        // Extract wire colors
         const colors = content.match(/\b(red|blue|white|black|yellow|green|orange|brown|gray|violet)\b/gi);
         if (colors) specs.push(`Wire Colors: ${[...new Set(colors)].join(', ')}`);
         
-        // Extract voltages
         const voltages = content.match(/\b\d+[Vv]\s*(?:DC|AC)?\b/g);
         if (voltages) specs.push(`Voltages: ${[...new Set(voltages)].join(', ')}`);
         
-        // Extract protocols
         const protocols = content.match(/\b(RS-?485|Modbus|PROFIBUS|Ethernet|CAN)\b/gi);
         if (protocols) specs.push(`Protocols: ${[...new Set(protocols)].join(', ')}`);
     }
 
-    // Build enhanced context
     const specSection = specs.length > 0 
         ? `\n**SPECIFIC VALUES FROM KNOWLEDGE BASE:**\n${specs.map(s => `- ${s}`).join('\n')}\n\n---\n`
         : '';

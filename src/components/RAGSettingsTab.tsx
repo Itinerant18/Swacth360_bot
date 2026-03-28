@@ -7,6 +7,7 @@ import {
     DEFAULT_RAG_SETTINGS,
     type RAGSettings,
 } from '@/lib/rag-settings';
+import { adminFetch } from '@/lib/adminFetch';
 
 export default function RAGSettingsTab() {
     const [settings, setSettings] = useState<RAGSettings>(DEFAULT_RAG_SETTINGS);
@@ -19,7 +20,7 @@ export default function RAGSettingsTab() {
         setLoading(true);
         setError('');
         try {
-            const res = await fetch('/api/admin/rag-settings');
+            const res = await adminFetch('/api/admin/rag-settings');
             if (!res.ok) throw new Error('Failed to load settings');
             const data: RAGSettings = await res.json();
             setSettings(data);
@@ -39,7 +40,7 @@ export default function RAGSettingsTab() {
         setSaving(true);
         setError('');
         try {
-            const res = await fetch('/api/admin/rag-settings', {
+            const res = await adminFetch('/api/admin/rag-settings', {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(settings),
@@ -63,7 +64,7 @@ export default function RAGSettingsTab() {
         setSaving(true);
         setError('');
         try {
-            const res = await fetch('/api/admin/rag-settings', {
+            const res = await adminFetch('/api/admin/rag-settings', {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(DEFAULT_RAG_SETTINGS),

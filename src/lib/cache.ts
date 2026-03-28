@@ -67,6 +67,10 @@ function getRedis(): Redis | null {
 
 // Tier 1 Helpers
 
+const SUPPORTED_LANGUAGES = ['en', 'bn', 'hi'] as const;
+
+type SupportedLanguage = (typeof SUPPORTED_LANGUAGES)[number];
+
 function normalizeCacheQuery(query: string): string {
     return query
         .trim()
@@ -75,39 +79,50 @@ function normalizeCacheQuery(query: string): string {
         .replace(/\s+([?!.:,])/g, '$1');
 }
 
-function hashQuery(query: string): string {
+function normalizeLanguage(language?: string): SupportedLanguage {
+    if (!language) return 'en';
+    const normalized = language.trim().toLowerCase();
+    return (SUPPORTED_LANGUAGES.includes(normalized as SupportedLanguage) ? normalized : 'en') as SupportedLanguage;
+}
+
+function buildLanguageCacheKey(language: SupportedLanguage, query: string): string {
     const normalized = normalizeCacheQuery(query);
+    return `${language}:${normalized}`;
+}
+
+function hashQuery(query: string, language: SupportedLanguage): string {
+    const normalized = buildLanguageCacheKey(language, query);
     return CACHE_CONFIG.REDIS_KEY_PREFIX + createHash('sha256').update(normalized).digest('hex');
 }
 
-function getLocalTier1(query: string): string | null {
-    const normalized = normalizeCacheQuery(query);
-    const cached = localTier1Cache.get(normalized);
+function getLocalTier1(query: string, language: SupportedLanguage): string | null {
+    const cacheKey = buildLanguageCacheKey(language, query);
+    const cached = localTier1Cache.get(cacheKey);
 
     if (!cached) {
         return null;
     }
 
     if (cached.expiresAt < Date.now()) {
-        localTier1Cache.delete(normalized);
+        localTier1Cache.delete(cacheKey);
         return null;
     }
 
     // Refresh insertion order for hot entries.
-    localTier1Cache.delete(normalized);
-    localTier1Cache.set(normalized, cached);
+    localTier1Cache.delete(cacheKey);
+    localTier1Cache.set(cacheKey, cached);
     return cached.answer;
 }
 
-function setLocalTier1(query: string, answer: string): void {
-    const normalized = normalizeCacheQuery(query);
+function setLocalTier1(query: string, answer: string, language: SupportedLanguage): void {
+    const cacheKey = buildLanguageCacheKey(language, query);
     const expiresAt = Date.now() + CACHE_CONFIG.TIER1_TTL_SECONDS * 1000;
 
-    if (localTier1Cache.has(normalized)) {
-        localTier1Cache.delete(normalized);
+    if (localTier1Cache.has(cacheKey)) {
+        localTier1Cache.delete(cacheKey);
     }
 
-    localTier1Cache.set(normalized, { answer, expiresAt });
+    localTier1Cache.set(cacheKey, { answer, expiresAt });
 
     while (localTier1Cache.size > CACHE_CONFIG.LOCAL_CACHE_MAX_ENTRIES) {
         const oldestKey = localTier1Cache.keys().next().value;
@@ -118,24 +133,25 @@ function setLocalTier1(query: string, answer: string): void {
     }
 }
 
-function deleteLocalTier1(query: string): void {
-    localTier1Cache.delete(normalizeCacheQuery(query));
+function deleteLocalTier1(query: string, language: SupportedLanguage): void {
+    const cacheKey = buildLanguageCacheKey(language, query);
+    localTier1Cache.delete(cacheKey);
 }
 
-async function tier1Get(query: string): Promise<string | null> {
-    const localHit = getLocalTier1(query);
+async function tier1Get(query: string, language: SupportedLanguage): Promise<string | null> {
+    const localHit = getLocalTier1(query, language);
     if (localHit) {
-        console.log(`[cache] Local Tier 1 HIT - "${query.slice(0, 60)}"`);
+        console.log(`[cache] Local Tier 1 HIT (${language}) - "${query.slice(0, 60)}"`);
         return localHit;
     }
 
     const redis = getRedis();
     if (!redis) return null;
     try {
-        const key = hashQuery(query);
+        const key = hashQuery(query, language);
         const cached = await redis.get<string>(key);
         if (cached) {
-            setLocalTier1(query, cached);
+            setLocalTier1(query, cached, language);
         }
         return cached ?? null;
     } catch (err: unknown) {
@@ -144,24 +160,24 @@ async function tier1Get(query: string): Promise<string | null> {
     }
 }
 
-async function tier1Set(query: string, answer: string): Promise<void> {
-    setLocalTier1(query, answer);
+async function tier1Set(query: string, answer: string, language: SupportedLanguage): Promise<void> {
+    setLocalTier1(query, answer, language);
     const redis = getRedis();
     if (!redis) return;
     try {
-        const key = hashQuery(query);
+        const key = hashQuery(query, language);
         await redis.set(key, answer, { ex: CACHE_CONFIG.TIER1_TTL_SECONDS });
     } catch (err: unknown) {
         console.warn('[cache.tier1] Redis SET failed:', (err as Error).message);
     }
 }
 
-async function tier1Delete(query: string): Promise<void> {
-    deleteLocalTier1(query);
+async function tier1Delete(query: string, language: SupportedLanguage): Promise<void> {
+    deleteLocalTier1(query, language);
     const redis = getRedis();
     if (!redis) return;
     try {
-        await redis.del(hashQuery(query));
+        await redis.del(hashQuery(query, language));
     } catch (err: unknown) {
         console.warn('[cache.tier1] Redis DEL failed:', (err as Error).message);
     }
@@ -171,6 +187,7 @@ async function tier1Delete(query: string): Promise<void> {
 
 async function tier2Get(
     queryVector: number[],
+    language: SupportedLanguage,
 ): Promise<{ answer: string; similarity: number; id: string; hitCount: number } | null> {
     const supabase = getSupabase();
     try {
@@ -178,6 +195,7 @@ async function tier2Get(
             query_embedding: queryVector,
             similarity_threshold: CACHE_CONFIG.TIER2_THRESHOLD,
             match_count: 1,
+            target_language: language,
         });
         if (error || !data || data.length === 0) return null;
         const hit = data[0];
@@ -203,6 +221,7 @@ async function tier2Set(params: {
 }): Promise<void> {
     const supabase = getSupabase();
     const { query, queryVector, answer, answerMode, language } = params;
+    const normalizedLanguage = normalizeLanguage(language);
     try {
         const { error } = await supabase.from('semantic_cache').insert({
             query_hash: createHash('sha256').update(normalizeCacheQuery(query)).digest('hex'),
@@ -210,7 +229,7 @@ async function tier2Set(params: {
             embedding: queryVector,
             answer,
             answer_mode: answerMode,
-            language,
+            language: normalizedLanguage,
         });
         if (error) console.warn('[cache.tier2] Supabase INSERT failed:', error.message);
     } catch (err: unknown) {
@@ -229,12 +248,14 @@ async function tier2Set(params: {
 export async function checkCache(
     query: string,
     queryVector: number[] | null,
+    language: string = 'en',
 ): Promise<CacheResult> {
+    const normalizedLanguage = normalizeLanguage(language);
     // Tier 1
     const t1Start = performance.now();
-    const tier1Result = await tier1Get(query);
+    const tier1Result = await tier1Get(query, normalizedLanguage);
     if (tier1Result) {
-        console.log(`[cache] Tier 1 HIT (${(performance.now() - t1Start).toFixed(1)}ms) - "${query.slice(0, 60)}"`);
+        console.log(`[cache] Tier 1 HIT (${(performance.now() - t1Start).toFixed(1)}ms, lang=${normalizedLanguage}) - "${query.slice(0, 60)}"`);
         return { hit: true, answer: tier1Result, tier: 1 };
     }
 
@@ -242,11 +263,11 @@ export async function checkCache(
     if (!queryVector) return { hit: false };
 
     const t2Start = performance.now();
-    const tier2Result = await tier2Get(queryVector);
+    const tier2Result = await tier2Get(queryVector, normalizedLanguage);
     if (tier2Result) {
-        console.log(`[cache] Tier 2 HIT (${(performance.now() - t2Start).toFixed(1)}ms, sim=${tier2Result.similarity.toFixed(3)}) - "${query.slice(0, 60)}"`);
+        console.log(`[cache] Tier 2 HIT (${(performance.now() - t2Start).toFixed(1)}ms, sim=${tier2Result.similarity.toFixed(3)}, lang=${normalizedLanguage}) - "${query.slice(0, 60)}"`);
         // Backfill Tier 1 so next identical query is even faster
-        void tier1Set(query, tier2Result.answer);
+        void tier1Set(query, tier2Result.answer, normalizedLanguage);
         return {
             hit: true,
             answer: tier2Result.answer,
@@ -283,8 +304,11 @@ export async function storeCache(params: {
     if (confidence < CACHE_CONFIG.MIN_CACHE_CONFIDENCE) return;
 
     await Promise.allSettled([
-        tier1Set(params.query, answer),
-        tier2Set(params),
+        tier1Set(params.query, answer, normalizeLanguage(params.language)),
+        tier2Set({
+            ...params,
+            language: normalizeLanguage(params.language),
+        }),
     ]);
 
     console.log(`[cache] Stored in both tiers - "${params.query.slice(0, 60)}"`);
@@ -300,7 +324,7 @@ export async function invalidateCache(query: string): Promise<void> {
     const supabase = getSupabase();
     const hash = createHash('sha256').update(normalizeCacheQuery(query)).digest('hex');
     await Promise.allSettled([
-        tier1Delete(query),
+        ...SUPPORTED_LANGUAGES.map((lang) => tier1Delete(query, lang)),
         supabase.rpc('invalidate_cache_entry', { p_query_hash: hash }),
     ]);
     console.log(`[cache] Invalidated - "${query.slice(0, 60)}"`);

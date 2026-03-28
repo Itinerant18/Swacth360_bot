@@ -312,7 +312,7 @@ export function buildContextWindow(matches: RankedMatch[], maxTokens = 1200): st
             const snippet = (match.relevantPassage || match.answer)
                 .replace(/\s+/g, ' ')
                 .trim()
-                .slice(0, 360);
+                .slice(0, 500);
             const entry = `[Section] ${match.question}\n${snippet}`;
             const entryTokens = entry.split(/\s+/).filter(Boolean).length;
 

@@ -38,7 +38,7 @@
  */
 
 import { ChatOpenAI } from '@langchain/openai';
-import { extractJsonFromSarvam } from './sarvam';
+import { extractJson } from './llm';
 import type { QueryAnalysis } from './rag-engine';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -167,7 +167,7 @@ async function llmDecompose(
   try {
     const prompt = DECOMPOSE_PROMPT.replace('{query}', query.slice(0, 300));
     const result = await llm.invoke(prompt);
-    const parsed = extractJsonFromSarvam<{ decompose?: boolean; subQueries?: RawSubQuery[]; reason?: string }>(result.content as string);
+    const parsed = extractJson<{ decompose?: boolean; subQueries?: RawSubQuery[]; reason?: string }>(result.content as string);
     if (!parsed) {
       return { isDecomposed: false, originalQuery: query, subQueries: [{ query, focus: 'full question', queryType: 'unknown', priority: 1 }] };
     }

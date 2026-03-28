@@ -1,8 +1,12 @@
 import { getSupabase } from '@/lib/supabase';
+import { requireAdmin } from '@/lib/admin-auth';
 import { NextResponse } from 'next/server';
 
 // GET - List all users from the active_users view (for admin)
 export async function GET() {
+    const auth = await requireAdmin();
+    if (!auth.authorized) return auth.response!;
+
     const supabase = getSupabase();
     console.info('[admin.users] request');
 

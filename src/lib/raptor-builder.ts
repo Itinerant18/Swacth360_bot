@@ -32,7 +32,7 @@
 import { ChatOpenAI } from '@langchain/openai';
 import { embedTexts } from './embeddings';
 import { getSupabase } from './supabase';
-import { stripThinkTags } from './sarvam';
+import { extractJson } from './llm';
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
@@ -254,7 +254,7 @@ Write the summary (no preamble):`;
 
     try {
         const result = await llm.invoke(prompt);
-        const summary = stripThinkTags((result.content as string)).trim().slice(0, 800);
+        const summary = (result.content as string).trim().slice(0, 800);
         return summary || `HMS ${cluster.category} — ${cluster.entities.join(', ')} (${cluster.members.length} entries from ${cluster.sourceNames.join(', ')})`;
     } catch {
         // Fallback summary

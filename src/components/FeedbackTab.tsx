@@ -12,6 +12,7 @@ import {
     faArrowsRotate,
     faTriangleExclamation,
 } from '@fortawesome/free-solid-svg-icons';
+import { adminFetch } from '@/lib/adminFetch';
 
 type FeedbackItem = {
     id: string;
@@ -34,7 +35,7 @@ export default function FeedbackTab() {
         setError('');
 
         try {
-            const res = await fetch('/api/admin/feedback?limit=50');
+            const res = await adminFetch('/api/admin/feedback?limit=50');
             const data = await res.json();
 
             if (!res.ok) {

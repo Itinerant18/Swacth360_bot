@@ -4,7 +4,7 @@
  * Batch-processes ALL PDFs in data/pdf/ and seeds them into Supabase hms_knowledge.
  *
  * Two pipelines:
- *   1. Text PDFs   → pdf-parse → chunking → OpenAI text-embedding-3-small → source='pdf'
+ *   1. Text PDFs   → pdf-parse → chunking → OpenAI text-embedding-3-large → source='pdf'
  *   2. Image PDFs  → Gemini 2.0 Flash Vision → describe diagrams → OpenAI embedding → source='pdf_image'
  *
  * Usage:
@@ -19,10 +19,15 @@ import { loadEnvConfig } from '@next/env';
 import dns from 'node:dns';
 import { Agent, fetch as undiciFetch } from 'undici';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { OpenAIEmbeddings } from '@langchain/openai';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import * as fs from 'fs';
 import * as path from 'path';
+import {
+    EMBEDDING_BATCH_SIZE,
+    EMBEDDING_DIMENSIONS,
+    EMBEDDING_MODEL,
+    embedTexts,
+} from '../src/lib/embeddings';
 
 loadEnvConfig(process.cwd());
 
@@ -50,7 +55,7 @@ const PDF_DIR = path.join(process.cwd(), 'data', 'pdf');
 const CHUNK_SIZE = 800;
 const CHUNK_OVERLAP = 150;
 const IMAGE_TEXT_THRESHOLD = 100; // PDFs with less text than this → image pipeline
-const BATCH_EMBED_SIZE = 20;     // OpenAI batch embedding size
+const BATCH_EMBED_SIZE = EMBEDDING_BATCH_SIZE;
 const DELAY_BETWEEN_PDFS = 500;  // ms
 const GEMINI_MODEL = 'gemini-2.0-flash';
 
@@ -244,6 +249,40 @@ async function logIngestion(
     if (error) console.error(`      ⚠️  Failed to log ingestion: ${error.message}`);
 }
 
+async function warnOrClearExistingEmbeddings(
+    supabase: SupabaseClient,
+): Promise<void> {
+    const { count, error: countError } = await supabase
+        .from('hms_knowledge')
+        .select('id', { count: 'exact', head: true })
+        .not('embedding', 'is', null);
+
+    if (countError) {
+        console.warn('[seed-pdfs] failed to count existing embeddings:', countError.message);
+        return;
+    }
+
+    if ((count ?? 0) > 0) {
+        console.warn(
+            `[seed-pdfs] detected ${count} existing embedded rows. Re-ingest all content after embedding model changes to avoid mixed vectors.`,
+        );
+    }
+
+    if (process.env.CLEAR_EMBEDDINGS !== 'true') {
+        return;
+    }
+
+    console.warn('[seed-pdfs] CLEAR_EMBEDDINGS=true - removing existing hms_knowledge rows before import');
+    const { error: deleteError } = await supabase
+        .from('hms_knowledge')
+        .delete()
+        .neq('id', '');
+
+    if (deleteError) {
+        throw new Error(`[seed-pdfs] failed to clear existing embeddings: ${deleteError.message}`);
+    }
+}
+
 // ═══════════════════════════════════════════════════════════════
 // MAIN PIPELINE
 // ═══════════════════════════════════════════════════════════════
@@ -285,7 +324,7 @@ Options:
 
     console.log('\n' + '═'.repeat(65));
     console.log('📄 SAI — Batch PDF Seeder');
-    console.log('   Embedding:  OpenAI text-embedding-3-small (1536-dim)');
+    console.log(`   Embedding:  ${EMBEDDING_MODEL} (${EMBEDDING_DIMENSIONS} dims)`);
     console.log('   Vision:     Gemini 2.0 Flash (for image-heavy PDFs)');
     console.log('   Target:     Supabase hms_knowledge');
     console.log('═'.repeat(65));
@@ -302,11 +341,7 @@ Options:
         auth: { persistSession: false },
         global: { fetch: customFetch as never },
     });
-
-    const embeddings = new OpenAIEmbeddings({
-        modelName: 'text-embedding-3-small',
-        openAIApiKey: openaiKey,
-    });
+    await warnOrClearExistingEmbeddings(supabase);
 
     const genAI = new GoogleGenerativeAI(geminiKey);
 
@@ -412,7 +447,7 @@ Options:
                     // Batch embed with OpenAI
                     let vectors: number[][];
                     try {
-                        vectors = await embeddings.embedDocuments(batchTexts);
+                        vectors = await embedTexts(batchTexts);
                     } catch (embErr: unknown) {
                         console.error(`│    ❌ Batch embedding failed: ${(embErr as Error).message}`);
                         pdfErrors += batch.length;
@@ -438,7 +473,10 @@ Options:
                             }, { onConflict: 'id' });
 
                             if (error) { pdfErrors++; } else { pdfSuccess++; }
-                        } catch { pdfErrors++; }
+                        } catch (err: unknown) {
+                            pdfErrors++;
+                            console.error(`│    ❌ ${meta.id}: ${(err as Error).message}`);
+                        }
                     }
                 }
 
@@ -464,18 +502,37 @@ Options:
 
                 let pdfSuccess = 0;
                 let pdfErrors = 0;
+                const imageEmbeddingTexts = qaEntries.map((qa) =>
+                    buildEmbeddingText(
+                        qa.question,
+                        qa.answer,
+                        'Visual Content',
+                        qa.category,
+                        qa.keywords,
+                        sourceName,
+                    ),
+                );
+
+                let imageVectors: number[][];
+                try {
+                    imageVectors = await embedTexts(imageEmbeddingTexts);
+                } catch (embErr: unknown) {
+                    console.error(`│    ❌ Image batch embedding failed: ${(embErr as Error).message}`);
+                    pdfErrors += qaEntries.length;
+                    imageVectors = [];
+                }
 
                 for (let j = 0; j < qaEntries.length; j++) {
                     const qa = qaEntries[j];
                     const id = `${idPrefix}_img_${String(j).padStart(3, '0')}`;
-                    const embText = buildEmbeddingText(
-                        qa.question, qa.answer, 'Visual Content',
-                        qa.category, qa.keywords, sourceName
-                    );
+                    const embText = imageEmbeddingTexts[j];
+                    const vector = imageVectors[j];
+
+                    if (!vector) {
+                        continue;
+                    }
 
                     try {
-                        const vector = await embeddings.embedQuery(embText);
-
                         const { error } = await supabase.from('hms_knowledge').upsert({
                             id,
                             question: qa.question,
@@ -485,13 +542,17 @@ Options:
                             product: 'HMS Panel',
                             tags: qa.keywords,
                             content: embText,
-                            embedding: vector,
+                            embedding: `[${vector.join(',')}]`,
                             source: 'pdf_image',
                             source_name: sourceName,
                         }, { onConflict: 'id' });
 
-                        if (error) { pdfErrors++; console.error(`│    ❌ ${id}: ${error.message}`); }
-                        else { pdfSuccess++; }
+                        if (error) {
+                            pdfErrors++;
+                            console.error(`│    ❌ ${id}: ${error.message}`);
+                        } else {
+                            pdfSuccess++;
+                        }
                     } catch (err: unknown) {
                         pdfErrors++;
                         console.error(`│    ❌ ${id}: ${(err as Error).message}`);

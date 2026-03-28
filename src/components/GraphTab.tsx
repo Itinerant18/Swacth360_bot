@@ -9,6 +9,7 @@ import {
     faCircle, faArrowsLeftRight, faBolt, faShield, faWrench,
     faArrowsRotate, faTriangleExclamation
 } from '@fortawesome/free-solid-svg-icons';
+import { adminFetch } from '@/lib/adminFetch';
 
 type GraphStats = {
     total_relationships: number;
@@ -73,8 +74,8 @@ export default function GraphTab() {
 
         try {
             const [statsRes, allRes] = await Promise.all([
-                fetch('/api/admin/graph'),
-                fetch('/api/admin/graph', {
+                adminFetch('/api/admin/graph'),
+                adminFetch('/api/admin/graph', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ action: 'get_all', data: {} })
@@ -109,7 +110,7 @@ export default function GraphTab() {
         setActionError('');
 
         try {
-            const res = await fetch('/api/admin/graph', {
+            const res = await adminFetch('/api/admin/graph', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -138,7 +139,7 @@ export default function GraphTab() {
         setBusy(true);
         setActionError('');
         try {
-            const res = await fetch('/api/admin/graph', {
+            const res = await adminFetch('/api/admin/graph', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -167,7 +168,7 @@ export default function GraphTab() {
         setBusy(true);
         setActionError('');
         try {
-            const res = await fetch('/api/admin/graph', {
+            const res = await adminFetch('/api/admin/graph', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -194,7 +195,7 @@ export default function GraphTab() {
         setBusy(true);
         setActionError('');
         try {
-            const res = await fetch('/api/admin/graph', {
+            const res = await adminFetch('/api/admin/graph', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({

@@ -44,7 +44,7 @@ Dexter is an AI-powered multilingual support bot for industrial control panels (
 ### AI / LLM
 | Purpose | Model/Service |
 |---|---|
-| Primary LLM | Sarvam-M (sarvam.ai) — multilingual Indian language model |
+| Primary LLM | GPT-4o (sarvam.ai) — multilingual Indian language model |
 | Embeddings | OpenAI text-embedding-3-small (via LangChain) |
 | Fallback/Gemini | @langchain/google-genai |
 | Local LLM | @langchain/ollama |
@@ -170,7 +170,7 @@ SUPABASE_SERVICE_ROLE_KEY=eyJhbGci...
 
 # ── AI / LLM ──────────────────────────────────────────────────
 OPENAI_API_KEY=sk-proj-...          # Embeddings (text-embedding-3-small)
-SARVAM_API_KEY=sk_...               # Primary chat LLM (sarvam-m)
+OPENAI_API_KEY=sk_...               # Primary chat LLM (GPT-4o)
 GOOGLE_GENERATIVE_AI_API_KEY=...    # Gemini fallback (optional)
 HUGGINGFACE_API_KEY=...             # HuggingFace (optional)
 
@@ -263,7 +263,7 @@ Rate Limit Check (Upstash Redis)
     ↓
 Auth + Conversation Resolution (Supabase)
     ↓
-Translation to English (Sarvam-M, if needed)
+Translation to English (GPT-4o, if needed)
     ↓
 Conversation Rewrite (resolve pronouns using history)
     ↓
@@ -297,7 +297,7 @@ Knowledge Graph Boost (entity matching)
     ↓
 Prompt Selection (semantic router → template per query type)
     ↓
-LLM Generation (Sarvam-M)
+LLM Generation (GPT-4o)
     ↓
 Strip Think Tags / Chain-of-Thought
     ↓
@@ -353,7 +353,7 @@ When I call you, always:
 
 ### Multilingual Notes
 - Supported: `en` (English), `bn` (Bengali), `hi` (Hindi)
-- Translation handled by Sarvam-M at `https://api.sarvam.ai/v1`
+- Translation handled by GPT-4o
 - NOT_FOUND messages must exist for all 3 languages
 - Language param comes from UI LanguageSelector component
 

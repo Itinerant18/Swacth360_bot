@@ -7,7 +7,7 @@
  */
 
 import { ChatOpenAI } from '@langchain/openai';
-import { stripThinkTags, extractJsonFromSarvam } from './sarvam';
+import { extractJson } from './llm';
 
 // HMS/SAI domain-specific expansions
 const DOMAIN_EXPANSIONS: Record<string, string[]> = {
@@ -48,9 +48,9 @@ Return as a JSON array of strings, for example:
 Only return the JSON array, nothing else.`;
 
         const result = await llm.invoke(prompt);
-        const content = stripThinkTags(result.content as string);
+        const content = result.content as string;
 
-        const parsed = extractJsonFromSarvam<string[]>(content);
+        const parsed = extractJson<string[]>(content);
         if (Array.isArray(parsed)) {
             expansions.push(...parsed.filter((p) => typeof p === 'string'));
         } else {

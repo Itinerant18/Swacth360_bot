@@ -16,15 +16,15 @@ export interface RetrievalDecisionParams {
 }
 
 export function answerModeFromConfidence(score: number): 'rag_high' | 'rag_medium' | 'rag_partial' | 'general' {
-    if (score >= 0.75) {
+    if (score >= 0.65) {
         return 'rag_high';
     }
 
-    if (score >= 0.58) {
+    if (score >= 0.48) {
         return 'rag_medium';
     }
 
-    if (score >= 0.45) {
+    if (score >= 0.35) {
         return 'rag_partial';
     }
 
@@ -140,17 +140,17 @@ export function scoreConfidence(params: {
         1,
     );
 
-    const level = score >= 0.75 ? 'high' : score >= 0.55 ? 'medium' : 'low';
-    const shouldFallback = score < 0.55 || matches.length === 0;
+    const level = score >= 0.65 ? 'high' : score >= 0.40 ? 'medium' : 'low';
+    const shouldFallback = score < 0.30 || matches.length === 0;
 
     return {
         score,
         level,
         shouldFallback,
         fallbackMessage: shouldFallback
-            ? "I may not have the exact answer, but here's the closest information I found."
+            ? 'Coverage is limited — synthesize the best answer from available context.'
             : undefined,
-        cacheEligible: score >= 0.72,
+        cacheEligible: score >= 0.65,
         consistency,
     };
 }

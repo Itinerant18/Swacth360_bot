@@ -3,52 +3,59 @@
  *
  * Seeds LangExtract JSONL output into hms_knowledge with OpenAI embeddings.
  *
- * This is the Node.js counterpart to langextract-ingest.py.
- * LangExtract extracts structured entities → this script embeds + seeds them.
- *
  * Usage:
  *   npx tsx scripts/ingest-jsonl.ts --file="data/langextract/manual_extracted.jsonl" --name="Anybus Manual v2.3"
  *   npx tsx scripts/ingest-jsonl.ts --file="data/langextract/guide_extracted.jsonl"
- *
- * Pipeline position:
- *   langextract-ingest.py → [JSONL file] → THIS SCRIPT → Supabase hms_knowledge
  */
 
 import { loadEnvConfig } from '@next/env';
 import dns from 'node:dns';
 import { Agent, fetch as undiciFetch } from 'undici';
 import { createClient } from '@supabase/supabase-js';
-import { OpenAIEmbeddings } from '@langchain/openai';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as readline from 'readline';
+import {
+    EMBEDDING_BATCH_SIZE,
+    EMBEDDING_DIMENSIONS,
+    EMBEDDING_MODEL,
+    embedTexts,
+} from '../src/lib/embeddings';
 
 loadEnvConfig(process.cwd());
 
-// ─── DNS / Fetch fix (same as other scripts) ─────────────────
 dns.setDefaultResultOrder('ipv4first');
 const googleResolver = new dns.promises.Resolver();
 googleResolver.setServers(['8.8.8.8', '8.8.4.4']);
-function customLookup(hostname: string, _opts: unknown, cb: (err: Error | null, address?: string, family?: number) => void) {
+
+function customLookup(
+    hostname: string,
+    _opts: unknown,
+    cb: (err: Error | null, address?: string, family?: number) => void,
+): void {
     googleResolver.resolve4(hostname)
         .then((addrs: string[]) => cb(null, addrs[0], 4))
         .catch((err: Error) => cb(err));
 }
+
 const agent = new Agent({ connect: { family: 4, lookup: customLookup as never } });
 const customFetch = (input: unknown, init?: unknown) =>
-    undiciFetch(input as Parameters<typeof undiciFetch>[0], { ...(init as Parameters<typeof undiciFetch>[1]), dispatcher: agent } as Parameters<typeof undiciFetch>[1]) as unknown as Promise<Response>;
+    undiciFetch(
+        input as Parameters<typeof undiciFetch>[0],
+        { ...(init as Parameters<typeof undiciFetch>[1]), dispatcher: agent } as Parameters<typeof undiciFetch>[1],
+    ) as unknown as Promise<Response>;
 
-// ─── CLI Args ────────────────────────────────────────────────
-function parseArgs() {
+function parseArgs(): Record<string, string> {
     const args: Record<string, string> = {};
-    for (const a of process.argv.slice(2)) {
-        const kv = a.match(/^--(\w+)=(.+)$/);
-        if (kv) args[kv[1]] = kv[2];
+    for (const arg of process.argv.slice(2)) {
+        const kv = arg.match(/^--(\w+)=(.+)$/);
+        if (kv) {
+            args[kv[1]] = kv[2];
+        }
     }
     return args;
 }
 
-// ─── JSONL Entry Type ─────────────────────────────────────────
 interface LangExtractEntry {
     id: string;
     question: string;
@@ -65,19 +72,53 @@ interface LangExtractEntry {
     attributes: Record<string, string>;
 }
 
-// ─── Main ─────────────────────────────────────────────────────
-async function ingestJsonl() {
+async function warnOrClearExistingEmbeddings(
+    supabase: ReturnType<typeof createClient>,
+): Promise<void> {
+    const { count, error: countError } = await supabase
+        .from('hms_knowledge')
+        .select('id', { count: 'exact', head: true })
+        .not('embedding', 'is', null);
+
+    if (countError) {
+        console.warn('[ingest-jsonl] failed to count existing embeddings:', countError.message);
+        return;
+    }
+
+    if ((count ?? 0) > 0) {
+        console.warn(
+            `[ingest-jsonl] detected ${count} existing embedded rows. Re-ingest all content after embedding model changes to avoid mixed vectors.`,
+        );
+    }
+
+    if (process.env.CLEAR_EMBEDDINGS !== 'true') {
+        return;
+    }
+
+    console.warn('[ingest-jsonl] CLEAR_EMBEDDINGS=true - removing existing hms_knowledge rows before import');
+    const { error: deleteError } = await supabase
+        .from('hms_knowledge')
+        .delete()
+        .neq('id', '');
+
+    if (deleteError) {
+        throw new Error(`[ingest-jsonl] failed to clear existing embeddings: ${deleteError.message}`);
+    }
+}
+
+async function ingestJsonl(): Promise<void> {
     const args = parseArgs();
     const filePath = args.file;
     const sourceName = args.name || '';
-    const BATCH_SIZE = 20; // OpenAI embedding batch size
+    const batchSize = EMBEDDING_BATCH_SIZE;
 
     if (!filePath) {
-        console.error('❌ Usage: npx tsx scripts/ingest-jsonl.ts --file="path.jsonl" [--name="Source Name"]');
+        console.error('Usage: npx tsx scripts/ingest-jsonl.ts --file="path.jsonl" [--name="Source Name"]');
         process.exit(1);
     }
+
     if (!fs.existsSync(filePath)) {
-        console.error(`❌ File not found: ${filePath}`);
+        console.error(`File not found: ${filePath}`);
         process.exit(1);
     }
 
@@ -85,41 +126,50 @@ async function ingestJsonl() {
     const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
     const openaiKey = process.env.OPENAI_API_KEY;
 
-    if (!supabaseUrl || !supabaseKey) throw new Error('❌ Missing Supabase env vars');
-    if (!openaiKey) throw new Error('❌ Missing OPENAI_API_KEY');
+    if (!supabaseUrl || !supabaseKey) {
+        throw new Error('Missing Supabase env vars');
+    }
 
-    // Read JSONL
+    if (!openaiKey) {
+        throw new Error('Missing OPENAI_API_KEY');
+    }
+
     const entries: LangExtractEntry[] = [];
     const rl = readline.createInterface({ input: fs.createReadStream(filePath) });
     for await (const line of rl) {
         const trimmed = line.trim();
-        if (trimmed) {
-            try { entries.push(JSON.parse(trimmed)); } catch { /* skip malformed */ }
+        if (!trimmed) {
+            continue;
+        }
+
+        try {
+            entries.push(JSON.parse(trimmed));
+        } catch (err) {
+            console.warn('[ingest-jsonl] skipping malformed line:', err instanceof Error ? err.message : String(err));
         }
     }
 
     if (entries.length === 0) {
-        console.error('❌ No valid entries found in JSONL file');
+        console.error('No valid entries found in JSONL file');
         process.exit(1);
     }
 
     const finalSourceName = sourceName || entries[0]?.source_name || path.basename(filePath, '.jsonl');
-
-    // Count by entity class
     const classCounts: Record<string, number> = {};
-    entries.forEach(e => { classCounts[e.entity_class] = (classCounts[e.entity_class] || 0) + 1; });
+    entries.forEach((entry) => {
+        classCounts[entry.entity_class] = (classCounts[entry.entity_class] || 0) + 1;
+    });
 
-    console.log('\n' + '═'.repeat(60));
-    console.log('🌱 LangExtract JSONL Seeder (OpenAI Embeddings)');
-    console.log('═'.repeat(60));
-    console.log(`📄 File:       ${filePath}`);
-    console.log(`📝 Source:     ${finalSourceName}`);
-    console.log(`📦 Entries:    ${entries.length}`);
-    console.log(`🔠 Embedding:  OpenAI text-embedding-3-small (1536-dim)`);
-    console.log(`\n   Entity type breakdown:`);
-    Object.entries(classCounts).forEach(([cls, count]) => {
-        const icon = { ErrorCode: '⚠️ ', WiringSpec: '🔌', TechnicalParam: '📐', Procedure: '📋', ComponentSpec: '⚙️ ' }[cls] || '📄';
-        console.log(`     ${icon}  ${cls.padEnd(20)} ${count}`);
+    console.log(`\n${'='.repeat(60)}`);
+    console.log('LangExtract JSONL Seeder');
+    console.log('='.repeat(60));
+    console.log(`File:       ${filePath}`);
+    console.log(`Source:     ${finalSourceName}`);
+    console.log(`Entries:    ${entries.length}`);
+    console.log(`Embedding:  ${EMBEDDING_MODEL} (${EMBEDDING_DIMENSIONS} dims)`);
+    console.log('\nEntity type breakdown:');
+    Object.entries(classCounts).forEach(([entityClass, count]) => {
+        console.log(`  ${entityClass.padEnd(20)} ${count}`);
     });
     console.log('');
 
@@ -128,34 +178,31 @@ async function ingestJsonl() {
         global: { fetch: customFetch as never },
     });
 
-    const embeddings = new OpenAIEmbeddings({
-        modelName: 'text-embedding-3-small',
-        openAIApiKey: openaiKey,
-    });
+    await warnOrClearExistingEmbeddings(supabase);
 
     let success = 0;
     let errors = 0;
 
-    for (let i = 0; i < entries.length; i += BATCH_SIZE) {
-        const batch = entries.slice(i, i + BATCH_SIZE);
-        const batchNum = Math.floor(i / BATCH_SIZE) + 1;
-        const total = Math.ceil(entries.length / BATCH_SIZE);
+    for (let index = 0; index < entries.length; index += batchSize) {
+        const batch = entries.slice(index, index + batchSize);
+        const batchNumber = Math.floor(index / batchSize) + 1;
+        const totalBatches = Math.ceil(entries.length / batchSize);
 
-        console.log(`\n⏳ Batch ${String(batchNum).padStart(3)}/${total}  (entries ${i + 1}–${Math.min(i + BATCH_SIZE, entries.length)})`);
+        console.log(
+            `\nBatch ${String(batchNumber).padStart(3)}/${totalBatches} (entries ${index + 1}-${Math.min(index + batchSize, entries.length)})`,
+        );
 
-        // Embed entire batch in one call
         let vectors: number[][];
         try {
-            vectors = await embeddings.embedDocuments(batch.map(e => e.content));
-        } catch (err: unknown) {
-            console.error(`   ❌ Batch embedding failed: ${(err as Error).message}`);
+            vectors = await embedTexts(batch.map((entry) => entry.content));
+        } catch (err) {
+            console.error(`  Batch embedding failed: ${err instanceof Error ? err.message : String(err)}`);
             errors += batch.length;
             continue;
         }
 
-        for (let j = 0; j < batch.length; j++) {
-            const entry = batch[j];
-            // Override source_name if provided via CLI
+        for (let offset = 0; offset < batch.length; offset++) {
+            const entry = batch[offset];
             const finalEntry = { ...entry, source_name: finalSourceName };
 
             try {
@@ -168,39 +215,41 @@ async function ingestJsonl() {
                     product: finalEntry.product || 'HMS Panel',
                     tags: finalEntry.tags,
                     content: finalEntry.content,
-                    embedding: vectors[j],
+                    embedding: vectors[offset],
                     source: 'langextract',
                     source_name: finalEntry.source_name,
                 }, { onConflict: 'id' });
 
                 if (error) {
-                    console.error(`   ❌ ${finalEntry.id}: ${error.message}`);
+                    console.error(`  ${finalEntry.id}: ${error.message}`);
                     errors++;
-                } else {
-                    const icon = { ErrorCode: '⚠️ ', WiringSpec: '🔌', TechnicalParam: '📐', Procedure: '📋', ComponentSpec: '⚙️ ' }[entry.entity_class] || '📄';
-                    console.log(`   ✅ ${icon} [${entry.entity_class}] ${finalEntry.question.substring(0, 60)}…`);
-                    success++;
+                    continue;
                 }
-            } catch (err: unknown) {
-                console.error(`   ❌ ${finalEntry.id}: ${(err as Error).message}`);
+
+                console.log(`  OK [${entry.entity_class}] ${finalEntry.question.substring(0, 60)}...`);
+                success++;
+            } catch (err) {
+                console.error(`  ${finalEntry.id}: ${err instanceof Error ? err.message : String(err)}`);
                 errors++;
             }
         }
 
-        if (i + BATCH_SIZE < entries.length) await new Promise(r => setTimeout(r, 300));
+        if (index + batchSize < entries.length) {
+            await new Promise((resolve) => setTimeout(resolve, 300));
+        }
     }
 
-    console.log(`\n${'═'.repeat(60)}`);
-    console.log('✅ Seeding complete!');
-    console.log(`   Success:  ${success}/${entries.length}`);
-    if (errors > 0) console.log(`   Errors:   ${errors}`);
-    console.log(`   Source:   ${finalSourceName} (source='langextract' in Supabase)`);
-    console.log(`\n💡 Check admin → Analytics → Knowledge Base`);
-    console.log(`   LangExtract entries show as source='langextract' with entity type labels`);
-    console.log('═'.repeat(60) + '\n');
+    console.log(`\n${'='.repeat(60)}`);
+    console.log('Seeding complete');
+    console.log(`Success:  ${success}/${entries.length}`);
+    if (errors > 0) {
+        console.log(`Errors:   ${errors}`);
+    }
+    console.log(`Source:   ${finalSourceName} (source='langextract')`);
+    console.log('='.repeat(60));
 }
 
-ingestJsonl().catch(err => {
-    console.error('❌ Fatal error:', err.message);
+ingestJsonl().catch((err) => {
+    console.error('Fatal error:', err instanceof Error ? err.message : String(err));
     process.exit(1);
 });

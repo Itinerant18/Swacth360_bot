@@ -223,7 +223,7 @@ FORMATTING RULES:
 - Steps are numbered (1. 2. 3.) never bulleted
 - Maximum 300 words total
 - Write entirely in ${langName}
-- If not in KB: "${notFoundMsg}"`,
+- ${notFoundMsg}`,
 
   // ── Urgent Diagnostic: System down, critical failure ────────────────────────
   urgent_diagnostic: (langName, notFoundMsg, answerMode) => `${BASE_ROLE}
@@ -257,7 +257,7 @@ RULES:
 - No preamble, no sign-off, no filler
 - Maximum 250 words
 - Write entirely in ${langName}
-- If no relevant KB data: "${notFoundMsg}"`,
+- ${notFoundMsg}`,
 
   // ── Procedural: How-to, installation, configuration steps ───────────────────
   procedural: (langName, notFoundMsg, answerMode) => `${BASE_ROLE}
@@ -289,7 +289,7 @@ FORMATTING RULES:
 - Numbered steps only — no bullets for steps
 - Maximum 400 words
 - Write entirely in ${langName}
-- If not in KB: "${notFoundMsg}"`,
+- ${notFoundMsg}`,
 
   // ── Factual: Specifications, parameters, definitions ─────────────────────────
   factual: (langName, notFoundMsg, answerMode) => `${BASE_ROLE}
@@ -326,7 +326,7 @@ FORMATTING RULES:
 - Table for 3+ values, inline for 1–2 values
 - Maximum 200 words
 - Write entirely in ${langName}
-- If spec not in KB: "${notFoundMsg}"`,
+- ${notFoundMsg}`,
 
   // ── Visual: Wiring description, connections ──────────────────────────────────
   visual: (langName, notFoundMsg, answerMode) => `${BASE_ROLE}
@@ -362,7 +362,7 @@ FORMATTING RULES:
 - All electrical values in backticks
 - Maximum 250 words
 - Write entirely in ${langName}
-- If wiring not in KB: "${notFoundMsg}"`,
+- ${notFoundMsg}`,
 
   // ── Comparative: Differences, which is better, vs questions ──────────────────
   comparative: (langName, notFoundMsg, answerMode) => `${BASE_ROLE}
@@ -397,7 +397,7 @@ FORMATTING RULES:
 - The Key Difference must be actionable, not generic
 - Maximum 300 words
 - Write entirely in ${langName}
-- If comparison not in KB: "${notFoundMsg}"`,
+- ${notFoundMsg}`,
 
   // ── General fallback ─────────────────────────────────────────────────────────
   general_fallback: (langName, notFoundMsg, answerMode) => `${BASE_ROLE}
@@ -428,15 +428,15 @@ FORMATTING RULES:
 - For wiring questions: suggest "Show wiring diagram for [panel name]"
 - Maximum 300 words
 - Write entirely in ${langName}
-- If no relevant information available: "${notFoundMsg}"`,
+- ${notFoundMsg}`,
 };
 
 function confidenceNote(answerMode: string): string {
   return {
     rag_high:    'HIGH — answer directly and completely from KB sources.',
     rag_medium:  'MEDIUM — synthesize from KB sources, note if any part is incomplete.',
-    rag_partial: 'PARTIAL — use what is relevant, clearly flag what you are uncertain about.',
-    general:     'NO KB MATCH — answer ONLY if you are certain of the facts. If unsure, respond with the not-found message. Do NOT guess, speculate, or reason through possibilities.',
+    rag_partial: 'PARTIAL — relevant context was found. Answer using the provided information. Do not say you lack information unless the context is completely empty.',
+    general:     'LOW — the KB may not have a direct match, but still try to answer using any relevant context provided. Only use the not-found message if the context is completely empty or irrelevant.',
   }[answerMode] ?? 'Use best available information.';
 }
 
@@ -468,7 +468,12 @@ export function selectRoute(
   const route = ROUTE_CONFIGS[routeKey];
 
   const systemPromptFn = SYSTEM_PROMPTS[route.promptKey] ?? SYSTEM_PROMPTS.general_fallback;
-  const system = systemPromptFn(langName, notFoundMsg, answerMode);
+  // When we have KB context (rag_high, rag_medium, rag_partial), suppress the not-found
+  // message so the LLM doesn't default to "I don't know" when partial matches exist.
+  const effectiveNotFound = answerMode === 'general'
+    ? notFoundMsg
+    : 'Answer using the available context. Note if coverage is partial.';
+  const system = systemPromptFn(langName, effectiveNotFound, answerMode);
 
   // User prefix — frames the question type for the model
   const userPrefixes: Record<string, string> = {

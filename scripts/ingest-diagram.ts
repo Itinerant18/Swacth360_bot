@@ -17,9 +17,9 @@ import { loadEnvConfig } from '@next/env';
 import dns from 'node:dns';
 import { Agent, fetch as undiciFetch } from 'undici';
 import { createClient } from '@supabase/supabase-js';
-import { OpenAIEmbeddings } from '@langchain/openai';
 import * as fs from 'fs';
 import * as path from 'path';
+import { EMBEDDING_DIMENSIONS, EMBEDDING_MODEL, embedText } from '../src/lib/embeddings';
 
 loadEnvConfig(process.cwd());
 
@@ -53,6 +53,40 @@ function parseArgs() {
         else if (a.startsWith('--')) flags.add(a.slice(2));
     }
     return { args, flags };
+}
+
+async function warnOrClearExistingEmbeddings(
+    supabase: ReturnType<typeof createClient>,
+): Promise<void> {
+    const { count, error: countError } = await supabase
+        .from('hms_knowledge')
+        .select('id', { count: 'exact', head: true })
+        .not('embedding', 'is', null);
+
+    if (countError) {
+        console.warn('[ingest-diagram] failed to count existing embeddings:', countError.message);
+        return;
+    }
+
+    if ((count ?? 0) > 0) {
+        console.warn(
+            `[ingest-diagram] detected ${count} existing embedded rows. Re-ingest all content after embedding model changes to avoid mixed vectors.`,
+        );
+    }
+
+    if (process.env.CLEAR_EMBEDDINGS !== 'true') {
+        return;
+    }
+
+    console.warn('[ingest-diagram] CLEAR_EMBEDDINGS=true - removing existing hms_knowledge rows before import');
+    const { error: deleteError } = await supabase
+        .from('hms_knowledge')
+        .delete()
+        .neq('id', '');
+
+    if (deleteError) {
+        throw new Error(`[ingest-diagram] failed to clear existing embeddings: ${deleteError.message}`);
+    }
 }
 
 // ─── Valid diagram types (mirrors DIAGRAM_TYPE_MAP in diagram/route.ts) ───
@@ -189,10 +223,9 @@ async function ingestDiagramFile(params: {
     diagramType: string;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- standalone script, no generated DB types
     supabase: any;
-    embeddings: OpenAIEmbeddings;
     dryRun: boolean;
 }): Promise<{ success: boolean; id: string; title: string; detectedType: string; error?: string }> {
-    const { filePath, sourceName, supabase, embeddings, dryRun } = params;
+    const { filePath, sourceName, supabase, dryRun } = params;
     let { diagramType } = params;
 
     const markdown = fs.readFileSync(filePath, 'utf-8').trim();
@@ -221,7 +254,13 @@ async function ingestDiagramFile(params: {
         return { success: true, id, title, detectedType: diagramType };
     }
 
-    const vector = await embeddings.embedQuery(embeddingText);
+    const vector = await embedText(embeddingText);
+    if (!vector || vector.length === 0) {
+        return { success: false, id, title: filePath, detectedType: diagramType, error: `Embedding failed: vector is ${vector ? 'empty' : 'undefined'}` };
+    }
+    
+    // Explicitly format as pgvector string to avoid "dimension 0" errors
+    const vectorString = `[${vector.join(',')}]`;
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- standalone script, no generated DB types
     const { error } = await (supabase.from('hms_knowledge') as any).upsert([{
@@ -233,7 +272,7 @@ async function ingestDiagramFile(params: {
         product: 'HMS Panel',
         tags: [diagramType, 'diagram', category.toLowerCase(), title.toLowerCase()],
         content: embeddingText,
-        embedding: vector,
+        embedding: vectorString,
         source: 'manual',
         source_name: sourceName || fileName,
         chunk_type: 'diagram',
@@ -300,16 +339,15 @@ async function main() {
         auth: { persistSession: false },
         global: { fetch: customFetch as never },
     });
-    const embeddings = new OpenAIEmbeddings({
-        modelName: 'text-embedding-3-small',
-        openAIApiKey: openaiKey,
-    });
+
+    await warnOrClearExistingEmbeddings(supabase);
 
     console.log('\n' + '='.repeat(60));
     console.log('Diagram Ingestion Pipeline');
     console.log('='.repeat(60));
     console.log(`Files:       ${files.length}`);
     console.log(`Type:        ${diagramType === 'auto' ? 'AUTO-DETECT' : diagramType}`);
+    console.log(`Embedding:   ${EMBEDDING_MODEL} (${EMBEDDING_DIMENSIONS} dims)`);
     console.log(`Dry Run:     ${dryRun ? 'YES (no uploads)' : 'NO (live)'}\n`);
 
     let success = 0;
@@ -322,7 +360,6 @@ async function main() {
             sourceName,
             diagramType,
             supabase,
-            embeddings,
             dryRun,
         });
 

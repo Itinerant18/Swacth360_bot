@@ -39,6 +39,7 @@
 import { embedText } from './embeddings';
 import { getSupabase } from './supabase';
 import { ChatOpenAI } from '@langchain/openai';
+import { answerModeFromConfidence } from './confidence';
 
 // New imports for enhanced RAG
 import { hybridSearch, selectSearchStrategy } from './hybrid-search';
@@ -106,7 +107,7 @@ export interface RAGResult {
 
 // ─── Configuration ────────────────────────────────────────────
 const RETRIEVAL_CONFIG = {
-    // Thresholds (calibrated for text-embedding-3-small)
+    // Thresholds calibrated for text-embedding-3-large
     HIGH_CONFIDENCE: 0.68,
     MEDIUM_CONFIDENCE: 0.52,
     PARTIAL_CONFIDENCE: 0.38,
@@ -591,7 +592,7 @@ function extractRelevantPassage(query: string, answer: string): string {
 /**
  * Raw cosine similarity is not a calibrated probability.
  * Apply sigmoid transformation to get more meaningful confidence scores.
- * Parameters tuned for text-embedding-3-small on technical domain text.
+ * Parameters tuned for text-embedding-3-large on technical domain text.
  */
 function calibrateConfidence(rawSimilarity: number, queryType: QueryType): number {
     // Sigmoid calibration: f(x) = 1 / (1 + e^(-k(x - threshold)))
@@ -725,17 +726,13 @@ async function enhancedRetrieve(
     const topScore = reranked[0]?.finalScore ?? 0;
     const calibratedConfidence = calibrateConfidence(topScore, queryAnalysis.type);
 
-    let answerMode: RAGResult['answerMode'];
-    if (calibratedConfidence >= 0.72) answerMode = 'rag_high';
-    else if (calibratedConfidence >= 0.55) answerMode = 'rag_medium';
-    else if (calibratedConfidence >= 0.35) answerMode = 'rag_partial';
-    else answerMode = 'general';
+    const answerMode = answerModeFromConfidence(calibratedConfidence);
 
     // Build context string
     const contextString = reranked
         .filter(m => m.finalScore > similarityThreshold)
         .map((m, i) => {
-            const answer = (m.relevantPassage || m.answer).slice(0, 300).replace(/\n/g, ' ');
+            const answer = (m.relevantPassage || m.answer).slice(0, 500).replace(/\n/g, ' ');
             return `[${i + 1}] Q: ${m.question}\n    A: ${answer}`;
         })
         .join('\n\n');
@@ -904,11 +901,7 @@ export async function retrieve(
     const topScore = reranked[0]?.finalScore ?? 0;
     const calibratedConfidence = calibrateConfidence(topScore, queryAnalysis.type);
 
-    let answerMode: RAGResult['answerMode'];
-    if (calibratedConfidence >= 0.72) answerMode = 'rag_high';
-    else if (calibratedConfidence >= 0.55) answerMode = 'rag_medium';
-    else if (calibratedConfidence >= 0.35) answerMode = 'rag_partial';
-    else answerMode = 'general';
+    const answerMode = answerModeFromConfidence(calibratedConfidence);
 
     console.log(`  📊 Scoring: topFinalScore=${topScore.toFixed(3)} → calibrated=${calibratedConfidence.toFixed(3)} → mode=${answerMode}`);
     if (reranked.length > 0) {
@@ -919,7 +912,7 @@ export async function retrieve(
     const contextString = reranked
         .filter(m => m.finalScore > similarityThreshold)
         .map((m, i) => {
-            const answer = (m.relevantPassage || m.answer).slice(0, 300).replace(/\n/g, ' ');
+            const answer = (m.relevantPassage || m.answer).slice(0, 500).replace(/\n/g, ' ');
             return `[${i + 1}] Q: ${m.question}\n    A: ${answer}`;
         })
         .join('\n\n');

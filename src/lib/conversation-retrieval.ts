@@ -15,7 +15,6 @@
  */
 
 import { ChatOpenAI } from '@langchain/openai';
-import { stripThinkTags } from './sarvam';
 import { sanitizeInput } from './sanitize';
 
 const MAX_HISTORY_MESSAGES = 6;
@@ -130,7 +129,7 @@ Rules:
                 setTimeout(() => reject(new Error('Rewrite timeout')), 3000)
             ),
         ]);
-        const rewritten = stripThinkTags(String(result.content)).trim();
+        const rewritten = String(result.content).trim();
 
         // Sanity check — don't use rewrites that are too long or empty
         if (!rewritten || rewritten.length > 200 || rewritten.length < 3) {

@@ -8,8 +8,7 @@
 import { NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/auth-server';
 
-const ADMIN_EMAILS_RAW = process.env.ALLOWED_ADMIN_EMAILS
-    ?? 'aniket.karmakar@seple.in';
+const ADMIN_EMAILS_RAW = process.env.ALLOWED_ADMIN_EMAILS ?? '';
 
 function isAllowedAdmin(email: string | undefined): boolean {
     if (!email) return false;

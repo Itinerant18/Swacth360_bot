@@ -15,6 +15,7 @@ import AdminAnalyticsDashboard from '@/components/admin/AdminAnalyticsDashboard'
 import GraphTab from '@/components/GraphTab';
 import RAGSettingsTab from '@/components/RAGSettingsTab';
 import FeedbackTab from '@/components/FeedbackTab';
+import { adminFetch } from '@/lib/adminFetch';
 import { signOut } from '@/lib/auth';
 
 type UnknownQuestion = {
@@ -103,7 +104,7 @@ export default function AdminDashboard() {
         setReviewLoading(true);
         setReviewError('');
         try {
-            const res = await fetch('/api/admin/questions?status=pending');
+            const res = await adminFetch('/api/admin/questions?status=pending');
             const data = await res.json();
 
             if (!res.ok) {
@@ -125,7 +126,7 @@ export default function AdminDashboard() {
         setUsersLoading(true);
         setUsersError('');
         try {
-            const res = await fetch('/api/users');
+            const res = await adminFetch('/api/users');
             const data = await res.json();
 
             if (!res.ok) {
@@ -144,7 +145,7 @@ export default function AdminDashboard() {
         setRaptorLoading(true);
         setRaptorError('');
         try {
-            const res = await fetch('/api/admin/raptor');
+            const res = await adminFetch('/api/admin/raptor');
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || 'Failed to load RAPTOR data');
             setRaptorHealth(data.health || []);
@@ -158,7 +159,7 @@ export default function AdminDashboard() {
     const triggerRaptorBuild = async () => {
         setRaptorBuilding(true);
         try {
-            const res = await fetch('/api/admin/raptor', { method: 'POST' });
+            const res = await adminFetch('/api/admin/raptor', { method: 'POST' });
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || 'Build failed');
             showToast(`RAPTOR build complete: ${data.stats?.totalClusters ?? 0} clusters`);
@@ -185,7 +186,7 @@ export default function AdminDashboard() {
         setActiveQuestionId(q.id);
         setSaving(true);
         try {
-            const res = await fetch('/api/admin/seed-answer', {
+            const res = await adminFetch('/api/admin/seed-answer', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -216,7 +217,7 @@ export default function AdminDashboard() {
     const handleDismiss = async (id: string) => {
         setActiveQuestionId(id);
         try {
-            const res = await fetch('/api/admin/questions', {
+            const res = await adminFetch('/api/admin/questions', {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ id, status: 'dismissed' }),
@@ -294,9 +295,9 @@ export default function AdminDashboard() {
                 const form = new FormData();
                 form.append('file', selectedFile!);
                 form.append('sourceName', sourceName || selectedFile!.name);
-                response = await fetch('/api/admin/ingest', { method: 'POST', body: form });
+                response = await adminFetch('/api/admin/ingest', { method: 'POST', body: form });
             } else {
-                response = await fetch('/api/admin/ingest', {
+                response = await adminFetch('/api/admin/ingest', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ text: rawText, sourceName: sourceName || 'Admin Text Input' }),
@@ -712,15 +713,15 @@ export default function AdminDashboard() {
                                     <p className="text-[10px] sm:text-xs text-[#78716C] font-semibold mt-2 mb-1">Text Pipeline</p>
                                     <div className="space-y-1.5 text-xs text-[#44403C]">
                                         <div className="flex items-center gap-2"><span className="w-5 h-5 rounded-full bg-[#0D9488]/15 text-[#0D9488] flex items-center justify-center text-[10px] font-bold flex-shrink-0">1</span> Text is split into ~800-char chunks with 150-char overlap</div>
-                                        <div className="flex items-center gap-2"><span className="w-5 h-5 rounded-full bg-[#0D9488]/15 text-[#0D9488] flex items-center justify-center text-[10px] font-bold flex-shrink-0">2</span> Sarvam AI generates a Q&amp;A pair for each chunk</div>
-                                        <div className="flex items-center gap-2"><span className="w-5 h-5 rounded-full bg-[#0D9488]/15 text-[#0D9488] flex items-center justify-center text-[10px] font-bold flex-shrink-0">3</span> OpenAI text-embedding-3-small creates a 1536-dim vector</div>
+                                        <div className="flex items-center gap-2"><span className="w-5 h-5 rounded-full bg-[#0D9488]/15 text-[#0D9488] flex items-center justify-center text-[10px] font-bold flex-shrink-0">2</span> GPT-4o generates a Q&amp;A pair for each chunk</div>
+                                        <div className="flex items-center gap-2"><span className="w-5 h-5 rounded-full bg-[#0D9488]/15 text-[#0D9488] flex items-center justify-center text-[10px] font-bold flex-shrink-0">3</span> OpenAI text-embedding-3-large creates a 1536-dim vector</div>
                                     </div>
 
                                     <p className="text-[10px] sm:text-xs text-[#78716C] font-semibold mt-3 mb-1">Image Pipeline (PDF only)</p>
                                     <div className="space-y-1.5 text-xs text-[#44403C]">
                                         <div className="flex items-center gap-2"><span className="w-5 h-5 rounded-full bg-[#0D9488]/15 text-[#0D9488] flex items-center justify-center text-[10px] font-bold flex-shrink-0">4</span> Gemini 2.0 Flash reads the entire PDF - text and images</div>
                                         <div className="flex items-center gap-2"><span className="w-5 h-5 rounded-full bg-[#0D9488]/15 text-[#0D9488] flex items-center justify-center text-[10px] font-bold flex-shrink-0">5</span> Identifies wiring diagrams, schematics, panel layouts, and pinouts</div>
-                                        <div className="flex items-center gap-2"><span className="w-5 h-5 rounded-full bg-[#0D9488]/15 text-[#0D9488] flex items-center justify-center text-[10px] font-bold flex-shrink-0">6</span> Sarvam generates Q&amp;A for each visual and stores it as <code className="text-[#0D9488] bg-[#0D9488]/10 px-1 rounded">pdf_image</code></div>
+                                        <div className="flex items-center gap-2"><span className="w-5 h-5 rounded-full bg-[#0D9488]/15 text-[#0D9488] flex items-center justify-center text-[10px] font-bold flex-shrink-0">6</span> GPT-4o generates Q&amp;A for each visual and stores it as <code className="text-[#0D9488] bg-[#0D9488]/10 px-1 rounded">pdf_image</code></div>
                                         <div className="flex items-center gap-2"><span className="w-5 h-5 rounded-full bg-[#0D9488]/15 text-[#0D9488] flex items-center justify-center text-[10px] font-bold flex-shrink-0">7</span> Bot now answers questions about diagrams, not just text</div>
                                     </div>
                                 </div>

@@ -2,6 +2,7 @@
  * src/app/api/chat/route.ts
  *
  * Main chat pipeline for SAI HMS support.
+ * Refactored to use OpenAI GPT-4o and GPT-4o-mini.
  */
 
 import dns from 'node:dns';
@@ -17,7 +18,7 @@ import { getSupabase } from '@/lib/supabase';
 import { createServerSupabaseClient } from '@/lib/auth-server';
 import { checkCache, storeCache } from '@/lib/cache';
 import { embedText } from '@/lib/embeddings';
-import { stripThinkTags, stripRawChainOfThought } from '@/lib/sarvam';
+import { getLLM, SYSTEM_PROMPT } from '@/lib/llm';
 import { isLikelyFollowUp, type ConversationMessage } from '@/lib/conversation-retrieval';
 import { applyFeedbackBoost } from '@/lib/feedback-reranker';
 import { checkRateLimit, getClientIdentifier, rateLimitHeaders, RATE_LIMITS } from '@/lib/rate-limiter';
@@ -41,7 +42,7 @@ import { recordChatLog, recordFailure, type CacheSource } from '@/lib/logger';
 dns.setDefaultResultOrder('ipv4first');
 
 const MAX_HISTORY_TURNS = 4;
-const UNKNOWN_THRESHOLD = 0.45;
+const UNKNOWN_THRESHOLD = 0.35;
 
 const NOT_FOUND_MESSAGES: Record<string, string> = {
     en: "I don't have specific information about this in my knowledge base. Please consult the HMS panel manual or contact technical support.",
@@ -71,7 +72,7 @@ function raceWithTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> 
 async function translateToEnglish(
     text: string,
     language: string,
-    sarvamLlm: ChatOpenAI,
+    llm: ChatOpenAI,
     conversationHistory: string
 ): Promise<string> {
     if (language === 'en' || isEnglish(text)) {
@@ -83,9 +84,8 @@ async function translateToEnglish(
     const prompt = `Translate the ${sourceLang} question to English. Resolve pronouns using context. Output ONLY the English translation.\n${historyCtx}${sourceLang}: ${text}\nEnglish:`;
 
     try {
-        const result = await raceWithTimeout(sarvamLlm.invoke(prompt), 15_000);
-        const translated = stripThinkTags(String(result.content)).trim();
-        return translated.length > 0 ? translated : text.trim();
+        const result = await raceWithTimeout(llm.invoke(prompt), 10_000);
+        return String(result.content).trim() || text.trim();
     } catch (err) {
         console.warn('[translateToEnglish] failed, using original text:', (err as Error).message);
         return text.trim();
@@ -504,7 +504,7 @@ async function runRetrievalStages(params: {
         matches: rankedContext.matches,
         baseConfidence: rankedContext.matches[0]?.finalScore ?? 0,
     });
-    const contextString = buildContextWindow(rankedContext.matches, 1200);
+    const contextString = buildContextWindow(rankedContext.matches, 3600);
     const totalCandidates = preliminaryCandidates.length + hydeVectorResult.matches.length;
 
     return {
@@ -761,13 +761,9 @@ export async function POST(req: Request) {
         console.log(`\n${'='.repeat(60)}`);
         console.log(`User [${language}]: "${latestMessage}"`);
 
-        const sarvamLlm = new ChatOpenAI({
-            modelName: 'sarvam-m',
-            apiKey: process.env.SARVAM_API_KEY,
-            configuration: { baseURL: 'https://api.sarvam.ai/v1' },
-            temperature: 0.05,
-            maxTokens: 768,
-        });
+        // Central LLM instances
+        const complexLlm = getLLM('complex');
+        const simpleLlm = getLLM('simple');
 
         if (language !== 'en' && !isEnglish(latestMessage)) {
             llmCallCount += 1;
@@ -776,7 +772,7 @@ export async function POST(req: Request) {
         const englishQuestion = await translateToEnglish(
             latestMessage,
             language,
-            sarvamLlm,
+            simpleLlm,
             conversationHistory
         );
         stageTimer.end('translation');
@@ -786,8 +782,6 @@ export async function POST(req: Request) {
         }
 
         // ── Conversation-Aware Retrieval ──────────────────────────────
-        // Rewrite follow-up queries using conversation history so that
-        // pronouns like "it", "that", "this" resolve correctly.
         const contextMessages: ConversationMessage[] = historySource
             .map((m: { role: string; content: string }) => ({
                 role: m.role as 'user' | 'assistant',
@@ -802,7 +796,7 @@ export async function POST(req: Request) {
         const processedQuery = await processQuery({
             originalQuery: englishQuestion,
             history: contextMessages,
-            llm: shouldUseRewriteModel ? sarvamLlm : undefined,
+            llm: shouldUseRewriteModel ? simpleLlm : undefined,
         });
         let retrievalQuestion = processedQuery.retrievalQuery;
         if (hasInjectionSignals(retrievalQuestion)) {
@@ -851,22 +845,14 @@ export async function POST(req: Request) {
             return buildChatResponse(casualAnswer, activeConversationId, requestId, rateLimitResult);
         }
 
-        // ── Diagram detection — MUST run BEFORE cache checks ──────────
-        // If this is a diagram request, skip cache entirely and go
-        // straight to diagram generation. Otherwise cached text answers
-        // for keywords like "hms panel" intercept diagram queries.
-        // Check BOTH original and rewritten questions — context rewriting
-        // can strip diagram keywords like "show me", "diagram", "wiring".
         const origDiagram = isDiagramRequest(englishQuestion);
         const rewrittenDiagram = isDiagramRequest(retrievalQuestion);
         const isDiagram = origDiagram.isDiagram || rewrittenDiagram.isDiagram;
         const diagramType = origDiagram.isDiagram ? origDiagram.diagramType : rewrittenDiagram.diagramType;
 
-        // Tier 1 Cache Check (exact match, no embedding needed)
-        // Skip cache for diagram requests
         stageTimer.mark('cacheCheck');
         if (!isDiagram) {
-            const tier1CacheResult = await checkCache(retrievalQuestion, null);
+            const tier1CacheResult = await checkCache(retrievalQuestion, null, language);
             if (tier1CacheResult.hit) {
                 stageTimer.end('cacheCheck');
                 cacheSource = 'exact';
@@ -943,7 +929,6 @@ export async function POST(req: Request) {
             return buildChatResponse(relationalAnswer, activeConversationId, requestId, rateLimitResult);
         }
 
-        // Embed query (reused for semantic cache, Tier 2 cache, and RAG retrieval)
         stageTimer.mark('embedding');
         const cachedQueryEmbedding = await embedText(retrievalQuestion);
         stageTimer.end('embedding');
@@ -1014,9 +999,8 @@ export async function POST(req: Request) {
             }
         }
 
-        // Tier 2 Cache Check (semantic match) — also skip for diagram requests
         if (!isDiagram) {
-            const tier2CacheResult = await checkCache(retrievalQuestion, cachedQueryEmbedding);
+            const tier2CacheResult = await checkCache(retrievalQuestion, cachedQueryEmbedding, language);
             if (tier2CacheResult.hit) {
                 stageTimer.end('cacheCheck');
                 cacheSource = 'semantic_db';
@@ -1082,14 +1066,13 @@ export async function POST(req: Request) {
         const routedRetrievalConfig = selectRoute(baseAnalysis, langName, notFoundMsg);
         logRoute(baseAnalysis, routedRetrievalConfig);
 
-        // Gate decomposition: skip for simple queries (saves an LLM call)
         const isSimple = baseAnalysis.complexity === 'simple';
         if (!isSimple) {
             llmCallCount += 1;
         }
         const decomposed = isSimple
             ? { isDecomposed: false as const, subQueries: [], reasoning: 'Skipped — simple query', originalQuery: retrievalQuestion }
-            : await decomposeQuery(retrievalQuestion, baseAnalysis, sarvamLlm);
+            : await decomposeQuery(retrievalQuestion, baseAnalysis, complexLlm);
         const decomposedPrefix = buildDecomposedPromptPrefix(decomposed);
         const retrieveOptions = buildRetrievalPlan({
             analysis: baseAnalysis,
@@ -1123,14 +1106,13 @@ export async function POST(req: Request) {
         };
 
         if (decomposed.isDecomposed) {
-            // Each sub-query has a different search string — do NOT reuse the parent embedding
             const subResults = await Promise.all(
                 decomposed.subQueries.map(async (subQuery) => {
                     const extracted = extractKeywordsAndEntities(subQuery.query);
                     const stageResult = await runRetrievalStages({
                         query: subQuery.query,
                         analysis: classifyQuery(subQuery.query),
-                        llm: sarvamLlm,
+                        llm: simpleLlm,
                         retrieveOptions,
                         keywords: extracted.keywords,
                         entities: extracted.entities,
@@ -1162,7 +1144,7 @@ export async function POST(req: Request) {
             const stageResult = await runRetrievalStages({
                 query: retrievalQuestion,
                 analysis: baseAnalysis,
-                llm: sarvamLlm,
+                llm: simpleLlm,
                 retrieveOptions,
                 queryEmbedding: cachedQueryEmbedding,
                 keywords: processedQuery.keywords,
@@ -1181,8 +1163,6 @@ export async function POST(req: Request) {
             llmCallCount += 1;
         }
 
-        // ── Feedback-Driven Reranking Boost ──────────────────────────
-        // Adjust scores based on historical user feedback (thumbs up/down)
         stageTimer.mark('reranking');
         if (decomposed.isDecomposed) {
             const rerankedMerged = rankAndDeduplicateContext({
@@ -1202,7 +1182,7 @@ export async function POST(req: Request) {
                 matches: rerankedMerged.matches,
                 confidence: mergedConfidence.score,
                 answerMode: answerModeFromConfidence(mergedConfidence.score),
-                contextString: buildContextWindow(rerankedMerged.matches, 1200),
+                contextString: buildContextWindow(rerankedMerged.matches, 2400),
                 retrievalStats: {
                     ...lastRagResult.retrievalStats,
                     afterRerank: rerankedMerged.matches.length,
@@ -1244,9 +1224,9 @@ export async function POST(req: Request) {
             retrievalMetadata,
         } = lastRagResult;
 
-        // ── Stored diagram short-circuit ────────────────────
-        // If the top RAG match is a stored diagram with high confidence,
-        // serve it directly — no Sarvam LLM call needed.
+        // Retrieval diagnostics — helps debug "I don't have information" responses
+        console.log(`[chat] Retrieval result: matches=${matches.length}, confidence=${confidence.toFixed(3)}, answerMode=${answerMode}, contextLen=${contextString?.length ?? 0}, topScore=${matches[0]?.finalScore?.toFixed(3) ?? 'N/A'}, stats=${JSON.stringify(retrievalStats)}`);
+
         const topMatch = matches[0];
         if (
             topMatch &&
@@ -1351,7 +1331,6 @@ export async function POST(req: Request) {
                 }
             } catch (err: unknown) {
                 console.warn(`Diagram generation failed: ${(err as Error).message}`);
-                // Return a fallback diagram response instead of silently falling through to text
                 const fallbackPayload = JSON.stringify({
                     __type: 'diagram',
                     markdown: `## Diagram Generation Error\n\nUnable to generate ${diagramType} diagram at this time.\n\nPlease try again or contact technical support if the issue persists.`,
@@ -1385,9 +1364,8 @@ export async function POST(req: Request) {
             });
         }
 
-        // Hard gate: block hallucination in general mode when context is negligible.
-        if (answerMode === 'general' && (!contextString || contextString.trim().length < 30)) {
-            console.log(`[chat] Hallucination gate triggered - answerMode=general, contextLength=${contextString?.length ?? 0}`);
+        if (answerMode === 'general' && (!contextString || contextString.trim().length < 30) && matches.length === 0) {
+            console.log(`[chat] Hallucination gate triggered - answerMode=general, contextLength=${contextString?.length ?? 0}, matches=${matches.length}`);
 
             await persistAssistantMessage({
                 enabled: Boolean(authUserId),
@@ -1441,7 +1419,12 @@ export async function POST(req: Request) {
             finalAnswerStyle: string,
             fallbackNote?: string,
         ): string => {
-            const sections = [routedSystem.trim()];
+            const sections = [
+                `OUTPUT LANGUAGE: ${langName}`,
+                `CRITICAL: You must write your entire response in ${langName}. Do not use English if the user asked in ${langName}.`,
+                SYSTEM_PROMPT.trim(), 
+                routedSystem.trim()
+            ];
 
             if (history.trim()) {
                 sections.push(`RECENT CONVERSATION MEMORY:\n${history.trim()}`);
@@ -1460,7 +1443,7 @@ export async function POST(req: Request) {
             }
 
             if (fallbackNote) {
-                sections.push(`CONFIDENCE NOTE:\n- Retrieval confidence is limited.\n- Use only the matched information.\n- Clearly say when an answer is approximate or incomplete.`);
+                sections.push(`CONFIDENCE NOTE:\n- Retrieval confidence is limited but some relevant context was found.\n- Synthesize the best possible answer from available context.\n- Briefly note if the answer may be incomplete.`);
             }
 
             return sections.join('\n\n');
@@ -1479,18 +1462,23 @@ export async function POST(req: Request) {
 
         stageTimer.mark('llmGeneration');
         llmCallCount += 1;
+        
+        // Use streaming for better UX; pass route-specific token limits
+        const chatLlm = getLLM(isSimple ? 'simple' : 'complex', {
+            streaming: true,
+            maxTokens: routedPrompt.route.maxTokens,
+            temperature: routedPrompt.route.temperature,
+        });
+        
         const response = await raceWithTimeout(
-            sarvamLlm.invoke([
+            chatLlm.invoke([
                 { role: 'system', content: systemPrompt },
-                { role: 'user', content: retrievalQuestion },
+                { role: 'user', content: `Respond ENTIRELY in ${langName} using only the provided context.\n\nUser Query: ${latestMessage}` },
             ]),
-            15_000
+            25_000
         );
 
-        const rawAnswer = typeof response.content === 'string'
-            ? response.content
-            : JSON.stringify(response.content);
-        let cleanedAnswer = stripRawChainOfThought(stripThinkTags(rawAnswer), notFoundMsg);
+        let cleanedAnswer = (typeof response.content === 'string' ? response.content : JSON.stringify(response.content)).trim();
 
         if (shouldUseVerificationPass({
             complexity: baseAnalysis.complexity,
@@ -1499,22 +1487,29 @@ export async function POST(req: Request) {
         })) {
             llmCallCount += 1;
             try {
-                const verificationPrompt = `Revise the draft answer so every claim stays grounded in the provided context.\n\nContext:\n${contextString}\n\nDraft answer:\n${cleanedAnswer}\n\nReturn only the improved answer.`;
+                const verificationPrompt = `Revise the draft answer so every claim stays grounded in the provided context. 
+
+CRITICAL: The answer must be written ENTIRELY in ${langName}. If it is not in ${langName}, translate it now.
+
+Context:
+${contextString}
+
+Draft answer:
+${cleanedAnswer}
+
+Return only the improved answer in ${langName}.`;
                 const verificationResponse = await raceWithTimeout(
-                    sarvamLlm.invoke([
+                    simpleLlm.invoke([
                         {
                             role: 'system',
                             content: 'You revise support answers for clarity and accuracy. Remove unsupported claims and keep the structure concise.',
                         },
                         { role: 'user', content: verificationPrompt },
                     ]),
-                    8_000
+                    12_000
                 );
 
-                const verifiedRaw = typeof verificationResponse.content === 'string'
-                    ? verificationResponse.content
-                    : JSON.stringify(verificationResponse.content);
-                cleanedAnswer = stripRawChainOfThought(stripThinkTags(verifiedRaw), notFoundMsg);
+                cleanedAnswer = (typeof verificationResponse.content === 'string' ? verificationResponse.content : JSON.stringify(verificationResponse.content)).trim();
             } catch (verifyErr) {
                 console.warn('[verification pass] failed, using original answer:', (verifyErr as Error).message);
             }
@@ -1532,7 +1527,7 @@ export async function POST(req: Request) {
             question: retrievalQuestion,
             answer,
             ragResult: lastRagResult,
-            llm: sarvamLlm,
+            llm: simpleLlm,
             latencyMs: performance.now() - requestStart,
             userId: userId ?? undefined,
         }).catch((err) => {
@@ -1550,7 +1545,6 @@ export async function POST(req: Request) {
             conversation_id: activeConversationId || null,
         }).then(({ error }) => { if (error) console.warn('chat_sessions insert failed:', error.message); });
 
-        // Store answer in both cache tiers (fire-and-forget)
         void storeCache({
             query: retrievalQuestion,
             queryVector: cachedQueryEmbedding,
@@ -1603,12 +1597,6 @@ export async function POST(req: Request) {
             error: null,
         });
 
-        console.log(`Response complete [${elapsed(requestStart)}] mode=${answerMode} conf=${(confidence * 100).toFixed(0)}%`);
-        console.log(`Stats: ${retrievalStats.totalCandidates} candidates -> ${retrievalStats.afterRerank} after rerank | ${retrievalStats.latencyMs.toFixed(0)}ms`);
-        console.log(`Sources: ${retrievalMetadata?.sourcesUsed?.join(', ') || 'none'}`);
-        console.log(`${'='.repeat(60)}\n`);
-
-        // Record pipeline metrics (fire-and-forget)
         void recordMetric({
             ...metricsSnapshot,
             totalLatencyMs: performance.now() - requestStart,
@@ -1619,7 +1607,6 @@ export async function POST(req: Request) {
             createdAt: new Date().toISOString(),
         } as PipelineMetric);
 
-        // Return with conversation ID header and rate limit info
         return buildChatResponse(answer, activeConversationId, requestId, rateLimitResult, {
             'x-pipeline-latency': `${(performance.now() - requestStart).toFixed(0)}ms`,
         });
@@ -1641,24 +1628,7 @@ export async function POST(req: Request) {
             reason: errorMessage,
             confidence: null,
         });
-        recordChatLog({
-            requestId,
-            query: originalQueryForLog || 'unknown',
-            rewrittenQuery: rewrittenQueryForLog || originalQueryForLog || 'unknown',
-            intent: intentForLog,
-            retrievedChunks: [],
-            finalChunks: [],
-            confidence: 0,
-            responseTimeMs: performance.now() - requestStart,
-            success: false,
-            fallbackTriggered: false,
-            cacheSource,
-            hydeUsed: Boolean(metricsSnapshot.hydeUsed),
-            queryExpansionUsed: Boolean(metricsSnapshot.queryExpansionUsed),
-            llmCalls: llmCallCount,
-            error: errorMessage,
-        });
-
+        
         return new Response(
             JSON.stringify({ error: 'Failed to process chat request.' }),
             {

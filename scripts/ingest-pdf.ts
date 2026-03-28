@@ -8,10 +8,15 @@ import { loadEnvConfig } from '@next/env';
 import dns from 'node:dns';
 import { Agent, fetch as undiciFetch } from 'undici';
 import { createClient } from '@supabase/supabase-js';
-import { OpenAIEmbeddings } from '@langchain/openai';
 import { ChatOpenAI } from '@langchain/openai';
 import * as fs from 'fs';
 import * as path from 'path';
+import {
+    EMBEDDING_BATCH_SIZE,
+    EMBEDDING_DIMENSIONS,
+    EMBEDDING_MODEL,
+    embedTexts,
+} from '../src/lib/embeddings';
 
 loadEnvConfig(process.cwd());
 
@@ -101,8 +106,8 @@ function buildChunks(text: string, chunkSize: number, overlap: number): Chunk[] 
     return chunks;
 }
 
-// ─── Q&A Generation via Sarvam AI ────────────────────────────
-// Uses Sarvam API (same as chat route) — consistent with your stack
+// ─── Q&A Generation via OpenAI GPT-4o ────────────────────────
+// Uses OpenAI GPT-4o for Q&A generation — consistent with LLM migration
 interface QAPair { question: string; answer: string; keywords: string[]; category: string; }
 
 const VALID_CATEGORIES = [
@@ -164,6 +169,100 @@ function buildEmbeddingText(qa: QAPair, chunk: Chunk, sourceName: string): strin
     ].join('\n');
 }
 
+async function warnOrClearExistingEmbeddings(
+    supabase: ReturnType<typeof createClient>,
+): Promise<void> {
+    const { count, error: countError } = await supabase
+        .from('hms_knowledge')
+        .select('id', { count: 'exact', head: true })
+        .not('embedding', 'is', null);
+
+    if (countError) {
+        console.warn('[ingest-pdf] failed to count existing embeddings:', countError.message);
+        return;
+    }
+
+    if ((count ?? 0) > 0) {
+        console.warn(
+            `[ingest-pdf] detected ${count} existing embedded rows. Re-ingest all content after embedding model changes to avoid mixed vectors.`,
+        );
+    }
+
+    if (process.env.CLEAR_EMBEDDINGS !== 'true') {
+        return;
+    }
+
+    console.warn('[ingest-pdf] CLEAR_EMBEDDINGS=true - removing existing hms_knowledge rows before import');
+    const { error: deleteError } = await supabase
+        .from('hms_knowledge')
+        .delete()
+        .neq('id', '');
+
+    if (deleteError) {
+        throw new Error(`[ingest-pdf] failed to clear existing embeddings: ${deleteError.message}`);
+    }
+}
+
+type PreparedChunk = {
+    id: string;
+    chunk: Chunk;
+    qa: QAPair;
+    embText: string;
+};
+
+async function flushPreparedChunks(
+    supabase: ReturnType<typeof createClient>,
+    sourceName: string,
+    prepared: PreparedChunk[],
+): Promise<{ success: number; errors: number }> {
+    if (prepared.length === 0) {
+        return { success: 0, errors: 0 };
+    }
+
+    let vectors: number[][];
+    try {
+        vectors = await embedTexts(prepared.map((item) => item.embText));
+    } catch (err) {
+        console.error(`   Batch embedding failed: ${err instanceof Error ? err.message : String(err)}`);
+        return { success: 0, errors: prepared.length };
+    }
+
+    let success = 0;
+    let errors = 0;
+
+    for (let index = 0; index < prepared.length; index++) {
+        const item = prepared[index];
+        try {
+            const { error } = await supabase.from('hms_knowledge').upsert({
+                id: item.id,
+                question: item.qa.question,
+                answer: item.qa.answer,
+                category: item.qa.category,
+                subcategory: item.chunk.section,
+                product: 'HMS Panel',
+                tags: item.qa.keywords,
+                content: item.embText,
+                embedding: vectors[index],
+                source: 'pdf',
+                source_name: sourceName,
+            }, { onConflict: 'id' });
+
+            if (error) {
+                console.error(`   ${item.id}: ${error.message}`);
+                errors++;
+            } else {
+                console.log(`   OK "${item.qa.question.substring(0, 65)}..."`);
+                success++;
+            }
+        } catch (err) {
+            console.error(`   ${item.id}: ${err instanceof Error ? err.message : String(err)}`);
+            errors++;
+        }
+    }
+
+    return { success, errors };
+}
+
 // ─── Main Pipeline ────────────────────────────────────────────
 async function ingestPdf() {
     const { args, flags } = parseArgs();
@@ -185,20 +284,18 @@ async function ingestPdf() {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
     const openaiKey = process.env.OPENAI_API_KEY;
-    const sarvamKey = process.env.SARVAM_API_KEY;
 
     if (!supabaseUrl || !supabaseKey) throw new Error('❌ Missing Supabase env vars');
     if (!openaiKey) throw new Error('❌ Missing OPENAI_API_KEY');
-    if (!sarvamKey && !quickMode) throw new Error('❌ Missing SARVAM_API_KEY (use --quick to skip Q&A generation)');
 
     console.log('\n' + '═'.repeat(60));
     console.log('📄 PDF Ingestion Pipeline');
-    console.log('   Embedding: OpenAI text-embedding-3-small (1536-dim)');
-    console.log('   Q&A:       Sarvam AI sarvam-m');
+    console.log(`   Embedding: ${EMBEDDING_MODEL} (${EMBEDDING_DIMENSIONS} dims)`);
+    console.log('   Q&A:       OpenAI GPT-4o');
     console.log('═'.repeat(60));
     console.log(`📁 File:    ${filePath}`);
     console.log(`📝 Source:  ${sourceName}`);
-    console.log(`🧠 Mode:    ${quickMode ? 'QUICK (no Q&A)' : 'DEEP (Sarvam Q&A per chunk)'}\n`);
+    console.log(`🧠 Mode:    ${quickMode ? 'QUICK (no Q&A)' : 'DEEP (GPT-4o Q&A per chunk)'}\n`);
 
     // Read PDF
     console.log('📖 Reading PDF…');
@@ -220,18 +317,12 @@ async function ingestPdf() {
     const supabase = createClient(supabaseUrl, supabaseKey, {
         auth: { persistSession: false }, global: { fetch: customFetch as never },
     });
+    await warnOrClearExistingEmbeddings(supabase);
 
-    // OpenAI for embeddings
-    const embeddings = new OpenAIEmbeddings({
-        modelName: 'text-embedding-3-small',
-        openAIApiKey: openaiKey,
-    });
-
-    // Sarvam for Q&A generation (optional, only in deep mode)
-    const sarvamLlm = !quickMode ? new ChatOpenAI({
-        modelName: 'sarvam-m',
-        apiKey: sarvamKey,
-        configuration: { baseURL: 'https://api.sarvam.ai/v1' },
+    // OpenAI for Q&A generation (optional, only in deep mode)
+    const openAILlm = !quickMode ? new ChatOpenAI({
+        modelName: 'gpt-4o',
+        apiKey: openaiKey,
         temperature: 0.2,
         maxTokens: 512,
     }) : null;
@@ -241,6 +332,8 @@ async function ingestPdf() {
 
     console.log(`🚀 Processing ${chunks.length} chunks…\n`);
 
+    const preparedBatch: PreparedChunk[] = [];
+
     for (let i = 0; i < chunks.length; i++) {
         const chunk = chunks[i];
         const id = `pdf_${sourceName.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_${String(i).padStart(4, '0')}`;
@@ -249,9 +342,9 @@ async function ingestPdf() {
         try {
             let qa: QAPair;
 
-            if (!quickMode && sarvamLlm) {
+            if (!quickMode && openAILlm) {
                 process.stdout.write(`   🧠 ${prog} "${chunk.section}"…`);
-                qa = await generateQA(chunk, sourceName, sarvamLlm);
+                qa = await generateQA(chunk, sourceName, openAILlm);
                 process.stdout.write(' ✓\n');
             } else {
                 qa = {
@@ -262,25 +355,20 @@ async function ingestPdf() {
                 };
             }
 
-            const embText = buildEmbeddingText(qa, chunk, sourceName);
-            const vector = await embeddings.embedQuery(embText);
-
-            const { error } = await supabase.from('hms_knowledge').upsert({
+            preparedBatch.push({
                 id,
-                question: qa.question,
-                answer: qa.answer,
-                category: qa.category,
-                subcategory: chunk.section,
-                product: 'HMS Panel',
-                tags: qa.keywords,
-                content: embText,
-                embedding: vector,
-                source: 'pdf',
-                source_name: sourceName,
+                chunk,
+                qa,
+                embText: buildEmbeddingText(qa, chunk, sourceName),
             });
 
-            if (error) { console.error(`   ❌ ${prog} ${error.message}`); errors++; }
-            else { console.log(`   ✅ ${prog} "${qa.question.substring(0, 65)}…"`); success++; }
+            const shouldFlush = preparedBatch.length >= EMBEDDING_BATCH_SIZE || i === chunks.length - 1;
+            if (shouldFlush) {
+                const result = await flushPreparedChunks(supabase, sourceName, preparedBatch);
+                success += result.success;
+                errors += result.errors;
+                preparedBatch.length = 0;
+            }
 
             // Throttle between chunks
             if (i < chunks.length - 1) await new Promise(r => setTimeout(r, 200));

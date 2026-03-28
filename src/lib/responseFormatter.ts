@@ -159,7 +159,7 @@ export function formatResponse(rawAnswer: string, options: FormatResponseOptions
     }
 
     if (hasStructuredSections(normalized)) {
-        return fallbackMessage && confidence < 0.52
+        return fallbackMessage && confidence < 0.38
             ? appendFallbackNote(normalized, fallbackMessage)
             : normalized;
     }
@@ -180,7 +180,7 @@ export function formatResponse(rawAnswer: string, options: FormatResponseOptions
     }
 
     const notes = notesFromParagraphs(paragraphs);
-    if (fallbackMessage && confidence < 0.52) {
+    if (fallbackMessage && confidence < 0.38) {
         notes.unshift(fallbackMessage);
     }
 

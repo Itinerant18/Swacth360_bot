@@ -815,7 +815,7 @@ SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiNiIs...
 OPENAI_API_KEY=sk-proj-VhOgwKKzwWTewI7X...
 
 # Sarvam AI (for translation & text generation)
-SARVAM_API_KEY=sk_kwtjg2l6_ZwRYYsLkNc...
+OPENAI_API_KEY=sk-...
 
 # Google Gemini (optional - for PDF vision)
 GEMINI_API_KEY=AIzaSyBbDibYRVRMsNsx0...
@@ -1908,6 +1908,26 @@ npx tsx scripts/ingest-diagram.ts --dir="data/diagrams/"
 # Or JSONL Files (.jsonl)
 #Individual JSONL file:
 npx tsx scripts/ingest-jsonl.ts --file="data/langextract/your-file.jsonl" --name="Document Name"
+
+
+
+
+
+# To update your knowledge base with the data in the data/ folder, use these npx commands. I have categorized them by data type as they use different specialized pipelines:
+
+  ## 1. Ingest Technical Diagrams (Markdown/ASCII) : This command auto-detects the diagram type and generates embeddings for all .md files in the diagrams folder.
+npx tsx scripts/ingest-diagram.ts --dir="data/diagrams/"
+
+  ## 2. Ingest PDF Documents (Text & Vision) : This command processes all PDFs. It uses pdf-parse for text-heavy files and Gemini 2.0 Flash Vision for image-heavy schematics.
+npx tsx scripts/seed-pdfs.ts
+
+  ## 3. Ingest Q&A Dataset (JSON) : This seeds the primary structured troubleshooting and general knowledge base.
+npx tsx scripts/seed-supabase.ts
+
+  ## 4. Clear Knowledge Base (Cleanup) : If you need to perform a fresh sync and remove all existing vectors first:
+npx tsx scripts/clear.ts
+
+
 ```
 
 
@@ -1969,7 +1989,7 @@ SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiNiIs...
 OPENAI_API_KEY=sk-proj-VhOgwKKzwWTewI7X...
 
 # Sarvam AI (for translation & text generation)
-SARVAM_API_KEY=sk_kwtjg2l6_ZwRYYsLkNc...
+OPENAI_API_KEY=sk-...
 
 # Google Gemini (optional - for PDF vision)
 GEMINI_API_KEY=AIzaSyBbDibYRVRMsNsx0...

@@ -31,6 +31,7 @@ import {
     type NormalizedMetrics,
     type NormalizedPerformance,
 } from '@/lib/adminAdapter';
+import { adminFetch } from '@/lib/adminFetch';
 
 interface DashboardData {
     analytics: NormalizedAnalytics;
@@ -55,7 +56,7 @@ function getErrorMessage(payload: unknown, fallback: string): string {
 }
 
 async function fetchAdminJson(url: string): Promise<unknown> {
-    const response = await fetch(url, {
+    const response = await adminFetch(url, {
         method: 'GET',
         cache: 'no-store',
         headers: {
@@ -69,8 +70,6 @@ async function fetchAdminJson(url: string): Promise<unknown> {
     } catch {
         json = null;
     }
-
-    console.log('API Response:', { url, json });
 
     if (!response.ok) {
         throw new Error(getErrorMessage(json, `Request failed for ${url}`));

@@ -8,10 +8,10 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { ChatOpenAI } from '@langchain/openai';
 import { buildRaptorTree, RaptorBuildInProgressError } from '@/lib/raptor-builder';
 import { getSupabase } from '@/lib/supabase';
 import { requireAdmin } from '@/lib/admin-auth';
+import { getLLM } from '@/lib/llm';
 
 const RAPTOR_CONFIG_TOKENS = 300;
 
@@ -42,13 +42,8 @@ export async function POST(req: NextRequest) {
             );
         }
 
-        const llm = new ChatOpenAI({
-            modelName: 'sarvam-m',
-            apiKey: process.env.SARVAM_API_KEY,
-            configuration: { baseURL: 'https://api.sarvam.ai/v1' },
-            temperature: 0.1,
-            maxTokens: RAPTOR_CONFIG_TOKENS,
-        });
+        const llm = getLLM('complex', { temperature: 0.1, maxTokens: 1024 });
+
 
         // This route remains synchronous so callers get final build stats.
         const start = Date.now();

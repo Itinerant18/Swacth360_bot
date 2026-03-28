@@ -115,7 +115,6 @@ async function main() {
     await run('admin ingest requires authentication before env validation', async () => {
         await withEnv(
             {
-                SARVAM_API_KEY: undefined,
                 OPENAI_API_KEY: undefined,
                 GEMINI_API_KEY: undefined,
             },

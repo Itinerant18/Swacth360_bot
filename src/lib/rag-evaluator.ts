@@ -38,7 +38,7 @@
  */
 
 import { ChatOpenAI } from '@langchain/openai';
-import { extractJsonFromSarvam } from './sarvam';
+import { extractJson } from './llm';
 import { embedText } from './embeddings';
 import { getSupabase } from './supabase';
 import type { RankedMatch, RAGResult } from './rag-engine';
@@ -130,7 +130,7 @@ Respond ONLY with JSON:
 If no verifiable claims, respond: {"claims": []}`;
 
         const result = await llm.invoke(prompt);
-        const parsed = extractJsonFromSarvam<{ claims?: { claim: string; supported: boolean }[] }>(result.content as string);
+        const parsed = extractJson<{ claims?: { claim: string; supported: boolean }[] }>(result.content as string);
         const claims = parsed?.claims ?? [];
 
         if (claims.length === 0) return 0.75; // no verifiable claims = neutral

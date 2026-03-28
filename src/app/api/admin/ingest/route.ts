@@ -41,6 +41,7 @@ import { embedText } from '@/lib/embeddings';
 import { extractPdfText } from '@/lib/pdf-extract';
 import { requireAdmin } from '@/lib/admin-auth';
 import { ChatOpenAI } from '@langchain/openai';
+import { getLLM } from '@/lib/llm';
 import { semanticChunk } from '@/lib/semantic-chunker';
 import { invalidateAllCache } from '@/lib/cache';
 
@@ -541,13 +542,9 @@ export async function POST(req: NextRequest) {
     const auth = await requireAdmin();
     if (!auth.authorized) return auth.response!;
 
-    const sarvamKey = process.env.SARVAM_API_KEY;
     const openaiKey = process.env.OPENAI_API_KEY;
     const geminiKey = process.env.GEMINI_API_KEY;
-    if (!sarvamKey) {
-        console.error('[admin.ingest] config_error', { missing: 'SARVAM_API_KEY' });
-        return NextResponse.json({ error: 'SARVAM_API_KEY not configured' }, { status: 500 });
-    }
+    
     if (!openaiKey) {
         console.error('[admin.ingest] config_error', { missing: 'OPENAI_API_KEY' });
         return NextResponse.json({ error: 'OPENAI_API_KEY not configured' }, { status: 500 });
@@ -555,13 +552,7 @@ export async function POST(req: NextRequest) {
 
     if (!geminiKey) console.warn('⚠️  GEMINI_API_KEY not set — image extraction skipped');
 
-    const sarvamLlm = new ChatOpenAI({
-        modelName: 'sarvam-m',
-        apiKey: sarvamKey,
-        configuration: { baseURL: 'https://api.sarvam.ai/v1' },
-        temperature: 0.15,
-        maxTokens: 600,
-    });
+    const chatLlm = getLLM('complex', { temperature: 0.1, maxTokens: 1024 });
 
     let rawText = '';
     let sourceName = '';
@@ -691,8 +682,8 @@ export async function POST(req: NextRequest) {
 
             // Run Q&A generation and proposition extraction in parallel
             const [generatedQa, propositions] = await Promise.all([
-                generateQAPair(child, sourceName, sarvamLlm, false),
-                extractPropositions(child, sourceName, sarvamLlm),
+                generateQAPair(child, sourceName, chatLlm, false),
+                extractPropositions(child, sourceName, chatLlm),
             ]);
             const qa = generatedQa ?? buildFallbackQAPair(child, sourceName, section, entities);
 
@@ -833,7 +824,7 @@ export async function POST(req: NextRequest) {
     if (extractedImages.length > 0) {
         console.log(`🖼️  Processing ${extractedImages.length} image(s) with entity enrichment...`);
 
-        // Helper: convert a Gemini image description into a structured ASCII diagram via Sarvam
+        // Helper: convert a Gemini image description into a structured ASCII diagram via GPT-4o
         async function generateDiagramFromDescription(
             description: string,
             imageType: string,
@@ -859,7 +850,7 @@ Requirements:
 
 Output the diagram in markdown only. No preamble.`;
 
-                const result = await sarvamLlm.invoke(prompt);
+                const result = await chatLlm.invoke(prompt);
                 const diagram = (result.content as string).trim();
                 // Only accept if it looks like a real diagram (has box chars or table)
                 if (diagram.length > 100 && (/[┌┐└┘─│]/.test(diagram) || /\|.*\|.*\|/.test(diagram))) {
@@ -885,7 +876,7 @@ Output the diagram in markdown only. No preamble.`;
 
             try {
                 const entities = extractHMSEntities(imageContent);
-                const generatedQa = await generateQAPair(imageContent, sourceName, sarvamLlm, true);
+                const generatedQa = await generateQAPair(imageContent, sourceName, chatLlm, true);
                 const qa = generatedQa ?? buildFallbackQAPair(
                     imageContent,
                     sourceName,
