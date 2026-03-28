@@ -768,6 +768,7 @@ export default function Chat() {
                                         onClick={() => setSidebarOpen(false)}
                                         className="flex items-center justify-center w-10 h-10 rounded-lg text-[#78716C] hover:text-[#1C1917] hover:bg-black/5 transition-colors"
                                         title="Close sidebar"
+                                        aria-label="Close sidebar"
                                     >
                                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                             <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
@@ -780,6 +781,7 @@ export default function Chat() {
                                     onClick={handleNewConversation}
                                     className="p-1.5 rounded-lg text-[#78716C] hover:text-[#CA8A04] hover:bg-[#CA8A04]/10 transition-colors"
                                     title="New conversation"
+                                    aria-label="New conversation"
                                 >
                                     <FontAwesomeIcon icon={faPlus} className="w-3.5 h-3.5" />
                                 </button>
@@ -849,6 +851,7 @@ export default function Chat() {
                                                                         : 'opacity-0 group-hover:opacity-100'
                                                                     }`}
                                                                 title="Delete"
+                                                                aria-label="Delete"
                                                             >
                                                                 <FontAwesomeIcon icon={faTrash} className="w-3 h-3" />
                                                             </button>
@@ -1056,6 +1059,7 @@ export default function Chat() {
                                                                 disabled={feedbackSubmitted.has(m.id)}
                                                                 className={`p-1.5 rounded transition-colors ${feedbackSubmitted.has(m.id) ? 'opacity-40 cursor-not-allowed text-[#A8A29E]' : 'hover:bg-[#E8E0D4] hover:text-[#0D9488] text-[#A8A29E]'}`}
                                                                 title="Helpful"
+                                                                aria-label="Helpful"
                                                             >
                                                                 <FontAwesomeIcon icon={faThumbsUp} className="w-3 h-3" />
                                                             </button>
@@ -1064,6 +1068,7 @@ export default function Chat() {
                                                                 disabled={feedbackSubmitted.has(m.id)}
                                                                 className={`p-1.5 rounded transition-colors ${feedbackSubmitted.has(m.id) ? 'opacity-40 cursor-not-allowed text-[#A8A29E]' : 'hover:bg-[#E8E0D4] hover:text-red-600 text-[#A8A29E]'}`}
                                                                 title="Not helpful"
+                                                                aria-label="Not helpful"
                                                             >
                                                                 <FontAwesomeIcon icon={faThumbsDown} className="w-3 h-3" />
                                                             </button>
@@ -1089,7 +1094,8 @@ export default function Chat() {
                                                         </div>
                                                         <button onClick={() => handleCopy(m.content, m.id)}
                                                             className="p-1 rounded text-[#A8A29E] hover:text-[#CA8A04] transition-colors cursor-pointer"
-                                                            title="Copy response">
+                                                            title="Copy response"
+                                                            aria-label="Copy response">
                                                             <FontAwesomeIcon icon={copiedId === m.id ? faCheck : faCopy}
                                                                 className={`w-3 h-3 ${copiedId === m.id ? 'text-emerald-600' : ''}`} />
                                                         </button>
@@ -1141,6 +1147,7 @@ export default function Chat() {
                                                                 disabled={feedbackSubmitted.has(m.id)}
                                                                 className={`p-1.5 rounded transition-colors ${feedbackSubmitted.has(m.id) ? 'opacity-40 cursor-not-allowed' : 'hover:bg-[#E8E0D4] hover:text-[#0D9488]'}`}
                                                                 title="Helpful"
+                                                                aria-label="Helpful"
                                                             >
                                                                 <FontAwesomeIcon icon={faThumbsUp} className="w-3 h-3" />
                                                             </button>
@@ -1149,6 +1156,7 @@ export default function Chat() {
                                                                 disabled={feedbackSubmitted.has(m.id)}
                                                                 className={`p-1.5 rounded transition-colors ${feedbackSubmitted.has(m.id) ? 'opacity-40 cursor-not-allowed' : 'hover:bg-[#E8E0D4] hover:text-red-600'}`}
                                                                 title="Not helpful"
+                                                                aria-label="Not helpful"
                                                             >
                                                                 <FontAwesomeIcon icon={faThumbsDown} className="w-3 h-3" />
                                                             </button>
@@ -1216,7 +1224,8 @@ export default function Chat() {
                 {showScrollBtn && (
                     <button onClick={scrollToBottom}
                         className="fixed bottom-28 sm:bottom-32 right-4 sm:right-6 z-30 skeuo-raised w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center rounded-full shadow-lg animate-fade-up cursor-pointer"
-                        title="Scroll to bottom">
+                        title="Scroll to bottom"
+                        aria-label="Scroll to bottom">
                         <FontAwesomeIcon icon={faChevronDown} className="w-3.5 h-3.5 text-[#44403C]" />
                     </button>
                 )}
