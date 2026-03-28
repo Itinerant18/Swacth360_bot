@@ -376,6 +376,10 @@ export default function Chat() {
         setShowScrollBtn(false);
         scrollBehaviorRef.current = 'auto';
         setMessages([]);
+        setExpandedMessages(new Set());
+        setFeedbackSubmitted(new Set());
+        setResponseTimes(new Map());
+        setMessageTimestamps(new Map());
 
         try {
             const res = await fetch(`/api/conversations/${conversationId}/messages`, {
@@ -437,6 +441,10 @@ export default function Chat() {
         historyRequestIdRef.current += 1;
         setActiveConversationId(null);
         setMessages([]);
+        setExpandedMessages(new Set());
+        setFeedbackSubmitted(new Set());
+        setResponseTimes(new Map());
+        setMessageTimestamps(new Map());
         setIsLoadingHistory(false);
         setLoadingConversationId(null);
         setHistoryError(null);

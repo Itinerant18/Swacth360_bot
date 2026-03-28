@@ -55,6 +55,19 @@ function isEnglish(text: string): boolean {
     return (asciiLetters / allLetters) > 0.6;
 }
 
+function raceWithTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+    let timerId: ReturnType<typeof setTimeout> | null = null;
+    const timeoutPromise = new Promise<never>((_, reject) => {
+        timerId = setTimeout(() => reject(new Error('LLM_TIMEOUT')), timeoutMs);
+    });
+
+    return Promise.race([promise, timeoutPromise]).finally(() => {
+        if (timerId !== null) {
+            clearTimeout(timerId);
+        }
+    });
+}
+
 async function translateToEnglish(
     text: string,
     language: string,
@@ -68,15 +81,15 @@ async function translateToEnglish(
     const sourceLang = language === 'hi' ? 'Hindi' : 'Bengali';
     const historyCtx = conversationHistory ? `Context:\n${conversationHistory}\n\n` : '';
     const prompt = `Translate the ${sourceLang} question to English. Resolve pronouns using context. Output ONLY the English translation.\n${historyCtx}${sourceLang}: ${text}\nEnglish:`;
-    
-    const result = await Promise.race([
-        sarvamLlm.invoke(prompt),
-        new Promise<never>((_, reject) => 
-            setTimeout(() => reject(new Error('LLM_TIMEOUT')), 15000)
-        )
-    ]);
 
-    return stripThinkTags(String(result.content)).trim();
+    try {
+        const result = await raceWithTimeout(sarvamLlm.invoke(prompt), 15_000);
+        const translated = stripThinkTags(String(result.content)).trim();
+        return translated.length > 0 ? translated : text.trim();
+    } catch (err) {
+        console.warn('[translateToEnglish] failed, using original text:', (err as Error).message);
+        return text.trim();
+    }
 }
 
 function textStreamResponse(text: string): Response {
@@ -1466,15 +1479,13 @@ export async function POST(req: Request) {
 
         stageTimer.mark('llmGeneration');
         llmCallCount += 1;
-        const response = await Promise.race([
+        const response = await raceWithTimeout(
             sarvamLlm.invoke([
                 { role: 'system', content: systemPrompt },
                 { role: 'user', content: retrievalQuestion },
             ]),
-            new Promise<never>((_, reject) => 
-                setTimeout(() => reject(new Error('LLM_TIMEOUT')), 15000)
-            )
-        ]);
+            15_000
+        );
 
         const rawAnswer = typeof response.content === 'string'
             ? response.content
@@ -1487,24 +1498,26 @@ export async function POST(req: Request) {
             matchCount: matches.length,
         })) {
             llmCallCount += 1;
-            const verificationPrompt = `Revise the draft answer so every claim stays grounded in the provided context.\n\nContext:\n${contextString}\n\nDraft answer:\n${cleanedAnswer}\n\nReturn only the improved answer.`;
-            const verificationResponse = await Promise.race([
-                sarvamLlm.invoke([
-                    {
-                        role: 'system',
-                        content: 'You revise support answers for clarity and accuracy. Remove unsupported claims and keep the structure concise.',
-                    },
-                    { role: 'user', content: verificationPrompt },
-                ]),
-                new Promise<never>((_, reject) =>
-                    setTimeout(() => reject(new Error('LLM_TIMEOUT')), 8000)
-                ),
-            ]);
+            try {
+                const verificationPrompt = `Revise the draft answer so every claim stays grounded in the provided context.\n\nContext:\n${contextString}\n\nDraft answer:\n${cleanedAnswer}\n\nReturn only the improved answer.`;
+                const verificationResponse = await raceWithTimeout(
+                    sarvamLlm.invoke([
+                        {
+                            role: 'system',
+                            content: 'You revise support answers for clarity and accuracy. Remove unsupported claims and keep the structure concise.',
+                        },
+                        { role: 'user', content: verificationPrompt },
+                    ]),
+                    8_000
+                );
 
-            const verifiedRaw = typeof verificationResponse.content === 'string'
-                ? verificationResponse.content
-                : JSON.stringify(verificationResponse.content);
-            cleanedAnswer = stripRawChainOfThought(stripThinkTags(verifiedRaw), notFoundMsg);
+                const verifiedRaw = typeof verificationResponse.content === 'string'
+                    ? verificationResponse.content
+                    : JSON.stringify(verificationResponse.content);
+                cleanedAnswer = stripRawChainOfThought(stripThinkTags(verifiedRaw), notFoundMsg);
+            } catch (verifyErr) {
+                console.warn('[verification pass] failed, using original answer:', (verifyErr as Error).message);
+            }
         }
         stageTimer.end('llmGeneration');
 

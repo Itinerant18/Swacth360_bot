@@ -481,12 +481,19 @@ Return ONLY valid JSON array, no markdown:
 
 If NO technical images: return []`;
 
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => {
+        console.warn(`[admin.ingest] Gemini image extraction timed out after 90s for "${sourceName}"`);
+        controller.abort();
+    }, 90_000);
+
     try {
         const response = await fetch(
             `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiApiKey}`,
             {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
+                signal: controller.signal,
                 body: JSON.stringify({
                     contents: [{
                         parts: [
@@ -524,6 +531,8 @@ If NO technical images: return []`;
     } catch (err: unknown) {
         console.warn(`⚠️  Gemini image extraction failed: ${(err as Error).message}`);
         return [];
+    } finally {
+        clearTimeout(timeoutId);
     }
 }
 

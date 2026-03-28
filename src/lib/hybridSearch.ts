@@ -66,7 +66,7 @@ export async function searchKeywordMatches(params: {
     minimumScore?: number;
 }): Promise<RankedMatch[]> {
     const { query, topK = 8, minimumScore = 0.08 } = params;
-    const terms = extractTerms(query);
+    const terms = extractTerms(query).slice(0, 3);
 
     if (terms.length === 0) {
         return [];
