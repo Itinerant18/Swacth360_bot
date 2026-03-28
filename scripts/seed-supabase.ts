@@ -62,6 +62,7 @@ function buildEmbeddingText(item: {
 }
 
 async function warnOrClearExistingEmbeddings(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     supabase: any,
 ): Promise<void> {
     const { count, error: countError } = await supabase
