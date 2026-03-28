@@ -943,6 +943,15 @@ npx tsx scripts/ingest-diagram.ts --dir="data/diagrams/"
 # Or JSONL Files (.jsonl)
 #Individual JSONL file:
 npx tsx scripts/ingest-jsonl.ts --file="data/langextract/your-file.jsonl" --name="Document Name"
+
+# multiple JSON files separated by a comma:
+
+#powershell
+$env:DATA_FILE="data/hms-dexter-qa.json,data/hms-dexter-qa2.json"; npx tsx scripts/seed-supabase.ts
+#Pass an entire directory (it will scan for all .json files inside it):
+
+#powershell
+$env:DATA_FILE="data"; npx tsx scripts/seed-supabase.ts
 ```
 
 ### **Git Commands**
