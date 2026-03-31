@@ -44,6 +44,7 @@ import { ChatOpenAI } from '@langchain/openai';
 import { getLLM } from '@/lib/llm';
 import { semanticChunk } from '@/lib/semantic-chunker';
 import { invalidateAllCache } from '@/lib/cache';
+import { createSseResponse } from '@/lib/sse';
 
 // ─── Config ───────────────────────────────────────────────────
 const CHILD_CHUNK_SIZE = 400;       // small chunks for precise retrieval
@@ -665,173 +666,260 @@ export async function POST(req: NextRequest) {
         error?: string;
     };
 
-    const results: ResultItem[] = [];
-    let successCount = 0, skippedCount = 0, errorCount = 0, duplicateCount = 0;
-    const timestamp = Date.now();
+    return createSseResponse({
+        request: req,
+        meta: {
+            requestId: null,
+            conversationId: null,
+            stream: 'admin-ingest',
+            source: sourceName,
+        },
+        stream: async ({ send, isClosed }) => {
+            const results: ResultItem[] = [];
+            let successCount = 0;
+            let skippedCount = 0;
+            let errorCount = 0;
+            let duplicateCount = 0;
+            let processedUnits = 0;
+            const timestamp = Date.now();
+            const totalUnits = chunkPairs.length + extractedImages.length;
 
-    console.log(`📄 Processing ${chunkPairs.length} chunk pair(s) with parent-child + proposition extraction...`);
+            const buildSummary = () => {
+                const textResults = results.filter((result) => result.type === 'text');
+                const propositionResults = results.filter((result) => result.type === 'proposition');
+                const imageResults = results.filter((result) => result.type === 'image');
 
-    // ── Process text chunks ──────────────────────────────────
-    for (let i = 0; i < chunkPairs.length; i++) {
-        const { parent, child, section } = chunkPairs[i];
-        const id = `admin_${inputType}_${timestamp}_chunk_${String(i).padStart(4, '0')}`;
-
-        try {
-            // Extract entities from the child chunk
-            const entities = extractHMSEntities(child);
-
-            // Run Q&A generation and proposition extraction in parallel
-            const [generatedQa, propositions] = await Promise.all([
-                generateQAPair(child, sourceName, chatLlm, false),
-                extractPropositions(child, sourceName, chatLlm),
-            ]);
-            const qa = generatedQa ?? buildFallbackQAPair(child, sourceName, section, entities);
-
-            if (!qa) {
-                results.push({ id, question: '(skipped — no useful content)', status: 'skipped', type: 'text' });
-                skippedCount++;
-                continue;
-            }
-
-            const vector = await embedText(buildEnrichedEmbeddingText({
-                question: qa.question,
-                answer: qa.answer,
-                category: qa.category,
-                tags: qa.tags,
-                entities,
-                sourceName,
-                rawContent: child,
-            }));
-
-            // Semantic deduplication check
-            const isDuplicate = await isSemanticDuplicate(vector, supabase);
-            if (isDuplicate) {
-                results.push({ id, question: qa.question, status: 'duplicate', type: 'text' });
-                duplicateCount++;
-                console.log(`  🔁 Skipped duplicate: "${qa.question.slice(0, 60)}"`);
-                continue;
-            }
-
-            // Store main Q&A entry
-            const { error: dbErr, compatibilityFallbackUsed } = await upsertKnowledgeRecord(supabase, {
-                id,
-                question: qa.question,
-                answer: qa.answer,
-                category: qa.category,
-                subcategory: section,
-                product: 'HMS Panel',
-                tags: [...qa.tags, ...entities.slice(0, 3)],
-                content: buildEnrichedEmbeddingText({
-                    question: qa.question,
-                    answer: qa.answer,
-                    category: qa.category,
-                    tags: qa.tags,
-                    entities,
+                return {
+                    success: true,
                     sourceName,
-                    rawContent: child,
-                }),
-                parent_content: parent,
-                entities,
-                embedding: vector,
-                source: inputType === 'pdf' ? 'pdf' : 'admin',
-                source_name: sourceName,
-                chunk_type: 'chunk',
-            });
+                    inputType,
+                    totalChunks: chunkPairs.length,
+                    totalImages: extractedImages.length,
+                    successCount,
+                    skippedCount,
+                    errorCount,
+                    duplicateCount,
+                    textSuccess: textResults.filter((result) => result.status === 'success').length,
+                    propositionSuccess: propositionResults.filter((result) => result.status === 'success').length,
+                    imageSuccess: imageResults.filter((result) => result.status === 'success').length,
+                    imageTypes: extractedImages.map((img) => img.imageType),
+                };
+            };
 
-            if (dbErr) {
-                results.push({ id, question: qa.question, status: 'error', type: 'text', error: dbErr.message });
-                errorCount++;
-            } else {
-                if (compatibilityFallbackUsed) {
-                    console.warn('[admin.ingest] compatibility_fallback', { id, sourceName, type: 'text' });
+            const emitProgress = (
+                stage: 'preparing' | 'text' | 'image' | 'finalizing',
+                message: string,
+                lastResult?: ResultItem,
+            ) => {
+                send('progress', {
+                    ...buildSummary(),
+                    stage,
+                    message,
+                    totalUnits,
+                    processedUnits,
+                    lastResult,
+                });
+            };
+
+            const pushResult = (result: ResultItem) => {
+                results.push(result);
+                send('chunk', result);
+            };
+
+            console.log(`Processing ${chunkPairs.length} chunk pair(s) with parent-child + proposition extraction...`);
+            emitProgress('preparing', 'Preparing ingestion pipeline...');
+
+            for (let i = 0; i < chunkPairs.length; i++) {
+                if (isClosed()) {
+                    return;
                 }
-                results.push({ id, question: qa.question, status: 'success', type: 'text' });
-                successCount++;
 
-                // ── Store each proposition as a separate KB entry ──
-                // This gives ultra-precise retrieval for specific facts
-                for (let pi = 0; pi < propositions.length; pi++) {
-                    const prop = propositions[pi];
-                    const propId = `${id}_prop_${pi}`;
-                    const propEntities = [...entities, ...prop.entities].filter((v, i, a) => a.indexOf(v) === i);
+                const { parent, child, section } = chunkPairs[i];
+                const id = `admin_${inputType}_${timestamp}_chunk_${String(i).padStart(4, '0')}`;
 
-                    const propEmbeddingText = buildEnrichedEmbeddingText({
-                        question: `What is the specification: ${prop.fact.slice(0, 80)}?`,
-                        answer: prop.fact,
-                        category: prop.category,
-                        tags: propEntities,
-                        entities: propEntities,
-                        sourceName,
-                        rawContent: prop.fact,
-                        propositionFact: prop.fact,
-                    });
+                try {
+                    const entities = extractHMSEntities(child);
+                    const [generatedQa, propositions] = await Promise.all([
+                        generateQAPair(child, sourceName, chatLlm, false),
+                        extractPropositions(child, sourceName, chatLlm),
+                    ]);
+                    const qa = generatedQa ?? buildFallbackQAPair(child, sourceName, section, entities);
 
-                    const propVector = await embedText(propEmbeddingText);
-
-                    // Only store if not a duplicate
-                    const isPropDuplicate = await isSemanticDuplicate(propVector, supabase);
-                    if (isPropDuplicate) {
-                        results.push({ id: propId, question: `[Fact] ${prop.fact.slice(0, 80)}`, status: 'duplicate', type: 'proposition' });
-                        duplicateCount++;
+                    if (!qa) {
+                        const result: ResultItem = { id, question: '(skipped - no useful content)', status: 'skipped', type: 'text' };
+                        pushResult(result);
+                        skippedCount++;
+                        emitProgress('text', `Skipped text chunk ${i + 1} of ${chunkPairs.length}`, result);
+                        processedUnits++;
+                        emitProgress('text', `Processed text chunk ${processedUnits} of ${totalUnits}`);
                         continue;
                     }
 
-                    const { error: propErr, compatibilityFallbackUsed: propFallbackUsed } = await upsertKnowledgeRecord(supabase, {
-                            id: propId,
-                            question: `What is the specification: ${prop.fact.slice(0, 80)}?`,
-                            answer: prop.fact,
-                            category: prop.category,
-                            subcategory: `${section} — Proposition`,
-                            product: 'HMS Panel',
-                            tags: propEntities,
-                            content: propEmbeddingText,
-                            parent_content: parent,
-                            entities: propEntities,
-                            embedding: propVector,
-                            source: inputType === 'pdf' ? 'pdf' : 'admin',
-                            source_name: sourceName,
-                            chunk_type: 'proposition',
-                        });
+                    const vector = await embedText(buildEnrichedEmbeddingText({
+                        question: qa.question,
+                        answer: qa.answer,
+                        category: qa.category,
+                        tags: qa.tags,
+                        entities,
+                        sourceName,
+                        rawContent: child,
+                    }));
 
-                    if (propErr) {
-                        results.push({
-                            id: propId,
-                            question: `[Fact] ${prop.fact.slice(0, 80)}`,
-                            status: 'error',
-                            type: 'proposition',
-                            error: propErr.message,
-                        });
-                        errorCount++;
-                    } else {
-                        if (propFallbackUsed) {
-                            console.warn('[admin.ingest] compatibility_fallback', { id: propId, sourceName, type: 'proposition' });
-                        }
-                        results.push({ id: propId, question: `[Fact] ${prop.fact.slice(0, 80)}`, status: 'success', type: 'proposition' });
-                        successCount++;
+                    const isDuplicate = await isSemanticDuplicate(vector, supabase);
+                    if (isDuplicate) {
+                        const result: ResultItem = { id, question: qa.question, status: 'duplicate', type: 'text' };
+                        pushResult(result);
+                        duplicateCount++;
+                        console.log(`Skipped duplicate: "${qa.question.slice(0, 60)}"`);
+                        emitProgress('text', `Skipped duplicate text chunk ${i + 1} of ${chunkPairs.length}`, result);
+                        processedUnits++;
+                        emitProgress('text', `Processed text chunk ${processedUnits} of ${totalUnits}`);
+                        continue;
                     }
+
+                    const { error: dbErr, compatibilityFallbackUsed } = await upsertKnowledgeRecord(supabase, {
+                        id,
+                        question: qa.question,
+                        answer: qa.answer,
+                        category: qa.category,
+                        subcategory: section,
+                        product: 'HMS Panel',
+                        tags: [...qa.tags, ...entities.slice(0, 3)],
+                        content: buildEnrichedEmbeddingText({
+                            question: qa.question,
+                            answer: qa.answer,
+                            category: qa.category,
+                            tags: qa.tags,
+                            entities,
+                            sourceName,
+                            rawContent: child,
+                        }),
+                        parent_content: parent,
+                        entities,
+                        embedding: vector,
+                        source: inputType === 'pdf' ? 'pdf' : 'admin',
+                        source_name: sourceName,
+                        chunk_type: 'chunk',
+                    });
+
+                    if (dbErr) {
+                        const result: ResultItem = { id, question: qa.question, status: 'error', type: 'text', error: dbErr.message };
+                        pushResult(result);
+                        errorCount++;
+                        emitProgress('text', `Failed text chunk ${i + 1} of ${chunkPairs.length}`, result);
+                    } else {
+                        if (compatibilityFallbackUsed) {
+                            console.warn('[admin.ingest] compatibility_fallback', { id, sourceName, type: 'text' });
+                        }
+
+                        const result: ResultItem = { id, question: qa.question, status: 'success', type: 'text' };
+                        pushResult(result);
+                        successCount++;
+                        emitProgress('text', `Stored text chunk ${i + 1} of ${chunkPairs.length}`, result);
+
+                        for (let pi = 0; pi < propositions.length; pi++) {
+                            const prop = propositions[pi];
+                            const propId = `${id}_prop_${pi}`;
+                            const propEntities = [...entities, ...prop.entities].filter((value, index, all) => all.indexOf(value) === index);
+
+                            const propEmbeddingText = buildEnrichedEmbeddingText({
+                                question: `What is the specification: ${prop.fact.slice(0, 80)}?`,
+                                answer: prop.fact,
+                                category: prop.category,
+                                tags: propEntities,
+                                entities: propEntities,
+                                sourceName,
+                                rawContent: prop.fact,
+                                propositionFact: prop.fact,
+                            });
+
+                            const propVector = await embedText(propEmbeddingText);
+                            const isPropDuplicate = await isSemanticDuplicate(propVector, supabase);
+
+                            if (isPropDuplicate) {
+                                const propositionResult: ResultItem = {
+                                    id: propId,
+                                    question: `[Fact] ${prop.fact.slice(0, 80)}`,
+                                    status: 'duplicate',
+                                    type: 'proposition',
+                                };
+                                pushResult(propositionResult);
+                                duplicateCount++;
+                                emitProgress('text', `Skipped duplicate proposition for chunk ${i + 1}`, propositionResult);
+                                continue;
+                            }
+
+                            const { error: propErr, compatibilityFallbackUsed: propFallbackUsed } = await upsertKnowledgeRecord(supabase, {
+                                id: propId,
+                                question: `What is the specification: ${prop.fact.slice(0, 80)}?`,
+                                answer: prop.fact,
+                                category: prop.category,
+                                subcategory: `${section} - Proposition`,
+                                product: 'HMS Panel',
+                                tags: propEntities,
+                                content: propEmbeddingText,
+                                parent_content: parent,
+                                entities: propEntities,
+                                embedding: propVector,
+                                source: inputType === 'pdf' ? 'pdf' : 'admin',
+                                source_name: sourceName,
+                                chunk_type: 'proposition',
+                            });
+
+                            if (propErr) {
+                                const propositionResult: ResultItem = {
+                                    id: propId,
+                                    question: `[Fact] ${prop.fact.slice(0, 80)}`,
+                                    status: 'error',
+                                    type: 'proposition',
+                                    error: propErr.message,
+                                };
+                                pushResult(propositionResult);
+                                errorCount++;
+                                emitProgress('text', `Failed proposition for chunk ${i + 1}`, propositionResult);
+                            } else {
+                                if (propFallbackUsed) {
+                                    console.warn('[admin.ingest] compatibility_fallback', { id: propId, sourceName, type: 'proposition' });
+                                }
+
+                                const propositionResult: ResultItem = {
+                                    id: propId,
+                                    question: `[Fact] ${prop.fact.slice(0, 80)}`,
+                                    status: 'success',
+                                    type: 'proposition',
+                                };
+                                pushResult(propositionResult);
+                                successCount++;
+                                emitProgress('text', `Stored proposition for chunk ${i + 1}`, propositionResult);
+                            }
+                        }
+                    }
+
+                    processedUnits++;
+                    emitProgress('text', `Processed text chunk ${processedUnits} of ${totalUnits}`);
+
+                    if (i < chunkPairs.length - 1) {
+                        await new Promise((resolve) => setTimeout(resolve, 150));
+                    }
+                } catch (err: unknown) {
+                    const result: ResultItem = { id, question: '(error)', status: 'error', type: 'text', error: (err as Error).message };
+                    pushResult(result);
+                    errorCount++;
+                    processedUnits++;
+                    emitProgress('text', `Failed text chunk ${processedUnits} of ${totalUnits}`, result);
                 }
             }
 
-            if (i < chunkPairs.length - 1) await new Promise(r => setTimeout(r, 150));
+            if (extractedImages.length > 0) {
+                console.log(`Processing ${extractedImages.length} image(s) with entity enrichment...`);
 
-        } catch (err: unknown) {
-            results.push({ id, question: '(error)', status: 'error', type: 'text', error: (err as Error).message });
-            errorCount++;
-        }
-    }
-
-    // ── Process images ─────────────────────────────────────
-    if (extractedImages.length > 0) {
-        console.log(`🖼️  Processing ${extractedImages.length} image(s) with entity enrichment...`);
-
-        // Helper: convert a Gemini image description into a structured ASCII diagram via GPT-4o
-        async function generateDiagramFromDescription(
-            description: string,
-            imageType: string,
-            imgTitle: string,
-        ): Promise<string | null> {
-            try {
-                const prompt = `You are a SENIOR industrial documentation specialist.
+                async function generateDiagramFromDescription(
+                    description: string,
+                    imageType: string,
+                    imgTitle: string,
+                ): Promise<string | null> {
+                    try {
+                        const prompt = `You are a SENIOR industrial documentation specialist.
 Convert this technical image description into a professional ASCII/Markdown diagram.
 
 IMAGE TYPE: ${imageType}
@@ -840,203 +928,226 @@ DESCRIPTION:
 ${description}
 
 Requirements:
-1. Use Unicode box-drawing characters (┌ ─ ┐ │ └ ┘ ├ ┤ ┬ ┴ ┼)
-2. Include a terminal connection table with Signal | Wire Colour | Specification columns
-3. Use inline code for all technical values (\`24V DC\`, \`TB1+\`, \`RS-485\`)
-4. Add numbered installation steps
-5. Include ⚠️ Critical Notes section
-6. Maximum 80 characters per line
-7. Never generate Mermaid syntax. Only generate plain ASCII art using box-drawing characters (â”Œ â”€ â” â”‚ â”” â”˜ â”œ â”¤ â”¬ â”´ â”¼) and pipe-style tables.
+1. Use Unicode box-drawing characters.
+2. Include a terminal connection table with Signal | Wire Colour | Specification columns.
+3. Use inline code for all technical values.
+4. Add numbered installation steps.
+5. Include a Critical Notes section.
+6. Maximum 80 characters per line.
+7. Never generate Mermaid syntax. Only plain ASCII art and pipe-style tables.
 
 Output the diagram in markdown only. No preamble.`;
 
-                const result = await chatLlm.invoke(prompt);
-                const diagram = (result.content as string).trim();
-                // Only accept if it looks like a real diagram (has box chars or table)
-                if (diagram.length > 100 && (/[┌┐└┘─│]/.test(diagram) || /\|.*\|.*\|/.test(diagram))) {
-                    return diagram;
-                }
-                return null;
-            } catch {
-                return null;
-            }
-        }
+                        const result = await chatLlm.invoke(prompt);
+                        const diagram = (result.content as string).trim();
+                        if (diagram.length > 100 && (/[\u250C\u2510\u2514\u2518\u2500\u2502]/.test(diagram) || /\|.*\|.*\|/.test(diagram))) {
+                            return diagram;
+                        }
 
-        for (let i = 0; i < extractedImages.length; i++) {
-            const img = extractedImages[i];
-            const id = `admin_pdf_img_${timestamp}_${String(i).padStart(3, '0')}`;
-            const imageContent = [
-                `[TECHNICAL IMAGE: ${img.imageType}]`,
-                `Title: ${img.title}`,
-                img.pageNumber ? `Location: Page ${img.pageNumber}` : '',
-                `Description: ${img.description}`,
-                `Technical Details: ${img.technicalDetails}`,
-                `Relevant for: ${img.relevantFor}`,
-            ].filter(Boolean).join('\n');
-
-            try {
-                const entities = extractHMSEntities(imageContent);
-                const generatedQa = await generateQAPair(imageContent, sourceName, chatLlm, true);
-                const qa = generatedQa ?? buildFallbackQAPair(
-                    imageContent,
-                    sourceName,
-                    img.imageType || 'technical diagram',
-                    entities,
-                    true
-                );
-
-                if (!qa) {
-                    results.push({ id, question: `[Image] ${img.title} (skipped)`, status: 'skipped', type: 'image' });
-                    skippedCount++;
-                    continue;
-                }
-
-                const imageTags = [...qa.tags, img.imageType.toLowerCase(), 'diagram', 'visual', ...entities]
-                    .filter((v, idx, arr) => arr.indexOf(v) === idx).slice(0, 8);
-
-                const embeddingText = buildEnrichedEmbeddingText({
-                    question: qa.question,
-                    answer: qa.answer,
-                    category: qa.category,
-                    tags: imageTags,
-                    entities,
-                    sourceName,
-                    rawContent: imageContent,
-                    isImageContent: true,
-                    imageType: img.imageType,
-                });
-
-                const vector = await embedText(embeddingText);
-                const isDuplicate = await isSemanticDuplicate(vector, supabase);
-
-                if (isDuplicate) {
-                    results.push({ id, question: `[Image] ${img.title}`, status: 'duplicate', type: 'image' });
-                    duplicateCount++;
-                    continue;
-                }
-
-                // Attempt to convert image description → structured ASCII diagram
-                const diagramImageTypes = ['wiring', 'schematic', 'circuit', 'pinout', 'connection', 'panel'];
-                const isWiringType = diagramImageTypes.some(t =>
-                    (img.imageType || '').toLowerCase().includes(t) ||
-                    (img.description || '').toLowerCase().includes(t)
-                );
-
-                let generatedDiagram: string | null = null;
-                let useChunkType: 'image' | 'diagram' = 'image';
-
-                if (isWiringType) {
-                    generatedDiagram = await generateDiagramFromDescription(
-                        img.description,
-                        img.imageType,
-                        img.title,
-                    );
-                    if (generatedDiagram) {
-                        useChunkType = 'diagram';
-                        console.log(`  📐 Diagram generated from image: ${img.title}`);
+                        return null;
+                    } catch {
+                        return null;
                     }
                 }
 
-                const { error: dbErr, compatibilityFallbackUsed } = await upsertKnowledgeRecord(supabase, {
-                    id,
-                    question: qa.question,
-                    answer: generatedDiagram || qa.answer,
-                    category: qa.category,
-                    subcategory: useChunkType === 'diagram'
-                        ? img.imageType
-                        : `Visual Content — ${img.imageType}`,
-                    product: 'HMS Panel',
-                    tags: imageTags,
-                    content: embeddingText,
-                    parent_content: imageContent,
-                    entities,
-                    embedding: vector,
-                    source: 'pdf_image',
-                    source_name: sourceName,
-                    chunk_type: useChunkType,
-                    ...(useChunkType === 'diagram' ? { diagram_source: 'pdf_image' as const } : {}),
-                });
-
-                if (dbErr) {
-                    results.push({ id, question: `[Image] ${img.title}`, status: 'error', type: 'image', error: dbErr.message });
-                    errorCount++;
-                } else {
-                    if (compatibilityFallbackUsed) {
-                        console.warn('[admin.ingest] compatibility_fallback', { id, sourceName, type: 'image' });
+                for (let i = 0; i < extractedImages.length; i++) {
+                    if (isClosed()) {
+                        return;
                     }
-                    results.push({ id, question: `[Image] ${img.title}: ${qa.question}`, status: 'success', type: 'image' });
-                    successCount++;
+
+                    const img = extractedImages[i];
+                    const id = `admin_pdf_img_${timestamp}_${String(i).padStart(3, '0')}`;
+                    const imageContent = [
+                        `[TECHNICAL IMAGE: ${img.imageType}]`,
+                        `Title: ${img.title}`,
+                        img.pageNumber ? `Location: Page ${img.pageNumber}` : '',
+                        `Description: ${img.description}`,
+                        `Technical Details: ${img.technicalDetails}`,
+                        `Relevant for: ${img.relevantFor}`,
+                    ].filter(Boolean).join('\n');
+
+                    try {
+                        const entities = extractHMSEntities(imageContent);
+                        const generatedQa = await generateQAPair(imageContent, sourceName, chatLlm, true);
+                        const qa = generatedQa ?? buildFallbackQAPair(
+                            imageContent,
+                            sourceName,
+                            img.imageType || 'technical diagram',
+                            entities,
+                            true,
+                        );
+
+                        if (!qa) {
+                            const result: ResultItem = { id, question: `[Image] ${img.title} (skipped)`, status: 'skipped', type: 'image' };
+                            pushResult(result);
+                            skippedCount++;
+                            emitProgress('image', `Skipped image ${i + 1} of ${extractedImages.length}`, result);
+                            processedUnits++;
+                            emitProgress('image', `Processed item ${processedUnits} of ${totalUnits}`);
+                            continue;
+                        }
+
+                        const imageTags = [...qa.tags, img.imageType.toLowerCase(), 'diagram', 'visual', ...entities]
+                            .filter((value, index, all) => all.indexOf(value) === index)
+                            .slice(0, 8);
+
+                        const embeddingText = buildEnrichedEmbeddingText({
+                            question: qa.question,
+                            answer: qa.answer,
+                            category: qa.category,
+                            tags: imageTags,
+                            entities,
+                            sourceName,
+                            rawContent: imageContent,
+                            isImageContent: true,
+                            imageType: img.imageType,
+                        });
+
+                        const vector = await embedText(embeddingText);
+                        const isDuplicate = await isSemanticDuplicate(vector, supabase);
+
+                        if (isDuplicate) {
+                            const result: ResultItem = { id, question: `[Image] ${img.title}`, status: 'duplicate', type: 'image' };
+                            pushResult(result);
+                            duplicateCount++;
+                            emitProgress('image', `Skipped duplicate image ${i + 1} of ${extractedImages.length}`, result);
+                            processedUnits++;
+                            emitProgress('image', `Processed item ${processedUnits} of ${totalUnits}`);
+                            continue;
+                        }
+
+                        const diagramImageTypes = ['wiring', 'schematic', 'circuit', 'pinout', 'connection', 'panel'];
+                        const isWiringType = diagramImageTypes.some((type) =>
+                            (img.imageType || '').toLowerCase().includes(type)
+                            || (img.description || '').toLowerCase().includes(type)
+                        );
+
+                        let generatedDiagram: string | null = null;
+                        let useChunkType: 'image' | 'diagram' = 'image';
+
+                        if (isWiringType) {
+                            generatedDiagram = await generateDiagramFromDescription(
+                                img.description,
+                                img.imageType,
+                                img.title,
+                            );
+                            if (generatedDiagram) {
+                                useChunkType = 'diagram';
+                                console.log(`Diagram generated from image: ${img.title}`);
+                            }
+                        }
+
+                        const { error: dbErr, compatibilityFallbackUsed } = await upsertKnowledgeRecord(supabase, {
+                            id,
+                            question: qa.question,
+                            answer: generatedDiagram || qa.answer,
+                            category: qa.category,
+                            subcategory: useChunkType === 'diagram'
+                                ? img.imageType
+                                : `Visual Content - ${img.imageType}`,
+                            product: 'HMS Panel',
+                            tags: imageTags,
+                            content: embeddingText,
+                            parent_content: imageContent,
+                            entities,
+                            embedding: vector,
+                            source: 'pdf_image',
+                            source_name: sourceName,
+                            chunk_type: useChunkType,
+                            ...(useChunkType === 'diagram' ? { diagram_source: 'pdf_image' as const } : {}),
+                        });
+
+                        if (dbErr) {
+                            const result: ResultItem = { id, question: `[Image] ${img.title}`, status: 'error', type: 'image', error: dbErr.message };
+                            pushResult(result);
+                            errorCount++;
+                            emitProgress('image', `Failed image ${i + 1} of ${extractedImages.length}`, result);
+                        } else {
+                            if (compatibilityFallbackUsed) {
+                                console.warn('[admin.ingest] compatibility_fallback', { id, sourceName, type: 'image' });
+                            }
+
+                            const result: ResultItem = {
+                                id,
+                                question: `[Image] ${img.title}: ${qa.question}`,
+                                status: 'success',
+                                type: 'image',
+                            };
+                            pushResult(result);
+                            successCount++;
+                            emitProgress('image', `Stored image ${i + 1} of ${extractedImages.length}`, result);
+                        }
+
+                        processedUnits++;
+                        emitProgress('image', `Processed item ${processedUnits} of ${totalUnits}`);
+
+                        if (i < extractedImages.length - 1) {
+                            await new Promise((resolve) => setTimeout(resolve, 150));
+                        }
+                    } catch (err: unknown) {
+                        const result: ResultItem = {
+                            id,
+                            question: `[Image] ${img.title} (error)`,
+                            status: 'error',
+                            type: 'image',
+                            error: (err as Error).message,
+                        };
+                        pushResult(result);
+                        errorCount++;
+                        processedUnits++;
+                        emitProgress('image', `Failed image ${i + 1} of ${extractedImages.length}`, result);
+                    }
                 }
-
-                if (i < extractedImages.length - 1) await new Promise(r => setTimeout(r, 150));
-            } catch (err: unknown) {
-                results.push({ id, question: `[Image] ${img.title} (error)`, status: 'error', type: 'image', error: (err as Error).message });
-                errorCount++;
             }
-        }
-    }
 
-    const textResults = results.filter(r => r.type === 'text');
-    const propResults = results.filter(r => r.type === 'proposition');
-    const imageResults = results.filter(r => r.type === 'image');
-
-    console.info('[admin.ingest] success', {
-        inputType,
-        sourceName,
-        totalChunks: chunkPairs.length,
-        totalImages: extractedImages.length,
-        successCount,
-        skippedCount,
-        duplicateCount,
-        errorCount,
-    });
-
-    // Log ingestion to ingestion_log table for admin analytics
-    void (async () => {
-        try {
-            await supabase.from('ingestion_log').insert({
-                source_name: sourceName,
-                input_type: inputType,
-                total_chunks: chunkPairs.length + extractedImages.length,
-                success_count: successCount,
-                error_count: errorCount,
-                skip_count: skippedCount,
-                status: errorCount === 0 ? 'completed'
-                    : errorCount === chunkPairs.length + extractedImages.length ? 'failed'
-                    : 'partial',
-                created_by: 'admin_ui',
+            console.info('[admin.ingest] success', {
+                inputType,
+                sourceName,
+                totalChunks: chunkPairs.length,
+                totalImages: extractedImages.length,
+                successCount,
+                skippedCount,
+                duplicateCount,
+                errorCount,
             });
-        } catch { /* log failure is non-critical */ }
-    })();
 
-    // Invalidate all cache after successful ingestion
-    await invalidateAllCache().catch(err => {
-        console.warn('⚠️  Cache invalidation failed after ingestion:', err.message);
-    });
+            emitProgress('finalizing', 'Finalizing ingestion and invalidating caches...');
 
-    return NextResponse.json({
-        success: true,
-        sourceName,
-        inputType,
-        totalChunks: chunkPairs.length,
-        totalImages: extractedImages.length,
-        successCount,
-        skippedCount,
-        errorCount,
-        duplicateCount,
-        textSuccess: textResults.filter(r => r.status === 'success').length,
-        propositionSuccess: propResults.filter(r => r.status === 'success').length,
-        imageSuccess: imageResults.filter(r => r.status === 'success').length,
-        imageTypes: extractedImages.map(img => img.imageType),
-        results,
-        // Tell the UI about the new pipeline features
-        pipeline: {
-            chunkingMode,
-            parentChildChunking: chunkingMode === 'parent-child',
-            semanticChunking: chunkingMode === 'semantic',
-            propositionExtraction: true,
-            semanticDeduplication: true,
-            entityEnrichment: true,
+            void (async () => {
+                try {
+                    await supabase.from('ingestion_log').insert({
+                        source_name: sourceName,
+                        input_type: inputType,
+                        total_chunks: chunkPairs.length + extractedImages.length,
+                        success_count: successCount,
+                        error_count: errorCount,
+                        skip_count: skippedCount,
+                        status: errorCount === 0 ? 'completed'
+                            : errorCount === chunkPairs.length + extractedImages.length ? 'failed'
+                            : 'partial',
+                        created_by: 'admin_ui',
+                    });
+                } catch {
+                    // ingestion log failures are non-critical
+                }
+            })();
+
+            await invalidateAllCache().catch((err) => {
+                console.warn('Cache invalidation failed after ingestion:', err.message);
+            });
+
+            send('complete', {
+                ...buildSummary(),
+                results,
+                pipeline: {
+                    chunkingMode,
+                    parentChildChunking: chunkingMode === 'parent-child',
+                    semanticChunking: chunkingMode === 'semantic',
+                    propositionExtraction: true,
+                    semanticDeduplication: true,
+                    entityEnrichment: true,
+                },
+            });
         },
     });
 }

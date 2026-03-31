@@ -1,6 +1,5 @@
 'use client';
 
-import { useChat, type Message } from 'ai/react';
 import { useRef, useEffect, useState, useCallback, useMemo, type ComponentPropsWithoutRef, type JSX as ReactJSX } from 'react';
 import dynamic from 'next/dynamic';
 import type { AuthChangeEvent, Session } from '@supabase/supabase-js';
@@ -16,6 +15,7 @@ import {
 import LanguageSelector from '../components/LanguageSelector';
 import DiagramCard from '../components/DiagramCard';
 import { signOut, isAdminEmail, getSupabaseAuth, sanitizeAuthSession } from '@/lib/auth';
+import { consumeFetchSse } from '@/lib/fetchSse';
 
 
 interface Conversation {
@@ -54,6 +54,13 @@ type HistoryMessageApiShape = {
     created_at?: string;
 };
 
+type ChatMessage = {
+    id: string;
+    role: 'user' | 'assistant';
+    content: string;
+    createdAt?: Date;
+};
+
 type MarkdownElementProps<Tag extends keyof ReactJSX.IntrinsicElements> = ComponentPropsWithoutRef<Tag> & {
     node?: unknown;
 };
@@ -78,7 +85,7 @@ function normalizeConversation(conversation: ConversationApiShape): Conversation
     };
 }
 
-function normalizeHistoryMessages(payload: HistoryMessagesPayload | HistoryMessageApiShape[]): Message[] {
+function normalizeHistoryMessages(payload: HistoryMessagesPayload | HistoryMessageApiShape[]): ChatMessage[] {
     const rawMessages = Array.isArray(payload)
         ? payload
         : Array.isArray(payload?.messages)
@@ -95,6 +102,10 @@ function normalizeHistoryMessages(payload: HistoryMessagesPayload | HistoryMessa
                 ? new Date(message.created_at)
                 : undefined,
     }));
+}
+
+function createMessageId(prefix: 'user' | 'assistant'): string {
+    return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
 function groupConversationsByDate(conversations: Conversation[]): [string, Conversation[]][] {
@@ -226,6 +237,7 @@ export default function Chat() {
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const chatContainerRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLInputElement>(null);
+    const chatAbortControllerRef = useRef<AbortController | null>(null);
     const historyAbortControllerRef = useRef<AbortController | null>(null);
     const historyRequestIdRef = useRef(0);
     const scrollBehaviorRef = useRef<ScrollBehavior>('smooth');
@@ -268,6 +280,7 @@ export default function Chat() {
 
         return () => {
             isMounted = false;
+            chatAbortControllerRef.current?.abort();
             subscription.unsubscribe();
             historyAbortControllerRef.current?.abort();
             if (sidebarRefreshTimeoutRef.current !== null) {
@@ -325,28 +338,176 @@ export default function Chat() {
         } catch { /* non-critical */ }
     }, [isAuthenticated]);
 
-    const { messages, input, handleInputChange, handleSubmit: rawHandleSubmit, isLoading, append, setMessages, stop } = useChat({
-        credentials: 'include',
-        body: { userId, language, conversationId: activeConversationId },
-        onResponse: (response) => {
+    const [messages, setMessages] = useState<ChatMessage[]>([]);
+    const [input, setInput] = useState('');
+    const [isLoading, setIsLoading] = useState(false);
+
+    const scheduleConversationRefresh = useCallback(() => {
+        void refreshConversations();
+
+        if (sidebarRefreshTimeoutRef.current !== null) {
+            window.clearTimeout(sidebarRefreshTimeoutRef.current);
+        }
+
+        sidebarRefreshTimeoutRef.current = window.setTimeout(() => {
+            void refreshConversations();
+        }, 1200);
+    }, [refreshConversations]);
+
+    const stop = useCallback(() => {
+        chatAbortControllerRef.current?.abort();
+        chatAbortControllerRef.current = null;
+        setStreamingMessageId(null);
+        setIsLoading(false);
+        setMessages((current) => {
+            const lastMessage = current[current.length - 1];
+            if (lastMessage?.role === 'assistant' && !lastMessage.content.trim()) {
+                return current.slice(0, -1);
+            }
+
+            return current;
+        });
+    }, []);
+
+    const handleInputChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+        setInput(event.target.value);
+    }, []);
+
+    const sendMessage = useCallback(async (question: string) => {
+        const trimmedQuestion = question.trim();
+        if (!trimmedQuestion || isLoading) {
+            return;
+        }
+
+        const controller = new AbortController();
+        chatAbortControllerRef.current?.abort();
+        chatAbortControllerRef.current = controller;
+
+        const userMessage: ChatMessage = {
+            id: createMessageId('user'),
+            role: 'user',
+            content: trimmedQuestion,
+            createdAt: new Date(),
+        };
+        const assistantMessageId = createMessageId('assistant');
+        const assistantPlaceholder: ChatMessage = {
+            id: assistantMessageId,
+            role: 'assistant',
+            content: '',
+            createdAt: new Date(),
+        };
+        const requestMessages = [...messages, userMessage];
+
+        setHistoryError(null);
+        setInput('');
+        setIsLoading(true);
+        setStreamingMessageId(assistantMessageId);
+        setMessages([...requestMessages, assistantPlaceholder]);
+
+        try {
+            const response = await fetch('/api/chat', {
+                method: 'POST',
+                credentials: 'include',
+                headers: {
+                    Accept: 'text/event-stream',
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    messages: requestMessages.map(({ role, content }) => ({ role, content })),
+                    userId,
+                    language,
+                    conversationId: activeConversationId,
+                }),
+                signal: controller.signal,
+            });
+
             const conversationId = response.headers.get('x-conversation-id');
             if (conversationId) {
                 setActiveConversationId(conversationId);
             }
             setHistoryError(null);
-        },
-        onFinish: () => {
-            void refreshConversations();
 
-            if (sidebarRefreshTimeoutRef.current !== null) {
-                window.clearTimeout(sidebarRefreshTimeoutRef.current);
+            if (!response.ok) {
+                let errorMessage = 'Failed to process chat request.';
+
+                try {
+                    const payload = await response.json() as { error?: string };
+                    if (payload?.error) {
+                        errorMessage = payload.error;
+                    }
+                } catch {
+                    const fallbackText = await response.text().catch(() => '');
+                    if (fallbackText.trim()) {
+                        errorMessage = fallbackText.trim();
+                    }
+                }
+
+                throw new Error(errorMessage);
             }
 
-            sidebarRefreshTimeoutRef.current = window.setTimeout(() => {
-                void refreshConversations();
-            }, 1200);
-        },
-    });
+            await consumeFetchSse(response, async ({ event, data: rawEnvelope }) => {
+                // Unwrap envelope: server wraps payloads as { event, ts, meta, data: <payload> }
+                const payload = (rawEnvelope && typeof rawEnvelope === 'object' && 'data' in rawEnvelope)
+                    ? (rawEnvelope as { data: unknown }).data
+                    : rawEnvelope;
+
+                if (event === 'delta' && payload && typeof payload === 'object' && 'text' in payload && typeof payload.text === 'string') {
+                    const deltaText = payload.text;
+                    setMessages((current) => current.map((message) => (
+                        message.id === assistantMessageId
+                            ? { ...message, content: `${message.content}${deltaText}` }
+                            : message
+                    )));
+                    return;
+                }
+
+                if (event === 'done' && payload && typeof payload === 'object' && 'content' in payload && typeof payload.content === 'string') {
+                    const finalContent = payload.content;
+                    setStreamingMessageId(null);
+                    setMessages((current) => current.map((message) => (
+                        message.id === assistantMessageId
+                            ? { ...message, content: finalContent }
+                            : message
+                    )));
+                    return;
+                }
+
+                if (event === 'error') {
+                    if (payload && typeof payload === 'object' && 'message' in payload && typeof payload.message === 'string') {
+                        throw new Error(payload.message);
+                    }
+
+                    throw new Error('Failed to process chat request.');
+                }
+            });
+
+            scheduleConversationRefresh();
+        } catch (error) {
+            if (controller.signal.aborted) {
+                return;
+            }
+
+            console.error('Chat request failed:', error);
+            const fallbackMessage = error instanceof Error
+                ? error.message
+                : 'Failed to process chat request.';
+            setStreamingMessageId(null);
+
+            setMessages((current) => current.map((message) => (
+                message.id === assistantMessageId
+                    ? { ...message, content: message.content || fallbackMessage }
+                    : message
+            )));
+        } finally {
+            if (chatAbortControllerRef.current === controller) {
+                chatAbortControllerRef.current = null;
+            }
+            if (!controller.signal.aborted) {
+                setStreamingMessageId((current) => current === assistantMessageId ? null : current);
+            }
+            setIsLoading(false);
+        }
+    }, [activeConversationId, isLoading, language, messages, scheduleConversationRefresh, userId]);
 
     useEffect(() => {
         if (!isAuthenticated) {
@@ -376,7 +537,6 @@ export default function Chat() {
         setShowScrollBtn(false);
         scrollBehaviorRef.current = 'auto';
         setMessages([]);
-        setExpandedMessages(new Set());
         setFeedbackSubmitted(new Set());
         setResponseTimes(new Map());
         setMessageTimestamps(new Map());
@@ -441,7 +601,6 @@ export default function Chat() {
         historyRequestIdRef.current += 1;
         setActiveConversationId(null);
         setMessages([]);
-        setExpandedMessages(new Set());
         setFeedbackSubmitted(new Set());
         setResponseTimes(new Map());
         setMessageTimestamps(new Map());
@@ -552,9 +711,10 @@ export default function Chat() {
     }, [activeConversationId, saveSessionName, isSavingSession, refreshConversations]);
 
     const handleSubmit = (e?: { preventDefault?: () => void }) => {
+        e?.preventDefault?.();
+
         // Guest limit check
         if (!isAuthenticated && guestQuestionCount >= GUEST_QUESTION_LIMIT) {
-            e?.preventDefault?.();
             setShowGuestGate(true);
             return;
         }
@@ -563,25 +723,16 @@ export default function Chat() {
         }
         scrollBehaviorRef.current = 'smooth';
         setHistoryError(null);
-        rawHandleSubmit(e);
+        void sendMessage(input);
     };
     const [suggestedQuestions, setSuggestedQuestions] = useState<string[]>([]);
+    const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
     const [requestStartTime, setRequestStartTime] = useState<number | null>(null);
     const [responseTimes, setResponseTimes] = useState<Map<string, number>>(new Map());
     const [messageTimestamps, setMessageTimestamps] = useState<Map<string, Date>>(new Map());
     const [copiedId, setCopiedId] = useState<string | null>(null);
     const [showScrollBtn, setShowScrollBtn] = useState(false);
     const [feedbackSubmitted, setFeedbackSubmitted] = useState<Set<string>>(new Set());
-    const [expandedMessages, setExpandedMessages] = useState<Set<string>>(new Set());
-
-    const toggleExpand = (id: string) => {
-        setExpandedMessages(prev => {
-            const next = new Set(prev);
-            if (next.has(id)) next.delete(id);
-            else next.add(id);
-            return next;
-        });
-    };
 
     const handleFeedback = async (messageId: string, rating: number, isRelevant: boolean) => {
         if (feedbackSubmitted.has(messageId)) return;
@@ -701,10 +852,10 @@ export default function Chat() {
         }
         scrollBehaviorRef.current = 'smooth';
         setHistoryError(null);
-        void append({ role: 'user', content: question });
+        void sendMessage(question);
     };
 
-    const getMessageTimeLabel = (message: Message) => {
+    const getMessageTimeLabel = (message: ChatMessage) => {
         const timestamp = message.createdAt instanceof Date
             ? message.createdAt
             : messageTimestamps.get(message.id);
@@ -1010,6 +1161,8 @@ export default function Chat() {
                             /* ── Messages ── */
                             messages.map((m) => {
                                 const parsed = m.role === 'assistant' ? parseMessageContent(m.content) : null;
+                                const isStreamingAssistant = m.role === 'assistant' && m.id === streamingMessageId;
+                                const showThinkingState = isStreamingAssistant && !m.content.trim();
 
                                 return (
                                     <div key={m.id}
@@ -1086,74 +1239,94 @@ export default function Chat() {
                                                                 <FontAwesomeIcon icon={faRobot} className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
                                                             </div>
                                                             <div className="text-[10px] sm:text-xs text-[#0D9488] font-semibold tracking-wide uppercase">Support AI</div>
-                                                        </div>
-                                                        <button onClick={() => handleCopy(m.content, m.id)}
-                                                            className="p-1 rounded text-[#A8A29E] hover:text-[#CA8A04] transition-colors cursor-pointer"
-                                                            title="Copy response">
-                                                            <FontAwesomeIcon icon={copiedId === m.id ? faCheck : faCopy}
-                                                                className={`w-3 h-3 ${copiedId === m.id ? 'text-emerald-600' : ''}`} />
-                                                        </button>
-                                                    </div>
-                                                    <div className={`text-sm sm:text-[15px] leading-relaxed relative ${!expandedMessages.has(m.id) && m.content.length > 400 ? 'max-h-40 overflow-hidden' : ''}`}>
-                                                        <ReactMarkdown remarkPlugins={[remarkGfm]} components={{
-                                                            p: (props: MarkdownElementProps<'p'>) => <p className="mb-2.5 last:mb-0 whitespace-pre-wrap" {...stripMarkdownNode(props)} />,
-                                                            ul: (props: MarkdownElementProps<'ul'>) => <ul className="list-disc pl-5 mb-2.5 space-y-1" {...stripMarkdownNode(props)} />,
-                                                            ol: (props: MarkdownElementProps<'ol'>) => <ol className="list-decimal pl-5 mb-2.5 space-y-1" {...stripMarkdownNode(props)} />,
-                                                            li: (props: MarkdownElementProps<'li'>) => <li {...stripMarkdownNode(props)} />,
-                                                            strong: (props: MarkdownElementProps<'strong'>) => <strong className="font-semibold text-[#1C1917]" {...stripMarkdownNode(props)} />,
-                                                            table: (props: MarkdownElementProps<'table'>) => (
-                                                                <div className="overflow-x-auto -mx-1 my-3">
-                                                                    <table className="w-full border-collapse text-xs sm:text-sm" {...stripMarkdownNode(props)} />
+                                                            {isStreamingAssistant && (
+                                                                <div className="flex gap-1 items-center ml-1">
+                                                                    <div className="w-1.5 h-1.5 rounded-full bg-[#CA8A04] animate-bounce" style={{ animationDelay: '0ms' }} />
+                                                                    <div className="w-1.5 h-1.5 rounded-full bg-[#D97706] animate-bounce" style={{ animationDelay: '150ms' }} />
+                                                                    <div className="w-1.5 h-1.5 rounded-full bg-[#0D9488] animate-bounce" style={{ animationDelay: '300ms' }} />
                                                                 </div>
-                                                            ),
-                                                            thead: (props: MarkdownElementProps<'thead'>) => <thead className="bg-[#F0EBE3]" {...stripMarkdownNode(props)} />,
-                                                            th: (props: MarkdownElementProps<'th'>) => <th className="border border-[#D6CFC4] px-2.5 py-1.5 sm:px-3 sm:py-2 text-left text-[#1C1917] font-semibold" {...stripMarkdownNode(props)} />,
-                                                            td: (props: MarkdownElementProps<'td'>) => <td className="border border-[#D6CFC4] px-2.5 py-1.5 sm:px-3 sm:py-2" {...stripMarkdownNode(props)} />,
-                                                            code: (props: MarkdownElementProps<'code'>) => (
-                                                                <code className="px-1.5 py-0.5 rounded text-xs sm:text-sm bg-[#F0EBE3] text-[#0D9488] border border-[#D6CFC4]" {...stripMarkdownNode(props)} />
-                                                            ),
-                                                        }}>
-                                                            {m.content}
-                                                        </ReactMarkdown>
-                                                        {!expandedMessages.has(m.id) && m.content.length > 400 && (
-                                                            <div className="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-[#FAF7F2] to-transparent pointer-events-none" />
-                                                        )}
-                                                    </div>
-                                                    {m.content.length > 400 && (
-                                                        <button
-                                                            onClick={() => toggleExpand(m.id)}
-                                                            className="text-xs text-[#0D9488] font-medium mt-1 mb-1 hover:underline flex items-center gap-1"
-                                                        >
-                                                            {expandedMessages.has(m.id) ? 'Show less' : 'Read more'}
-                                                        </button>
-                                                    )}
-                                                    <div className="mt-2 flex items-center gap-3 text-[10px] text-[#A8A29E]">
-                                                        {responseTimes.has(m.id) && (
-                                                            <span className="flex items-center gap-1">
-                                                                <FontAwesomeIcon icon={faBolt} className="w-2.5 h-2.5" />
-                                                                {responseTimes.get(m.id)!.toFixed(1)}s
-                                                            </span>
-                                                        )}
-                                                        {getMessageTimeLabel(m) && <span>{getMessageTimeLabel(m)}</span>}
-                                                        <div className="flex items-center gap-1 ml-auto">
-                                                            <button
-                                                                onClick={() => handleFeedback(m.id, 5, true)}
-                                                                disabled={feedbackSubmitted.has(m.id)}
-                                                                className={`p-1.5 rounded transition-colors ${feedbackSubmitted.has(m.id) ? 'opacity-40 cursor-not-allowed' : 'hover:bg-[#E8E0D4] hover:text-[#0D9488]'}`}
-                                                                title="Helpful"
-                                                            >
-                                                                <FontAwesomeIcon icon={faThumbsUp} className="w-3 h-3" />
-                                                            </button>
-                                                            <button
-                                                                onClick={() => handleFeedback(m.id, 1, false)}
-                                                                disabled={feedbackSubmitted.has(m.id)}
-                                                                className={`p-1.5 rounded transition-colors ${feedbackSubmitted.has(m.id) ? 'opacity-40 cursor-not-allowed' : 'hover:bg-[#E8E0D4] hover:text-red-600'}`}
-                                                                title="Not helpful"
-                                                            >
-                                                                <FontAwesomeIcon icon={faThumbsDown} className="w-3 h-3" />
-                                                            </button>
+                                                            )}
                                                         </div>
+                                                        {m.content.trim() && (
+                                                            <button onClick={() => handleCopy(m.content, m.id)}
+                                                                className="p-1 rounded text-[#A8A29E] hover:text-[#CA8A04] transition-colors cursor-pointer"
+                                                                title="Copy response">
+                                                                <FontAwesomeIcon icon={copiedId === m.id ? faCheck : faCopy}
+                                                                    className={`w-3 h-3 ${copiedId === m.id ? 'text-emerald-600' : ''}`} />
+                                                            </button>
+                                                        )}
                                                     </div>
+                                                    <div className="text-sm sm:text-[15px] leading-relaxed">
+                                                        {showThinkingState ? (
+                                                            <div className="space-y-3">
+                                                                <div className="space-y-2">
+                                                                    <div className="h-3 rounded-full w-[88%] animate-shimmer bg-[#E8E0D4]" />
+                                                                    <div className="h-3 rounded-full w-[72%] animate-shimmer bg-[#E8E0D4]" style={{ animationDelay: '90ms' }} />
+                                                                    <div className="h-3 rounded-full w-[58%] animate-shimmer bg-[#E8E0D4]" style={{ animationDelay: '180ms' }} />
+                                                                </div>
+                                                                <span className="text-[10px] sm:text-[11px] text-[#A8A29E] block">
+                                                                    {TEXT_MAP[language].thinking}
+                                                                </span>
+                                                            </div>
+                                                        ) : (
+                                                            <>
+                                                                <ReactMarkdown remarkPlugins={[remarkGfm]} components={{
+                                                                    p: (props: MarkdownElementProps<'p'>) => <p className="mb-2.5 last:mb-0 whitespace-pre-wrap" {...stripMarkdownNode(props)} />,
+                                                                    ul: (props: MarkdownElementProps<'ul'>) => <ul className="list-disc pl-5 mb-2.5 space-y-1" {...stripMarkdownNode(props)} />,
+                                                                    ol: (props: MarkdownElementProps<'ol'>) => <ol className="list-decimal pl-5 mb-2.5 space-y-1" {...stripMarkdownNode(props)} />,
+                                                                    li: (props: MarkdownElementProps<'li'>) => <li {...stripMarkdownNode(props)} />,
+                                                                    strong: (props: MarkdownElementProps<'strong'>) => <strong className="font-semibold text-[#1C1917]" {...stripMarkdownNode(props)} />,
+                                                                    table: (props: MarkdownElementProps<'table'>) => (
+                                                                        <div className="overflow-x-auto -mx-1 my-3">
+                                                                            <table className="w-full border-collapse text-xs sm:text-sm" {...stripMarkdownNode(props)} />
+                                                                        </div>
+                                                                    ),
+                                                                    thead: (props: MarkdownElementProps<'thead'>) => <thead className="bg-[#F0EBE3]" {...stripMarkdownNode(props)} />,
+                                                                    th: (props: MarkdownElementProps<'th'>) => <th className="border border-[#D6CFC4] px-2.5 py-1.5 sm:px-3 sm:py-2 text-left text-[#1C1917] font-semibold" {...stripMarkdownNode(props)} />,
+                                                                    td: (props: MarkdownElementProps<'td'>) => <td className="border border-[#D6CFC4] px-2.5 py-1.5 sm:px-3 sm:py-2" {...stripMarkdownNode(props)} />,
+                                                                    code: (props: MarkdownElementProps<'code'>) => (
+                                                                        <code className="px-1.5 py-0.5 rounded text-xs sm:text-sm bg-[#F0EBE3] text-[#0D9488] border border-[#D6CFC4]" {...stripMarkdownNode(props)} />
+                                                                    ),
+                                                                }}>
+                                                                    {m.content}
+                                                                </ReactMarkdown>
+                                                                {isStreamingAssistant && (
+                                                                    <div className="mt-2">
+                                                                        <span className="inline-block h-4 w-1.5 rounded-sm bg-[#0D9488] animate-pulse" aria-hidden="true" />
+                                                                    </div>
+                                                                )}
+                                                            </>
+                                                        )}
+                                                    </div>
+                                                    {!isStreamingAssistant && (
+                                                        <div className="mt-2 flex items-center gap-3 text-[10px] text-[#A8A29E]">
+                                                            {responseTimes.has(m.id) && (
+                                                                <span className="flex items-center gap-1">
+                                                                    <FontAwesomeIcon icon={faBolt} className="w-2.5 h-2.5" />
+                                                                    {responseTimes.get(m.id)!.toFixed(1)}s
+                                                                </span>
+                                                            )}
+                                                            {getMessageTimeLabel(m) && <span>{getMessageTimeLabel(m)}</span>}
+                                                            <div className="flex items-center gap-1 ml-auto">
+                                                                <button
+                                                                    onClick={() => handleFeedback(m.id, 5, true)}
+                                                                    disabled={feedbackSubmitted.has(m.id)}
+                                                                    className={`p-1.5 rounded transition-colors ${feedbackSubmitted.has(m.id) ? 'opacity-40 cursor-not-allowed' : 'hover:bg-[#E8E0D4] hover:text-[#0D9488]'}`}
+                                                                    title="Helpful"
+                                                                >
+                                                                    <FontAwesomeIcon icon={faThumbsUp} className="w-3 h-3" />
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => handleFeedback(m.id, 1, false)}
+                                                                    disabled={feedbackSubmitted.has(m.id)}
+                                                                    className={`p-1.5 rounded transition-colors ${feedbackSubmitted.has(m.id) ? 'opacity-40 cursor-not-allowed' : 'hover:bg-[#E8E0D4] hover:text-red-600'}`}
+                                                                    title="Not helpful"
+                                                                >
+                                                                    <FontAwesomeIcon icon={faThumbsDown} className="w-3 h-3" />
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    )}
                                                 </>
                                             )}
 
@@ -1182,31 +1355,6 @@ export default function Chat() {
                             })
                         )}
 
-                        {/* ── Loading State ── */}
-                        {isLoading && messages[messages.length - 1]?.role === 'user' && (
-                            <div className="flex justify-start animate-fade-up">
-                                <div className="skeuo-card rounded-2xl rounded-tl-sm px-4 py-3.5 sm:px-5 sm:py-4 max-w-[75%] sm:max-w-[70%] space-y-2.5">
-                                    <div className="flex items-center gap-2 mb-1">
-                                        <div className="w-5 h-5 sm:w-6 sm:h-6 rounded-md bg-[#0D9488]/15 flex items-center justify-center text-[#0D9488] border border-[#0D9488]/20">
-                                            <FontAwesomeIcon icon={faRobot} className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
-                                        </div>
-                                        <div className="flex gap-1.5 items-center">
-                                            <div className="w-1.5 h-1.5 rounded-full bg-[#CA8A04] animate-bounce" style={{ animationDelay: '0ms' }} />
-                                            <div className="w-1.5 h-1.5 rounded-full bg-[#D97706] animate-bounce" style={{ animationDelay: '150ms' }} />
-                                            <div className="w-1.5 h-1.5 rounded-full bg-[#0D9488] animate-bounce" style={{ animationDelay: '300ms' }} />
-                                        </div>
-                                    </div>
-                                    <div className="space-y-2">
-                                        <div className="h-3 rounded-full w-[90%] animate-shimmer bg-[#E8E0D4]" />
-                                        <div className="h-3 rounded-full w-[75%] animate-shimmer bg-[#E8E0D4]" style={{ animationDelay: '75ms' }} />
-                                        <div className="h-3 rounded-full w-[60%] animate-shimmer bg-[#E8E0D4]" style={{ animationDelay: '150ms' }} />
-                                    </div>
-                                    <span className="text-[10px] sm:text-[11px] text-[#A8A29E] block">
-                                        {TEXT_MAP[language].thinking}
-                                    </span>
-                                </div>
-                            </div>
-                        )}
 
                         <div ref={messagesEndRef} className="h-4 flex-shrink-0" />
                     </div>

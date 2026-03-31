@@ -38,6 +38,7 @@ import { checkSemanticCache, storeSemanticCache } from '@/lib/semanticCache';
 import { mergeHybridMatches, searchKeywordMatches } from '@/lib/hybridSearch';
 import { buildContextWindow, rerankMatches } from '@/lib/reranker';
 import { recordChatLog, recordFailure, type CacheSource } from '@/lib/logger';
+import { createSseHeaders, createSseResponse } from '@/lib/sse';
 
 dns.setDefaultResultOrder('ipv4first');
 
@@ -92,17 +93,58 @@ async function translateToEnglish(
     }
 }
 
-function textStreamResponse(text: string): Response {
-    const enc = new TextEncoder();
-    return new Response(
-        new ReadableStream({
-            start(controller) {
-                controller.enqueue(enc.encode(`0:${JSON.stringify(text)}\n`));
-                controller.close();
-            },
-        }),
-        { headers: { 'Content-Type': 'text/plain; charset=utf-8' } }
-    );
+function buildChatHeaders(
+    activeConversationId: string | null,
+    requestId: string,
+    rateLimitResult: Awaited<ReturnType<typeof checkRateLimit>>,
+    extraHeaders: Record<string, string> = {},
+): Headers {
+    const headers = createSseHeaders();
+
+    if (activeConversationId) {
+        headers.set('x-conversation-id', activeConversationId);
+    }
+
+    if (requestId) {
+        headers.set('x-request-id', requestId);
+    }
+
+    const rlHeaders = rateLimitHeaders(rateLimitResult);
+    for (const [key, value] of Object.entries(rlHeaders)) {
+        headers.set(key, value);
+    }
+
+    for (const [key, value] of Object.entries(extraHeaders)) {
+        headers.set(key, value);
+    }
+
+    return headers;
+}
+
+function extractTextFromMessageContent(content: unknown): string {
+    if (typeof content === 'string') {
+        return content;
+    }
+
+    if (!Array.isArray(content)) {
+        return '';
+    }
+
+    return content.map((part) => {
+        if (typeof part === 'string') {
+            return part;
+        }
+
+        if (!part || typeof part !== 'object') {
+            return '';
+        }
+
+        if ('text' in part && typeof part.text === 'string') {
+            return part.text;
+        }
+
+        return '';
+    }).join('');
 }
 
 function buildChatResponse(
@@ -111,27 +153,25 @@ function buildChatResponse(
     requestId: string,
     rateLimitResult: Awaited<ReturnType<typeof checkRateLimit>>,
     extraHeaders: Record<string, string> = {},
+    meta?: { answerMode?: string; confidence?: number },
 ): Response {
-    const response = textStreamResponse(text);
-
-    if (activeConversationId) {
-        response.headers.set('x-conversation-id', activeConversationId);
-    }
-
-    if (requestId) {
-        response.headers.set('x-request-id', requestId);
-    }
-
-    const rlHeaders = rateLimitHeaders(rateLimitResult);
-    for (const [key, value] of Object.entries(rlHeaders)) {
-        response.headers.set(key, value);
-    }
-
-    for (const [key, value] of Object.entries(extraHeaders)) {
-        response.headers.set(key, value);
-    }
-
-    return response;
+    return createSseResponse({
+        headers: buildChatHeaders(activeConversationId, requestId, rateLimitResult, extraHeaders),
+        meta: {
+            requestId,
+            conversationId: activeConversationId,
+            stream: 'chat',
+            source: null,
+        },
+        stream: ({ send }) => {
+            send('delta', { text });
+            send('done', {
+                content: text,
+                answerMode: meta?.answerMode ?? null,
+                confidence: meta?.confidence ?? null,
+            });
+        },
+    });
 }
 
 function elapsed(start: number): string {
@@ -842,7 +882,10 @@ export async function POST(req: Request) {
                 error: null,
             });
 
-            return buildChatResponse(casualAnswer, activeConversationId, requestId, rateLimitResult);
+            return buildChatResponse(casualAnswer, activeConversationId, requestId, rateLimitResult, {}, {
+                answerMode: 'casual',
+                confidence: 1,
+            });
         }
 
         const origDiagram = isDiagramRequest(englishQuestion);
@@ -901,6 +944,9 @@ export async function POST(req: Request) {
                 return buildChatResponse(cachedAnswer, activeConversationId, requestId, rateLimitResult, {
                     'x-cache': 'HIT:tier1',
                     'x-pipeline-latency': `${(performance.now() - requestStart).toFixed(0)}ms`,
+                }, {
+                    answerMode: 'cache',
+                    confidence: 1,
                 });
             }
         }
@@ -926,7 +972,10 @@ export async function POST(req: Request) {
                 llmCalls: llmCallCount,
                 error: null,
             });
-            return buildChatResponse(relationalAnswer, activeConversationId, requestId, rateLimitResult);
+            return buildChatResponse(relationalAnswer, activeConversationId, requestId, rateLimitResult, {}, {
+                answerMode: 'relational',
+                confidence: 0.9,
+            });
         }
 
         stageTimer.mark('embedding');
@@ -995,6 +1044,10 @@ export async function POST(req: Request) {
                         'x-cache': `HIT:semantic:${semanticFastPath.similarity.toFixed(3)}`,
                         'x-pipeline-latency': `${(performance.now() - requestStart).toFixed(0)}ms`,
                     },
+                    {
+                        answerMode: 'cache',
+                        confidence: semanticFastPath.similarity,
+                    },
                 );
             }
         }
@@ -1056,6 +1109,10 @@ export async function POST(req: Request) {
                     {
                         'x-cache': `HIT:tier2:${tier2CacheResult.similarity?.toFixed(3)}`,
                         'x-pipeline-latency': `${(performance.now() - requestStart).toFixed(0)}ms`,
+                    },
+                    {
+                        answerMode: 'cache',
+                        confidence: tier2CacheResult.similarity ?? 0.82,
                     },
                 );
             }
@@ -1275,7 +1332,10 @@ export async function POST(req: Request) {
             });
 
             const payload = JSON.stringify(storedDiagramPayload);
-            return textStreamResponse(`DIAGRAM_RESPONSE:${payload}`);
+            return buildChatResponse(`DIAGRAM_RESPONSE:${payload}`, activeConversationId, requestId, rateLimitResult, {}, {
+                answerMode: 'diagram_stored',
+                confidence,
+            });
         }
 
         if (isDiagram) {
@@ -1327,7 +1387,10 @@ export async function POST(req: Request) {
                     });
 
                     const payload = JSON.stringify({ __type: 'diagram', ...diagramData });
-                    return textStreamResponse(`DIAGRAM_RESPONSE:${payload}`);
+                    return buildChatResponse(`DIAGRAM_RESPONSE:${payload}`, activeConversationId, requestId, rateLimitResult, {}, {
+                        answerMode: 'diagram',
+                        confidence: diagramData.hasKBContext ? confidence : 0.3,
+                    });
                 }
             } catch (err: unknown) {
                 console.warn(`Diagram generation failed: ${(err as Error).message}`);
@@ -1347,7 +1410,10 @@ export async function POST(req: Request) {
                     reason: 'diagram_generation_failed',
                     confidence,
                 });
-                return textStreamResponse(`DIAGRAM_RESPONSE:${fallbackPayload}`);
+                return buildChatResponse(`DIAGRAM_RESPONSE:${fallbackPayload}`, activeConversationId, requestId, rateLimitResult, {}, {
+                    answerMode: 'diagram',
+                    confidence,
+                });
             }
         }
 
@@ -1406,7 +1472,7 @@ export async function POST(req: Request) {
                 error: null,
             });
 
-            return buildChatResponse(notFoundMsg, activeConversationId, requestId, rateLimitResult);
+            return buildChatResponse(notFoundMsg, activeConversationId, requestId, rateLimitResult, {}, { answerMode: 'general', confidence: 0 });
         }
 
         const routedPrompt = selectRoute(baseAnalysis, langName, notFoundMsg, lastRagResult.answerMode);
@@ -1460,16 +1526,190 @@ export async function POST(req: Request) {
             fallbackMessage,
         );
 
+        const needsVerification = shouldUseVerificationPass({
+            complexity: baseAnalysis.complexity,
+            confidence,
+            matchCount: matches.length,
+        });
+        const dbAnswerMode = answerMode.startsWith('rag') ? 'rag' : answerMode;
+
+        const finalizeAnswer = async (answer: string) => {
+            void evaluateAndStore({
+                question: retrievalQuestion,
+                answer,
+                ragResult: lastRagResult,
+                llm: simpleLlm,
+                latencyMs: performance.now() - requestStart,
+                userId: userId ?? undefined,
+            }).catch((err) => {
+                console.error('[evaluation error]', err);
+            });
+
+            void supabase.from('chat_sessions').insert({
+                user_question: latestMessage,
+                english_translation: englishQuestion,
+                answer_mode: dbAnswerMode,
+                top_similarity: matches[0]?.finalScore || confidence,
+                bot_answer: answer,
+                user_id: authUserId || userId || null,
+                conversation_id: activeConversationId || null,
+            }).then(({ error }) => { if (error) console.warn('chat_sessions insert failed:', error.message); });
+
+            void storeCache({
+                query: retrievalQuestion,
+                queryVector: cachedQueryEmbedding,
+                answer,
+                answerMode,
+                language,
+                confidence,
+            });
+            storeSemanticCache({
+                query: retrievalQuestion,
+                queryEmbedding: cachedQueryEmbedding,
+                answer,
+                answerMode,
+                language,
+                confidence,
+            });
+
+            await persistAssistantMessage({
+                enabled: Boolean(authUserId),
+                conversationId: activeConversationId,
+                content: answer,
+                answerMode: dbAnswerMode,
+                topSimilarity: matches[0]?.finalScore || confidence,
+            });
+
+            if (confidence < 0.5 || fallbackMessage) {
+                recordFailure({
+                    requestId,
+                    query: retrievalQuestion,
+                    reason: fallbackMessage ? 'fallback_triggered' : 'low_confidence',
+                    confidence,
+                });
+            }
+
+            recordChatLog({
+                requestId,
+                query: originalQueryForLog || latestMessage,
+                rewrittenQuery: retrievalQuestion,
+                intent: intentForLog,
+                retrievedChunks: buildChunkLabels(lastRagResult.matches),
+                finalChunks: buildChunkLabels(matches),
+                confidence,
+                responseTimeMs: performance.now() - requestStart,
+                success: true,
+                fallbackTriggered: Boolean(fallbackMessage),
+                cacheSource,
+                hydeUsed: retrievalDiagnostics.hydeUsed,
+                queryExpansionUsed: retrievalDiagnostics.queryExpansionUsed,
+                llmCalls: llmCallCount,
+                error: null,
+            });
+
+            void recordMetric({
+                ...metricsSnapshot,
+                totalLatencyMs: performance.now() - requestStart,
+                stages: stageTimer.getTimings(),
+                answerMode: dbAnswerMode,
+                confidence,
+                matchCount: matches.length,
+                createdAt: new Date().toISOString(),
+            } as PipelineMetric);
+        };
+
         stageTimer.mark('llmGeneration');
         llmCallCount += 1;
-        
-        // Use streaming for better UX; pass route-specific token limits
+
+        if (!needsVerification) {
+            const chatLlm = getLLM(isSimple ? 'simple' : 'complex', {
+                streaming: true,
+                maxTokens: routedPrompt.route.maxTokens,
+                temperature: routedPrompt.route.temperature,
+            });
+
+            return createSseResponse({
+                request: req,
+                headers: buildChatHeaders(activeConversationId, requestId, rateLimitResult),
+                meta: {
+                    requestId,
+                    conversationId: activeConversationId,
+                    stream: 'chat',
+                    source: null,
+                },
+                stream: async ({ send, isClosed }) => {
+                    let streamedAnswer = '';
+
+                    try {
+                        const stream = await raceWithTimeout(
+                            chatLlm.stream([
+                                { role: 'system', content: systemPrompt },
+                                { role: 'user', content: `Respond ENTIRELY in ${langName} using only the provided context.\n\nUser Query: ${latestMessage}` },
+                            ]),
+                            25_000
+                        );
+
+                        for await (const chunk of stream) {
+                            if (isClosed()) {
+                                return;
+                            }
+
+                            const deltaText = extractTextFromMessageContent(chunk.content);
+                            if (!deltaText) {
+                                continue;
+                            }
+
+                            streamedAnswer += deltaText;
+                            send('delta', { text: deltaText });
+                        }
+
+                        stageTimer.end('llmGeneration');
+
+                        const answer = formatResponse(streamedAnswer.trim(), {
+                            intent: intent.intent,
+                            confidence,
+                            fallbackMessage,
+                            matches,
+                        });
+
+                        await finalizeAnswer(answer);
+
+                        if (!isClosed()) {
+                            send('done', { content: answer, answerMode: dbAnswerMode, confidence });
+                        }
+                    } catch (streamError) {
+                        console.error('Chat API Stream Error:', streamError);
+                        const errorMessage = (streamError as Error).message || 'Unknown error';
+
+                        void recordMetric({
+                            ...metricsSnapshot,
+                            totalLatencyMs: performance.now() - requestStart,
+                            stages: stageTimer.getTimings(),
+                            error: errorMessage,
+                            createdAt: new Date().toISOString(),
+                        } as PipelineMetric);
+
+                        recordFailure({
+                            requestId,
+                            query: rewrittenQueryForLog || originalQueryForLog || 'unknown',
+                            reason: errorMessage,
+                            confidence: null,
+                        });
+
+                        if (!isClosed()) {
+                            send('error', { message: 'Failed to process chat request.' });
+                        }
+                    }
+                },
+            });
+        }
+
         const chatLlm = getLLM(isSimple ? 'simple' : 'complex', {
-            streaming: true,
+            streaming: false,
             maxTokens: routedPrompt.route.maxTokens,
             temperature: routedPrompt.route.temperature,
         });
-        
+
         const response = await raceWithTimeout(
             chatLlm.invoke([
                 { role: 'system', content: systemPrompt },
@@ -1480,11 +1720,7 @@ export async function POST(req: Request) {
 
         let cleanedAnswer = (typeof response.content === 'string' ? response.content : JSON.stringify(response.content)).trim();
 
-        if (shouldUseVerificationPass({
-            complexity: baseAnalysis.complexity,
-            confidence,
-            matchCount: matches.length,
-        })) {
+        if (needsVerification) {
             llmCallCount += 1;
             try {
                 const verificationPrompt = `Revise the draft answer so every claim stays grounded in the provided context. 
@@ -1522,94 +1758,11 @@ Return only the improved answer in ${langName}.`;
             fallbackMessage,
             matches,
         });
-
-        void evaluateAndStore({
-            question: retrievalQuestion,
-            answer,
-            ragResult: lastRagResult,
-            llm: simpleLlm,
-            latencyMs: performance.now() - requestStart,
-            userId: userId ?? undefined,
-        }).catch((err) => {
-            console.error('[evaluation error]', err);
-        });
-
-        const dbAnswerMode = answerMode.startsWith('rag') ? 'rag' : answerMode;
-        void supabase.from('chat_sessions').insert({
-            user_question: latestMessage,
-            english_translation: englishQuestion,
-            answer_mode: dbAnswerMode,
-            top_similarity: matches[0]?.finalScore || confidence,
-            bot_answer: answer,
-            user_id: authUserId || userId || null,
-            conversation_id: activeConversationId || null,
-        }).then(({ error }) => { if (error) console.warn('chat_sessions insert failed:', error.message); });
-
-        void storeCache({
-            query: retrievalQuestion,
-            queryVector: cachedQueryEmbedding,
-            answer,
-            answerMode,
-            language,
-            confidence,
-        });
-        storeSemanticCache({
-            query: retrievalQuestion,
-            queryEmbedding: cachedQueryEmbedding,
-            answer,
-            answerMode,
-            language,
-            confidence,
-        });
-
-        await persistAssistantMessage({
-            enabled: Boolean(authUserId),
-            conversationId: activeConversationId,
-            content: answer,
-            answerMode: dbAnswerMode,
-            topSimilarity: matches[0]?.finalScore || confidence,
-        });
-
-        if (confidence < 0.5 || fallbackMessage) {
-            recordFailure({
-                requestId,
-                query: retrievalQuestion,
-                reason: fallbackMessage ? 'fallback_triggered' : 'low_confidence',
-                confidence,
-            });
-        }
-
-        recordChatLog({
-            requestId,
-            query: originalQueryForLog || latestMessage,
-            rewrittenQuery: retrievalQuestion,
-            intent: intentForLog,
-            retrievedChunks: buildChunkLabels(lastRagResult.matches),
-            finalChunks: buildChunkLabels(matches),
-            confidence,
-            responseTimeMs: performance.now() - requestStart,
-            success: true,
-            fallbackTriggered: Boolean(fallbackMessage),
-            cacheSource,
-            hydeUsed: retrievalDiagnostics.hydeUsed,
-            queryExpansionUsed: retrievalDiagnostics.queryExpansionUsed,
-            llmCalls: llmCallCount,
-            error: null,
-        });
-
-        void recordMetric({
-            ...metricsSnapshot,
-            totalLatencyMs: performance.now() - requestStart,
-            stages: stageTimer.getTimings(),
-            answerMode: dbAnswerMode,
-            confidence,
-            matchCount: matches.length,
-            createdAt: new Date().toISOString(),
-        } as PipelineMetric);
+        await finalizeAnswer(answer);
 
         return buildChatResponse(answer, activeConversationId, requestId, rateLimitResult, {
             'x-pipeline-latency': `${(performance.now() - requestStart).toFixed(0)}ms`,
-        });
+        }, { answerMode: dbAnswerMode, confidence });
     } catch (error: unknown) {
         console.error('Chat API Error:', error);
         const errorMessage = (error as Error).message || 'Unknown error';

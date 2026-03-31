@@ -55,3 +55,6 @@ system-prompts-and-models-of-ai-tools/
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Local Netlify folder
+.netlify

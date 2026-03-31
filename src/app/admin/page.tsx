@@ -17,6 +17,7 @@ import RAGSettingsTab from '@/components/RAGSettingsTab';
 import FeedbackTab from '@/components/FeedbackTab';
 import { adminFetch } from '@/lib/adminFetch';
 import { signOut } from '@/lib/auth';
+import { consumeFetchSse } from '@/lib/fetchSse';
 
 type UnknownQuestion = {
     id: string;
@@ -59,6 +60,26 @@ type IngestResponse = {
     error?: string;
 };
 
+type IngestProgress = {
+    sourceName: string;
+    inputType: 'pdf' | 'text';
+    stage: 'preparing' | 'text' | 'image' | 'finalizing';
+    message: string;
+    totalUnits: number;
+    processedUnits: number;
+    successCount: number;
+    skippedCount: number;
+    errorCount: number;
+    duplicateCount: number;
+    textSuccess: number;
+    propositionSuccess: number;
+    imageSuccess: number;
+    totalChunks: number;
+    totalImages: number;
+    imageTypes: string[];
+    lastResult?: IngestResult;
+};
+
 // Tab type
 type Tab = 'review' | 'analytics' | 'users' | 'ingest' | 'graph' | 'settings' | 'feedback' | 'raptor';
 
@@ -82,6 +103,7 @@ export default function AdminDashboard() {
     const [raptorBuildLog, setRaptorBuildLog] = useState<{ id: string; status: string; started_at: string; completed_at?: string; clusters_built?: number; error_msg?: string }[]>([]);
     const [raptorLoading, setRaptorLoading] = useState(false);
     const [raptorError, setRaptorError] = useState('');
+    const [raptorInfo, setRaptorInfo] = useState('');
     const [raptorBuilding, setRaptorBuilding] = useState(false);
 
     // Ingest state
@@ -93,6 +115,8 @@ export default function AdminDashboard() {
     const [processing, setProcessing] = useState(false);
     const [ingestResult, setIngestResult] = useState<IngestResponse | null>(null);
     const [ingestError, setIngestError] = useState('');
+    const [ingestProgress, setIngestProgress] = useState<IngestProgress | null>(null);
+    const [ingestLiveResults, setIngestLiveResults] = useState<IngestResult[]>([]);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     const handleSignOut = async () => {
@@ -141,33 +165,70 @@ export default function AdminDashboard() {
         setUsersLoading(false);
     }, []);
 
-    const fetchRaptor = useCallback(async () => {
-        setRaptorLoading(true);
+    const fetchRaptor = useCallback(async (background = false) => {
+        if (!background) {
+            setRaptorLoading(true);
+        }
         setRaptorError('');
         try {
             const res = await adminFetch('/api/admin/raptor');
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || 'Failed to load RAPTOR data');
-            setRaptorHealth(data.health || []);
-            setRaptorBuildLog(data.buildLog || []);
+            const nextHealth = data.health || [];
+            const nextBuildLog = data.buildLog || [];
+            const hasRunningBuild = nextBuildLog.some((log: { status?: string }) => log.status === 'running');
+
+            setRaptorHealth(nextHealth);
+            setRaptorBuildLog(nextBuildLog);
+            setRaptorBuilding(hasRunningBuild);
+            if (hasRunningBuild) {
+                setRaptorInfo((current) => current || 'A RAPTOR build is currently running. Build history refreshes automatically.');
+            } else {
+                setRaptorInfo('');
+            }
         } catch (err: unknown) {
             setRaptorError((err as Error).message || 'Failed to load RAPTOR data');
+        } finally {
+            if (!background) {
+                setRaptorLoading(false);
+            }
         }
-        setRaptorLoading(false);
     }, []);
 
     const triggerRaptorBuild = async () => {
         setRaptorBuilding(true);
+        setRaptorError('');
+        setRaptorInfo('A RAPTOR build is currently running. Build history refreshes automatically.');
+
+        let keepBuilding = false;
+
         try {
             const res = await adminFetch('/api/admin/raptor', { method: 'POST' });
             const data = await res.json();
+
+            if (res.status === 409) {
+                keepBuilding = true;
+                setRaptorError('');
+                setRaptorInfo('RAPTOR build already in progress. Build history refreshes automatically.');
+                await fetchRaptor(true);
+                return;
+            }
+
             if (!res.ok) throw new Error(data.error || 'Build failed');
+
+            setRaptorInfo('');
             showToast(`RAPTOR build complete: ${data.stats?.totalClusters ?? 0} clusters`);
-            await fetchRaptor();
+            await fetchRaptor(true);
         } catch (err: unknown) {
-            showToast(`Error: ${(err as Error).message}`);
+            const message = (err as Error).message || 'Build failed';
+            setRaptorInfo('');
+            setRaptorError(message);
+            showToast(`Error: ${message}`);
+        } finally {
+            if (!keepBuilding) {
+                setRaptorBuilding(false);
+            }
         }
-        setRaptorBuilding(false);
     };
 
     useEffect(() => {
@@ -175,6 +236,20 @@ export default function AdminDashboard() {
         else if (tab === 'users') void fetchUsers();
         else if (tab === 'raptor') void fetchRaptor();
     }, [tab, fetchQuestions, fetchUsers, fetchRaptor]);
+
+    useEffect(() => {
+        if (tab !== 'raptor' || !raptorBuilding) {
+            return;
+        }
+
+        const pollId = window.setInterval(() => {
+            void fetchRaptor(true);
+        }, 10000);
+
+        return () => {
+            window.clearInterval(pollId);
+        };
+    }, [tab, raptorBuilding, fetchRaptor]);
 
     const showToast = (msg: string) => {
         setToast(msg);
@@ -287,6 +362,25 @@ export default function AdminDashboard() {
         setProcessing(true);
         setIngestResult(null);
         setIngestError('');
+        setIngestLiveResults([]);
+        setIngestProgress({
+            sourceName: sourceName || selectedFile?.name || 'Admin Text Input',
+            inputType: ingestMode,
+            stage: 'preparing',
+            message: 'Preparing ingestion pipeline...',
+            totalUnits: 0,
+            processedUnits: 0,
+            successCount: 0,
+            skippedCount: 0,
+            errorCount: 0,
+            duplicateCount: 0,
+            textSuccess: 0,
+            propositionSuccess: 0,
+            imageSuccess: 0,
+            totalChunks: 0,
+            totalImages: 0,
+            imageTypes: [],
+        });
 
         try {
             let response: Response;
@@ -304,13 +398,85 @@ export default function AdminDashboard() {
                 });
             }
 
-            const data: IngestResponse = await response.json();
+            if (!response.ok) {
+                let errorMessage = 'Training failed';
 
-            if (!response.ok || data.error) {
-                setIngestResult(null);
-                setIngestError(data.error || 'Training failed');
+                try {
+                    const payload = await response.json() as { error?: string };
+                    if (payload?.error) {
+                        errorMessage = payload.error;
+                    }
+                } catch {
+                    const fallbackText = await response.text().catch(() => '');
+                    if (fallbackText.trim()) {
+                        errorMessage = fallbackText.trim();
+                    }
+                }
+
+                throw new Error(errorMessage);
+            }
+
+            const contentType = response.headers.get('content-type') ?? '';
+
+            if (contentType.includes('text/event-stream')) {
+                let finalResult: IngestResponse | null = null;
+
+                await consumeFetchSse(response, async ({ event, data: rawEnvelope }) => {
+                    // Unwrap envelope: server wraps payloads as { event, ts, meta, data: <payload> }
+                    const payload = (rawEnvelope && typeof rawEnvelope === 'object' && 'data' in rawEnvelope)
+                        ? (rawEnvelope as { data: unknown }).data
+                        : rawEnvelope;
+
+                    if (event === 'progress' && payload && typeof payload === 'object') {
+                        const progress = payload as IngestProgress;
+                        setIngestProgress(progress);
+                        return;
+                    }
+
+                    if (event === 'chunk' && payload && typeof payload === 'object') {
+                        setIngestLiveResults((current) => [...current, payload as IngestResult]);
+                        return;
+                    }
+
+                    if (event === 'complete' && payload && typeof payload === 'object') {
+                        const complete = payload as IngestResponse;
+                        finalResult = complete;
+                        setIngestResult(complete);
+                        setIngestProgress(null);
+                        return;
+                    }
+
+                    if (event === 'error') {
+                        if (payload && typeof payload === 'object' && 'message' in payload && typeof payload.message === 'string') {
+                            throw new Error(payload.message);
+                        }
+
+                        throw new Error('Training failed');
+                    }
+                });
+
+                if (!finalResult) {
+                    throw new Error('Training stream ended before completion.');
+                }
+
+                const completedResult = finalResult as IngestResponse;
+
+                if (completedResult.successCount > 0) {
+                    showToast(`Added ${completedResult.successCount} knowledge entries`);
+                } else if (completedResult.duplicateCount > 0) {
+                    showToast(`No new entries added. ${completedResult.duplicateCount} duplicates skipped`);
+                } else {
+                    showToast('Training finished with no new entries');
+                }
             } else {
+                const data: IngestResponse = await response.json();
+
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+
                 setIngestResult(data);
+                setIngestProgress(null);
                 if (data.successCount > 0) {
                     showToast(`Added ${data.successCount} knowledge entries`);
                 } else if (data.duplicateCount > 0) {
@@ -321,6 +487,7 @@ export default function AdminDashboard() {
             }
         } catch (err: unknown) {
             setIngestResult(null);
+            setIngestProgress(null);
             setIngestError(`Network error: ${(err as Error).message}`);
         }
 
@@ -333,6 +500,8 @@ export default function AdminDashboard() {
         setSourceName('');
         setIngestResult(null);
         setIngestError('');
+        setIngestProgress(null);
+        setIngestLiveResults([]);
         if (fileInputRef.current) fileInputRef.current.value = '';
     };
 
@@ -754,15 +923,89 @@ export default function AdminDashboard() {
                                 </button>
 
                                 {processing && (
-                                    <div className="text-center">
-                                        <p className="text-xs text-[#78716C]">
-                                            AI is reading the content, generating Q&amp;A pairs, and building embeddings...
-                                        </p>
-                                        <div className="flex justify-center gap-1.5 mt-2">
-                                            <div className="w-1.5 h-1.5 rounded-full bg-[#0D9488] animate-bounce" style={{ animationDelay: '0ms' }} />
-                                            <div className="w-1.5 h-1.5 rounded-full bg-[#0D9488] animate-bounce" style={{ animationDelay: '200ms' }} />
-                                            <div className="w-1.5 h-1.5 rounded-full bg-[#0D9488] animate-bounce" style={{ animationDelay: '400ms' }} />
+                                    <div className="skeuo-card p-4 border-[#0D9488]/20 bg-[#0D9488]/5 space-y-4">
+                                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                                            <div>
+                                                <p className="text-sm font-medium text-[#1C1917]">
+                                                    {ingestProgress?.message || 'AI is reading the content and building embeddings...'}
+                                                </p>
+                                                <p className="text-xs text-[#78716C] mt-1">
+                                                    {ingestProgress
+                                                        ? `${ingestProgress.processedUnits} / ${Math.max(ingestProgress.totalUnits, 1)} source items processed`
+                                                        : 'Waiting for live progress...'}
+                                                </p>
+                                            </div>
+                                            <div className="flex justify-center gap-1.5">
+                                                <div className="w-1.5 h-1.5 rounded-full bg-[#0D9488] animate-bounce" style={{ animationDelay: '0ms' }} />
+                                                <div className="w-1.5 h-1.5 rounded-full bg-[#0D9488] animate-bounce" style={{ animationDelay: '200ms' }} />
+                                                <div className="w-1.5 h-1.5 rounded-full bg-[#0D9488] animate-bounce" style={{ animationDelay: '400ms' }} />
+                                            </div>
                                         </div>
+
+                                        <div className="h-2 rounded-full bg-[#E8E0D4] overflow-hidden">
+                                            <div
+                                                className="h-full rounded-full bg-gradient-to-r from-[#0D9488] to-[#CA8A04] transition-all duration-300"
+                                                style={{
+                                                    width: ingestProgress && ingestProgress.totalUnits > 0
+                                                        ? `${(ingestProgress.processedUnits / ingestProgress.totalUnits) * 100}%`
+                                                        : '8%',
+                                                }}
+                                            />
+                                        </div>
+
+                                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                                            <div className="rounded-lg bg-white/70 border border-[#D6CFC4] px-3 py-2">
+                                                <p className="text-[#78716C]">Added</p>
+                                                <p className="text-sm font-semibold text-emerald-700">{ingestProgress?.successCount ?? 0}</p>
+                                            </div>
+                                            <div className="rounded-lg bg-white/70 border border-[#D6CFC4] px-3 py-2">
+                                                <p className="text-[#78716C]">Duplicates</p>
+                                                <p className="text-sm font-semibold text-[#78716C]">{ingestProgress?.duplicateCount ?? 0}</p>
+                                            </div>
+                                            <div className="rounded-lg bg-white/70 border border-[#D6CFC4] px-3 py-2">
+                                                <p className="text-[#78716C]">Skipped</p>
+                                                <p className="text-sm font-semibold text-[#78716C]">{ingestProgress?.skippedCount ?? 0}</p>
+                                            </div>
+                                            <div className="rounded-lg bg-white/70 border border-[#D6CFC4] px-3 py-2">
+                                                <p className="text-[#78716C]">Errors</p>
+                                                <p className="text-sm font-semibold text-red-700">{ingestProgress?.errorCount ?? 0}</p>
+                                            </div>
+                                        </div>
+
+                                        {ingestLiveResults.length > 0 && (
+                                            <div>
+                                                <p className="text-[10px] uppercase tracking-wider text-[#78716C] font-semibold mb-2">
+                                                    Recent progress
+                                                </p>
+                                                <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
+                                                    {ingestLiveResults.slice(-8).reverse().map((result, index) => (
+                                                        <div
+                                                            key={`${result.id}-${index}`}
+                                                            className={`flex items-start gap-2.5 py-1.5 px-3 rounded-lg text-xs border ${result.status === 'success'
+                                                                ? 'bg-emerald-50/50 border-emerald-200'
+                                                                : result.status === 'duplicate' || result.status === 'skipped'
+                                                                    ? 'bg-[#F0EBE3] border-[#D6CFC4]'
+                                                                    : 'bg-red-50/50 border-red-200'
+                                                                }`}
+                                                        >
+                                                            <FontAwesomeIcon
+                                                                icon={result.status === 'success' ? faCheckCircle : result.status === 'duplicate' || result.status === 'skipped' ? faMinusCircle : faTimesCircle}
+                                                                className={`w-3 h-3 mt-0.5 flex-shrink-0 ${result.status === 'success'
+                                                                    ? 'text-emerald-600'
+                                                                    : result.status === 'duplicate' || result.status === 'skipped'
+                                                                        ? 'text-[#A8A29E]'
+                                                                        : 'text-red-500'
+                                                                    }`}
+                                                            />
+                                                            <span className="text-[#44403C]">
+                                                                {result.question}
+                                                                {result.error ? <span className="text-red-600 ml-2">({result.error})</span> : null}
+                                                            </span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
                                 )}
                             </div>
@@ -976,6 +1219,12 @@ export default function AdminDashboard() {
                                 </div>
                             </div>
                         </div>
+
+                        {raptorInfo && (
+                            <div className="skeuo-card p-5 md:p-6 border-blue-200 bg-blue-50/40">
+                                <p className="text-sm text-blue-800">{raptorInfo}</p>
+                            </div>
+                        )}
 
                         {raptorError && (
                             <div className="skeuo-card p-5 md:p-6 border-red-200 bg-red-50/40">

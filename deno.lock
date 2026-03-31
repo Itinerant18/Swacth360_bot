@@ -1,0 +1,59 @@
+{
+  "version": "5",
+  "remote": {
+    "https://edge.netlify.com/": "fd941d61d88673d5f28aab283fb86fcc50f08a3bc80ee5470498fcfa88c65cfb",
+    "https://edge.netlify.com/bootstrap/config.ts": "6a2ce0e544e15e8f8883a5c18da5948e37fd0f2619f68cb31f3af53c51817025",
+    "https://edge.netlify.com/bootstrap/context.ts": "e97240232121e2f369f6546ce961490f34d961ea1ea54be3ff09633e3f08373f",
+    "https://edge.netlify.com/bootstrap/cookie.ts": "8b0baae708989ca183c6f3b4ab3d029e6abcbc2e43f93edeb0ff447b3bbc3a05",
+    "https://edge.netlify.com/bootstrap/edge_function.ts": "b8253e86aa83c67341f5cfedeba5049d77fbf84dcab7eceff7566b7728ae9b39",
+    "https://edge.netlify.com/bootstrap/globals/types.ts": "eaa6148ded3121d8dee62dd91c86e7fe76601df0f3ca8d7962243a30f4c8935f"
+  },
+  "workspace": {
+    "packageJson": {
+      "dependencies": [
+        "npm:@fortawesome/fontawesome-svg-core@^7.2.0",
+        "npm:@fortawesome/free-regular-svg-icons@^7.2.0",
+        "npm:@fortawesome/free-solid-svg-icons@^7.2.0",
+        "npm:@fortawesome/react-fontawesome@^3.2.0",
+        "npm:@google/generative-ai@~0.24.1",
+        "npm:@langchain/community@^1.1.20",
+        "npm:@langchain/core@^1.1.29",
+        "npm:@langchain/google-genai@^2.1.20",
+        "npm:@langchain/ollama@^1.2.6",
+        "npm:@langchain/openai@^1.2.11",
+        "npm:@netlify/plugin-nextjs@^5.15.8",
+        "npm:@pinecone-database/pinecone@^7.1.0",
+        "npm:@supabase/ssr@0.9",
+        "npm:@supabase/supabase-js@^2.97.0",
+        "npm:@tailwindcss/postcss@4",
+        "npm:@types/node@20",
+        "npm:@types/pdf-parse@^1.1.5",
+        "npm:@types/react-dom@19",
+        "npm:@types/react@19",
+        "npm:@upstash/redis@^1.31.0",
+        "npm:ai@4",
+        "npm:eslint-config-next@16.1.6",
+        "npm:eslint@9",
+        "npm:langchain@^1.2.28",
+        "npm:lucide-react@0.575",
+        "npm:mermaid@^11.13.0",
+        "npm:next@16.1.6",
+        "npm:openai@^6.25.0",
+        "npm:pdf-parse@^2.4.5",
+        "npm:pdf2json@^4.0.2",
+        "npm:pdfjs-dist@^5.5.207",
+        "npm:react-dom@19.2.3",
+        "npm:react-markdown@^10.1.0",
+        "npm:react@19.2.3",
+        "npm:recharts@^3.8.0",
+        "npm:remark-gfm@^4.0.1",
+        "npm:resend@^6.9.3",
+        "npm:server-only@^0.0.1",
+        "npm:tailwindcss@4",
+        "npm:tsx@^4.7.1",
+        "npm:typescript@5",
+        "npm:undici@^7.22.0"
+      ]
+    }
+  }
+}

@@ -180,13 +180,20 @@ function BarList({
     items,
     formatter,
     emptyLabel,
+    scrollable = false,
+    maxHeightClass,
 }: {
     title: string;
     items: Array<{ key: string; label: string; value: number }>;
     formatter: (value: number) => string;
     emptyLabel: string;
+    scrollable?: boolean;
+    maxHeightClass?: string;
 }) {
     const maxValue = items.reduce((max, item) => Math.max(max, item.value), 0);
+    const listClassName = scrollable
+        ? `space-y-4 overflow-y-auto pr-2 ${maxHeightClass ?? 'max-h-72'}`
+        : 'space-y-4';
 
     return (
         <div className="w-full h-full min-w-0 overflow-hidden rounded-xl border border-[#E8E0D4] bg-[#FAF7F2] p-5 md:p-6">
@@ -194,7 +201,7 @@ function BarList({
             {items.length === 0 ? (
                 <EmptyState message={emptyLabel} />
             ) : (
-                <div className="space-y-4">
+                <div className={listClassName}>
                     {items.map((item) => (
                         <div key={item.key}>
                             <div className="flex items-center justify-between gap-3 text-xs sm:text-sm mb-1.5">
@@ -221,6 +228,7 @@ export default function AdminAnalyticsDashboard() {
     const [refreshing, setRefreshing] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [warning, setWarning] = useState<string | null>(null);
+    const [streamWarning, setStreamWarning] = useState<string | null>(null);
     const [lastUpdated, setLastUpdated] = useState<string | null>(null);
 
     const loadDashboard = useCallback(async (background = false) => {
@@ -288,33 +296,62 @@ export default function AdminAnalyticsDashboard() {
         setRefreshing(false);
     }, []);
 
-    const refreshRealtimeMetrics = useCallback(async () => {
-        try {
-            const realtimeJson = await fetchAdminJson('/api/admin/metrics?realtime=true');
-            setData((current) => current ? {
-                ...current,
-                realtime: normalizeMetrics(realtimeJson),
-            } : current);
-            setLastUpdated(new Date().toISOString());
-        } catch (err) {
-            console.error('[admin.dashboard] realtime refresh failed', err);
-        }
-    }, []);
-
     useEffect(() => {
         const initialLoadId = window.setTimeout(() => {
             void loadDashboard(false);
         }, 0);
 
-        const intervalId = window.setInterval(() => {
-            void refreshRealtimeMetrics();
-        }, 15000);
-
         return () => {
             window.clearTimeout(initialLoadId);
-            window.clearInterval(intervalId);
         };
-    }, [loadDashboard, refreshRealtimeMetrics]);
+    }, [loadDashboard]);
+
+    useEffect(() => {
+        const stream = new EventSource('/api/admin/metrics/stream', { withCredentials: true });
+
+        const handleMetrics = (event: MessageEvent<string>) => {
+            try {
+                const payload = JSON.parse(event.data) as { data?: unknown };
+                setData((current) => {
+                    const realtime = normalizeMetrics(payload?.data ?? payload);
+
+                    if (!current) {
+                        return {
+                            ...EMPTY_DASHBOARD,
+                            realtime,
+                        };
+                    }
+
+                    return {
+                        ...current,
+                        realtime,
+                    };
+                });
+                setLastUpdated(new Date().toISOString());
+                setStreamWarning(null);
+            } catch (err) {
+                console.error('[admin.dashboard] failed to parse metrics stream payload', err);
+            }
+        };
+
+        const handleOpen = () => {
+            setStreamWarning(null);
+        };
+
+        const handleError = () => {
+            setStreamWarning('Live metrics stream is reconnecting.');
+        };
+
+        stream.addEventListener('metrics', handleMetrics as EventListener);
+        stream.addEventListener('open', handleOpen as EventListener);
+        stream.onerror = handleError;
+
+        return () => {
+            stream.removeEventListener('metrics', handleMetrics as EventListener);
+            stream.removeEventListener('open', handleOpen as EventListener);
+            stream.close();
+        };
+    }, []);
 
     if (loading) {
         return (
@@ -347,6 +384,11 @@ export default function AdminAnalyticsDashboard() {
                         {lastUpdated ? (
                             <span className="text-xs text-[#A8A29E]">Updated {formatDateTime(lastUpdated)}</span>
                         ) : null}
+                        {streamWarning ? (
+                            <span className="text-xs text-amber-700">{streamWarning}</span>
+                        ) : (
+                            <span className="text-xs text-emerald-700">Live stream connected</span>
+                        )}
                         <button
                             onClick={() => void loadDashboard(true)}
                             className="skeuo-raised px-3 py-2 text-xs sm:text-sm text-[#44403C] flex items-center gap-2"
@@ -552,7 +594,7 @@ export default function AdminAnalyticsDashboard() {
                     {data.performance.slowestRequests.length === 0 ? (
                         <EmptyState message="No historical slow-request data available." />
                     ) : (
-                        <div className="space-y-4">
+                        <div className="space-y-4 max-h-80 overflow-y-auto pr-2">
                             {data.performance.slowestRequests.map((entry, index) => (
                                 <div key={`${entry.query}-${entry.createdAt}-${index}`} className="rounded-xl border border-[#E8E0D4] bg-white/70 px-4 py-4">
                                     <div className="flex items-start justify-between gap-4">
@@ -582,13 +624,15 @@ export default function AdminAnalyticsDashboard() {
                         }))}
                         formatter={formatCount}
                         emptyLabel="No failure reasons recorded."
+                        scrollable
+                        maxHeightClass="max-h-72"
                     />
                     <div className="w-full h-full min-w-0 overflow-hidden rounded-xl border border-[#E8E0D4] bg-[#FAF7F2] p-5 md:p-6">
                         <h4 className="text-xs uppercase tracking-wider text-[#78716C] mb-4">Recent Failures</h4>
                         {data.failures.recent.length === 0 ? (
                             <EmptyState message="No recent failures recorded." />
                         ) : (
-                            <div className="space-y-4">
+                            <div className="space-y-4 max-h-80 overflow-y-auto pr-2">
                                 {data.failures.recent.map((entry) => (
                                     <div key={`${entry.requestId}-${entry.createdAt}`} className="rounded-xl border border-[#E8E0D4] bg-white/70 px-4 py-4">
                                         <div className="flex items-start justify-between gap-4">
@@ -651,7 +695,7 @@ export default function AdminAnalyticsDashboard() {
                         {data.analytics.topUnknown.length === 0 ? (
                             <EmptyState message="No unknown-question records yet." />
                         ) : (
-                            <div className="space-y-4">
+                            <div className="space-y-4 max-h-72 overflow-y-auto pr-2">
                                 {data.analytics.topUnknown.map((entry, index) => (
                                     <div key={`${entry.englishText}-${index}`} className="rounded-xl border border-[#E8E0D4] bg-white/70 px-4 py-4">
                                         <div className="flex items-start justify-between gap-4">
@@ -671,26 +715,28 @@ export default function AdminAnalyticsDashboard() {
                         <EmptyState message="No recent sessions available." />
                     ) : (
                         <div className="w-full min-w-0 overflow-x-auto">
-                            <table className="w-full min-w-[520px] text-xs sm:text-sm">
-                                <thead>
-                                    <tr className="text-left text-[#78716C] uppercase text-[10px] sm:text-xs">
-                                        <th className="pb-3 pr-3">Question</th>
-                                        <th className="pb-3 pr-3">Mode</th>
-                                        <th className="pb-3 pr-3">Similarity</th>
-                                        <th className="pb-3 text-right">Time</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {data.analytics.recentSessions.map((entry, index) => (
-                                        <tr key={`${entry.userQuestion}-${entry.createdAt}-${index}`} className="border-t border-[#E8E0D4]">
-                                            <td className="py-2.5 pr-3 text-[#44403C] max-w-[260px] truncate">{entry.userQuestion || 'Untitled question'}</td>
-                                            <td className="py-2.5 pr-3 text-[#78716C]">{entry.answerMode || '-'}</td>
-                                            <td className="py-2.5 pr-3 text-[#78716C]">{entry.topSimilarity > 0 ? formatPercent(entry.topSimilarity) : '-'}</td>
-                                            <td className="py-2.5 text-right text-[#A8A29E]">{formatDateTime(entry.createdAt)}</td>
+                            <div className="min-w-[520px] max-h-80 overflow-y-auto pr-2">
+                                <table className="w-full text-xs sm:text-sm">
+                                    <thead>
+                                        <tr className="text-left text-[#78716C] uppercase text-[10px] sm:text-xs">
+                                            <th className="pb-3 pr-3">Question</th>
+                                            <th className="pb-3 pr-3">Mode</th>
+                                            <th className="pb-3 pr-3">Similarity</th>
+                                            <th className="pb-3 text-right">Time</th>
                                         </tr>
-                                    ))}
-                                </tbody>
-                            </table>
+                                    </thead>
+                                    <tbody>
+                                        {data.analytics.recentSessions.map((entry, index) => (
+                                            <tr key={`${entry.userQuestion}-${entry.createdAt}-${index}`} className="border-t border-[#E8E0D4]">
+                                                <td className="py-2.5 pr-3 text-[#44403C] max-w-[260px] truncate">{entry.userQuestion || 'Untitled question'}</td>
+                                                <td className="py-2.5 pr-3 text-[#78716C]">{entry.answerMode || '-'}</td>
+                                                <td className="py-2.5 pr-3 text-[#78716C]">{entry.topSimilarity > 0 ? formatPercent(entry.topSimilarity) : '-'}</td>
+                                                <td className="py-2.5 text-right text-[#A8A29E]">{formatDateTime(entry.createdAt)}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
                     )}
                 </div>
