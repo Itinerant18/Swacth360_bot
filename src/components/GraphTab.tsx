@@ -250,6 +250,8 @@ export default function GraphTab() {
                                 onClick={() => void loadGraphData()}
                                 disabled={initialLoading}
                                 className="skeuo-raised px-3 py-1.5 text-xs text-[#44403C] disabled:opacity-50"
+                                title="Retry loading graph data"
+                                aria-label="Retry loading graph data"
                             >
                                 <span className="flex items-center gap-1.5">
                                     <FontAwesomeIcon icon={faArrowsRotate} className="w-3 h-3" />
@@ -332,6 +334,8 @@ export default function GraphTab() {
                                         onClick={() => void handleSearch()}
                                         disabled={busy}
                                         className="px-4 py-2 bg-[#0D9488] text-white rounded-lg text-sm font-medium disabled:opacity-50"
+                                        title="Search entity"
+                                        aria-label="Search entity"
                                     >
                                         <FontAwesomeIcon icon={faSearch} className="w-3 h-3" />
                                     </button>

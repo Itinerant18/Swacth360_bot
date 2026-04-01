@@ -218,6 +218,8 @@ export default function LanguageSelector({ language, setLanguage }: LanguageSele
           onClick={() => setOpen((v) => !v)}
           aria-haspopup="listbox"
           aria-expanded={open}
+          aria-label="Select language"
+          title="Select language"
         >
           <Globe size={13} className="globe-icon" />
           <span className="lang-flag">{current.flag}</span>
