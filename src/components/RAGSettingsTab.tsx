@@ -118,6 +118,8 @@ export default function RAGSettingsTab() {
                             onClick={() => void fetchSettings()}
                             disabled={loading}
                             className="skeuo-raised px-3 py-1.5 text-xs text-[#44403C] disabled:opacity-50"
+                            title="Retry loading settings"
+                            aria-label="Retry loading settings"
                         >
                             <span className="flex items-center gap-1.5">
                                 <FontAwesomeIcon icon={faArrowsRotate} className="w-3 h-3" />

@@ -97,6 +97,8 @@ export default function FeedbackTab() {
                             onClick={() => void fetchFeedback()}
                             disabled={loading}
                             className="skeuo-raised px-3 py-1.5 text-xs text-[#44403C] disabled:opacity-50"
+                            title="Retry loading feedback"
+                            aria-label="Retry loading feedback"
                         >
                             <span className="flex items-center gap-1.5">
                                 <FontAwesomeIcon icon={faArrowsRotate} className="w-3 h-3" />
