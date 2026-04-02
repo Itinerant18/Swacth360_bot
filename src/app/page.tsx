@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useEffect, useState, useCallback, useMemo, type ComponentPropsWithoutRef, type JSX as ReactJSX } from 'react';
+import React, { useRef, useEffect, useState, useCallback, useMemo, type ComponentPropsWithoutRef, type JSX as ReactJSX } from 'react';
 import dynamic from 'next/dynamic';
 import type { AuthChangeEvent, Session } from '@supabase/supabase-js';
 
@@ -16,6 +16,8 @@ import LanguageSelector from '../components/LanguageSelector';
 import DiagramCard from '../components/DiagramCard';
 import { signOut, isAdminEmail, getSupabaseAuth, sanitizeAuthSession } from '@/lib/auth';
 import { consumeFetchSse } from '@/lib/fetchSse';
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism';
 
 
 interface Conversation {
@@ -228,6 +230,328 @@ const TEXT_MAP = {
     },
 };
 
+// ─── Memoized Message Bubble ──────────────────────────────────
+const MessageBubble = React.memo(function MessageBubble({
+    message,
+    language,
+    streamingMessageId,
+    responseTimes,
+    messageTimestamps,
+    copiedId,
+    feedbackSubmitted,
+    handleCopy,
+    handleFeedback,
+    isLastAssistant,
+    onRegenerate,
+    onEdit,
+    isEditing,
+    editInput,
+    setEditInput,
+    onSaveEdit,
+    onCancelEdit,
+}: {
+    message: ChatMessage;
+    language: 'en' | 'bn' | 'hi';
+    streamingMessageId: string | null;
+    responseTimes: Map<string, number>;
+    messageTimestamps: Map<string, Date>;
+    copiedId: string | null;
+    feedbackSubmitted: Set<string>;
+    handleCopy: (text: string, id: string) => void;
+    handleFeedback: (messageId: string, rating: number, isRelevant: boolean) => void;
+    isLastAssistant?: boolean;
+    onRegenerate?: () => void;
+    onEdit?: (id: string, currentText: string) => void;
+    isEditing?: boolean;
+    editInput?: string;
+    setEditInput?: (val: string) => void;
+    onSaveEdit?: () => void;
+    onCancelEdit?: () => void;
+}) {
+    const parsed = message.role === 'assistant' ? parseMessageContent(message.content) : null;
+    const isStreamingAssistant = message.role === 'assistant' && message.id === streamingMessageId;
+    const showThinkingState = isStreamingAssistant && !message.content.trim();
+
+    const getMessageTimeLabel = (msg: ChatMessage) => {
+        const timestamp = msg.createdAt instanceof Date
+            ? msg.createdAt
+            : messageTimestamps.get(msg.id);
+
+        return timestamp ? formatRelativeTime(timestamp) : '';
+    };
+
+    return (
+        <div className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'} animate-fade-up`}
+            style={{ contentVisibility: 'auto' }}
+        >
+            <div className={`max-w-[92%] sm:max-w-[85%] ${message.role === 'user'
+                ? 'rounded-2xl p-3.5 sm:p-4 lg:p-5 bg-[#4b2e22] text-[#FAF7F2] shadow-[0_2px_4px_rgba(0,0,0,0.2)] rounded-tr-sm'
+                : parsed?.isDiagram
+                    ? 'w-full' // diagram takes full width
+                    : 'rounded-2xl p-4 sm:p-5 bg-[#FAF7F2] border border-[#D6CFC4] text-[#1C1917] shadow-sm rounded-tl-sm'
+                }`}>
+
+                {/* ── Assistant: Diagram Response ── */}
+                {message.role === 'assistant' && parsed?.isDiagram && parsed.diagram && (
+                    <div className="w-full">
+                        <div className="flex items-center gap-2 mb-1 px-1">
+                            <div className="w-5 h-5 rounded-md bg-blue-900/30 flex items-center justify-center text-blue-400 border border-blue-700/30">
+                                <FontAwesomeIcon icon={faDiagramProject} className="w-2.5 h-2.5" />
+                            </div>
+                            <span className="text-[10px] text-blue-400 font-semibold tracking-wide uppercase font-mono">
+                                Diagram Generated
+                            </span>
+                            {responseTimes.has(message.id) && (
+                                <span className="text-[10px] text-[#A8A29E] flex items-center gap-1 ml-auto">
+                                    <FontAwesomeIcon icon={faBolt} className="w-2.5 h-2.5" />
+                                    {responseTimes.get(message.id)!.toFixed(1)}s
+                                </span>
+                            )}
+                        </div>
+                        <DiagramCard
+                            markdown={parsed.diagram.markdown}
+                            title={parsed.diagram.title}
+                            diagramType={parsed.diagram.diagramType}
+                            panelType={parsed.diagram.panelType}
+                            hasKBContext={parsed.diagram.hasKBContext}
+                            language={language}
+                        />
+                        <div className="mt-2 flex items-center justify-end">
+                            <div className="flex items-center gap-1">
+                                {isLastAssistant && onRegenerate && (
+                                    <button
+                                        onClick={onRegenerate}
+                                        className="p-1.5 rounded hover:bg-[#E8E0D4] text-[#A8A29E] hover:text-[#CA8A04] transition-colors"
+                                        title="Regenerate"
+                                    >
+                                        <FontAwesomeIcon icon={faSignal} className="w-3 h-3" />
+                                    </button>
+                                )}
+                                <button
+                                    onClick={() => handleFeedback(message.id, 5, true)}
+                                    disabled={feedbackSubmitted.has(message.id)}
+                                    className={`p-1.5 rounded transition-colors ${feedbackSubmitted.has(message.id) ? 'opacity-40 cursor-not-allowed text-[#A8A29E]' : 'hover:bg-[#E8E0D4] hover:text-[#0D9488] text-[#A8A29E]'}`}
+                                    title="Helpful"
+                                >
+                                    <FontAwesomeIcon icon={faThumbsUp} className="w-3 h-3" />
+                                </button>
+                                <button
+                                    onClick={() => handleFeedback(message.id, 1, false)}
+                                    disabled={feedbackSubmitted.has(message.id)}
+                                    className={`p-1.5 rounded transition-colors ${feedbackSubmitted.has(message.id) ? 'opacity-40 cursor-not-allowed text-[#A8A29E]' : 'hover:bg-[#E8E0D4] hover:text-red-600 text-[#A8A29E]'}`}
+                                    title="Not helpful"
+                                >
+                                    <FontAwesomeIcon icon={faThumbsDown} className="w-3 h-3" />
+                                </button>
+                            </div>
+                        </div>
+                        {getMessageTimeLabel(message) && (
+                            <div className="mt-2 px-1 text-[10px] text-[#A8A29E]">
+                                {getMessageTimeLabel(message)}
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {/* ── Assistant: Normal Text Response ── */}
+                {message.role === 'assistant' && !parsed?.isDiagram && (
+                    <>
+                        <div className="flex items-center justify-between mb-2.5">
+                            <div className="flex items-center gap-2">
+                                <div className="w-5 h-5 sm:w-6 sm:h-6 rounded-md bg-[#0D9488]/15 flex items-center justify-center text-[#0D9488] border border-[#0D9488]/20">
+                                    <FontAwesomeIcon icon={faRobot} className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
+                                </div>
+                                <div className="text-[10px] sm:text-xs text-[#0D9488] font-semibold tracking-wide uppercase">Support AI</div>
+                                {isStreamingAssistant && (
+                                    <div className="flex gap-1 items-center ml-1">
+                                        <div className="w-1.5 h-1.5 rounded-full bg-[#CA8A04] animate-bounce" style={{ animationDelay: '0ms' }} />
+                                        <div className="w-1.5 h-1.5 rounded-full bg-[#D97706] animate-bounce" style={{ animationDelay: '150ms' }} />
+                                        <div className="w-1.5 h-1.5 rounded-full bg-[#0D9488] animate-bounce" style={{ animationDelay: '300ms' }} />
+                                    </div>
+                                )}
+                            </div>
+                            {message.content.trim() && (
+                                <button onClick={() => handleCopy(message.content, message.id)}
+                                    className="p-1 rounded text-[#A8A29E] hover:text-[#CA8A04] transition-colors cursor-pointer"
+                                    title="Copy response">
+                                    <FontAwesomeIcon icon={copiedId === message.id ? faCheck : faCopy}
+                                        className={`w-3 h-3 ${copiedId === message.id ? 'text-emerald-600' : ''}`} />
+                                </button>
+                            )}
+                        </div>
+                        <div className="text-sm sm:text-[15px] leading-relaxed">
+                            {showThinkingState ? (
+                                <div className="space-y-3">
+                                    <div className="space-y-2.5">
+                                        <div className="h-3.5 rounded-full w-[92%] animate-pulse bg-[#E8E0D4] opacity-60" />
+                                        <div className="h-3.5 rounded-full w-[78%] animate-pulse bg-[#E8E0D4] opacity-40" style={{ animationDelay: '150ms' }} />
+                                        <div className="h-3.5 rounded-full w-[64%] animate-pulse bg-[#E8E0D4] opacity-20" style={{ animationDelay: '300ms' }} />
+                                    </div>
+                                    <span className="text-[10px] sm:text-[11px] text-[#A8A29E] block italic tracking-wide">
+                                        {TEXT_MAP[language as keyof typeof TEXT_MAP].thinking}
+                                    </span>
+                                </div>
+                            ) : (
+                                <>
+                                    <ReactMarkdown remarkPlugins={[remarkGfm]} components={{
+                                        p: (props: MarkdownElementProps<'p'>) => <p className="mb-2.5 last:mb-0 whitespace-pre-wrap" {...stripMarkdownNode(props)} />,
+                                        ul: (props: MarkdownElementProps<'ul'>) => <ul className="list-disc pl-5 mb-2.5 space-y-1" {...stripMarkdownNode(props)} />,
+                                        ol: (props: MarkdownElementProps<'ol'>) => <ol className="list-decimal pl-5 mb-2.5 space-y-1" {...stripMarkdownNode(props)} />,
+                                        li: (props: MarkdownElementProps<'li'>) => <li {...stripMarkdownNode(props)} />,
+                                        strong: (props: MarkdownElementProps<'strong'>) => <strong className="font-semibold text-[#1C1917]" {...stripMarkdownNode(props)} />,
+                                        table: (props: MarkdownElementProps<'table'>) => (
+                                            <div className="overflow-x-auto -mx-1 my-3">
+                                                <table className="w-full border-collapse text-xs sm:text-sm" {...stripMarkdownNode(props)} />
+                                            </div>
+                                        ),
+                                        thead: (props: MarkdownElementProps<'thead'>) => <thead className="bg-[#F0EBE3]" {...stripMarkdownNode(props)} />,
+                                        th: (props: MarkdownElementProps<'th'>) => <th className="border border-[#D6CFC4] px-2.5 py-1.5 sm:px-3 sm:py-2 text-left text-[#1C1917] font-semibold" {...stripMarkdownNode(props)} />,
+                                        td: (props: MarkdownElementProps<'td'>) => <td className="border border-[#D6CFC4] px-2.5 py-1.5 sm:px-3 sm:py-2" {...stripMarkdownNode(props)} />,
+                                        code: (props: MarkdownElementProps<'code'>) => {
+                                            const { children, className, ...rest } = props;
+                                            const match = /language-(\w+)/.exec(className || '');
+                                            const inline = !match;
+                                            const lang = match ? match[1] : '';
+
+                                            if (inline) {
+                                                return (
+                                                    <code className="px-1.5 py-0.5 rounded text-xs sm:text-sm bg-[#F0EBE3] text-[#0D9488] border border-[#D6CFC4]">
+                                                        {children}
+                                                    </code>
+                                                );
+                                            }
+
+                                            return (
+                                                <div className="my-4 rounded-xl overflow-hidden border border-[#D6CFC4] shadow-sm group/code">
+                                                    <div className="bg-[#F0EBE3] px-4 py-2 border-b border-[#D6CFC4] flex items-center justify-between">
+                                                        <span className="text-[10px] font-bold text-[#78716C] uppercase tracking-widest">{lang || 'code'}</span>
+                                                        <button
+                                                            onClick={() => handleCopy(String(children).replace(/\n$/, ''), `code-${Date.now()}`)}
+                                                            className="text-[10px] font-semibold text-[#0D9488] hover:text-[#0A7A6E] flex items-center gap-1.5 transition-colors"
+                                                        >
+                                                            <FontAwesomeIcon icon={faCopy} className="w-2.5 h-2.5" />
+                                                            Copy
+                                                        </button>
+                                                    </div>
+                                                    <SyntaxHighlighter
+                                                        style={oneLight}
+                                                        language={lang}
+                                                        PreTag="div"
+                                                        customStyle={{
+                                                            margin: 0,
+                                                            padding: '1rem',
+                                                            fontSize: '13px',
+                                                            lineHeight: '1.6',
+                                                            backgroundColor: '#FAF7F2'
+                                                        }}
+                                                    >
+                                                        {String(children).replace(/\n$/, '')}
+                                                    </SyntaxHighlighter>
+                                                </div>
+                                            );
+                                        },
+                                    }}>
+                                        {message.content}
+                                    </ReactMarkdown>
+                                    {isStreamingAssistant && (
+                                        <div className="mt-2">
+                                            <span className="inline-block h-4 w-1.5 rounded-sm bg-[#0D9488] animate-pulse" aria-hidden="true" />
+                                        </div>
+                                    )}
+                                </>
+                            )}
+                        </div>
+                        {!isStreamingAssistant && (
+                            <div className="mt-2 flex items-center gap-3 text-[10px] text-[#A8A29E]">
+                                {responseTimes.has(message.id) && (
+                                    <span className="flex items-center gap-1">
+                                        <FontAwesomeIcon icon={faBolt} className="w-2.5 h-2.5" />
+                                        {responseTimes.get(message.id)!.toFixed(1)}s
+                                    </span>
+                                )}
+                                {getMessageTimeLabel(message) && <span>{getMessageTimeLabel(message)}</span>}
+                                <div className="flex items-center gap-1 ml-auto">
+                                    {isLastAssistant && onRegenerate && (
+                                        <button
+                                            onClick={onRegenerate}
+                                            className="p-1.5 rounded hover:bg-[#E8E0D4] hover:text-[#CA8A04] transition-colors"
+                                            title="Regenerate"
+                                        >
+                                            <FontAwesomeIcon icon={faSignal} className="w-3 h-3" />
+                                        </button>
+                                    )}
+                                    <button
+                                        onClick={() => handleFeedback(message.id, 5, true)}
+                                        disabled={feedbackSubmitted.has(message.id)}
+                                        className={`p-1.5 rounded transition-colors ${feedbackSubmitted.has(message.id) ? 'opacity-40 cursor-not-allowed' : 'hover:bg-[#E8E0D4] hover:text-[#0D9488]'}`}
+                                        title="Helpful"
+                                    >
+                                        <FontAwesomeIcon icon={faThumbsUp} className="w-3 h-3" />
+                                    </button>
+                                    <button
+                                        onClick={() => handleFeedback(message.id, 1, false)}
+                                        disabled={feedbackSubmitted.has(message.id)}
+                                        className={`p-1.5 rounded transition-colors ${feedbackSubmitted.has(message.id) ? 'opacity-40 cursor-not-allowed' : 'hover:bg-[#E8E0D4] hover:text-red-600'}`}
+                                        title="Not helpful"
+                                    >
+                                        <FontAwesomeIcon icon={faThumbsDown} className="w-3 h-3" />
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                    </>
+                )}
+
+                {/* ── User message ── */}
+                {message.role === 'user' && (
+                    <>
+                        <div className="text-sm sm:text-[15px] leading-relaxed">
+                            {isEditing && editInput !== undefined && setEditInput ? (
+                                <div className="space-y-2 min-w-[200px]">
+                                    <textarea
+                                        value={editInput}
+                                        onChange={(e) => setEditInput(e.target.value)}
+                                        className="w-full bg-white/10 border border-white/20 rounded-lg p-2 text-sm focus:outline-none focus:border-[#EAB308] min-h-[60px]"
+                                        autoFocus
+                                    />
+                                    <div className="flex justify-end gap-2">
+                                        <button onClick={onCancelEdit} className="text-[10px] px-2 py-1 rounded hover:bg-white/10 transition-colors">Cancel</button>
+                                        <button onClick={onSaveEdit} className="text-[10px] px-2 py-1 rounded bg-[#EAB308] text-[#4b2e22] font-semibold transition-colors">Save & Submit</button>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="group relative">
+                                    <ReactMarkdown remarkPlugins={[remarkGfm]} components={{
+                                        p: (props: MarkdownElementProps<'p'>) => <p className="mb-2.5 last:mb-0 whitespace-pre-wrap" {...stripMarkdownNode(props)} />,
+                                        strong: (props: MarkdownElementProps<'strong'>) => <strong className="font-semibold text-[#CA8A04]" {...stripMarkdownNode(props)} />,
+                                        code: (props: MarkdownElementProps<'code'>) => (
+                                            <code className="px-1.5 py-0.5 rounded text-xs sm:text-sm bg-white/15 text-[#EAB308]" {...stripMarkdownNode(props)} />
+                                        ),
+                                    }}>
+                                        {message.content}
+                                    </ReactMarkdown>
+                                    {!streamingMessageId && onEdit && (
+                                        <button
+                                            onClick={() => onEdit(message.id, message.content)}
+                                            className="absolute -left-8 top-0 opacity-0 group-hover:opacity-100 p-1 rounded text-white/40 hover:text-white transition-all"
+                                            title="Edit message"
+                                        >
+                                            <FontAwesomeIcon icon={faPaperPlane} className="w-2.5 h-2.5 rotate-180" />
+                                        </button>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                        <div className="mt-2 flex items-center gap-3 text-[10px] text-white/40">
+                            {getMessageTimeLabel(message) && <span>{getMessageTimeLabel(message)}</span>}
+                        </div>
+                    </>
+                )}
+            </div>
+        </div>
+    );
+});
+
 export default function Chat() {
     const [isSessionLoading, setIsSessionLoading] = useState(true);
     const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -243,12 +567,25 @@ export default function Chat() {
     const scrollBehaviorRef = useRef<ScrollBehavior>('smooth');
     const sidebarRefreshTimeoutRef = useRef<number | null>(null);
 
+    // ─── Phase 1: Streaming Refs & State ──────────────────────
+    const [streamingDisplay, setStreamingDisplay] = useState('');
+    const streamingContentRef = useRef('');
+    const pendingDeltaRef = useRef('');
+    const rafIdRef = useRef<number | null>(null);
+    const scrollThrottleRef = useRef<number | null>(null);
+    const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
+
+    const scrollToBottomThrottled = useCallback(() => {
+        if (scrollThrottleRef.current) return;
+        scrollThrottleRef.current = window.setTimeout(() => {
+            messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+            scrollThrottleRef.current = null;
+        }, 100);
+    }, []);
+
     useEffect(() => {
         let isMounted = true;
 
-        // Single source of truth: onAuthStateChange fires INITIAL_SESSION on mount,
-        // which replaces the separate getSession() call. This eliminates race conditions
-        // and the double-fetch pattern that was causing the intermittent auth flash.
         const supabase = getSupabaseAuth();
         void sanitizeAuthSession();
         const { data: { subscription } } = supabase.auth.onAuthStateChange((event: AuthChangeEvent, session: Session | null) => {
@@ -271,8 +608,6 @@ export default function Chat() {
                 setSidebarOpen(false);
             }
 
-            // INITIAL_SESSION is the first event fired on page load — it tells us
-            // if there is (or isn't) an existing session. Only stop loading after this.
             if (event === 'INITIAL_SESSION') {
                 setIsSessionLoading(false);
             }
@@ -285,6 +620,12 @@ export default function Chat() {
             historyAbortControllerRef.current?.abort();
             if (sidebarRefreshTimeoutRef.current !== null) {
                 window.clearTimeout(sidebarRefreshTimeoutRef.current);
+            }
+            if (scrollThrottleRef.current !== null) {
+                window.clearTimeout(scrollThrottleRef.current);
+            }
+            if (rafIdRef.current !== null) {
+                cancelAnimationFrame(rafIdRef.current);
             }
         };
     }, []);
@@ -357,17 +698,26 @@ export default function Chat() {
     const stop = useCallback(() => {
         chatAbortControllerRef.current?.abort();
         chatAbortControllerRef.current = null;
+        
+        // If we have partial content, save it as a completed message
+        if (streamingContentRef.current.trim()) {
+            const assistantMessageId = streamingMessageId || createMessageId('assistant');
+            setMessages((current) => [
+                ...current,
+                {
+                    id: assistantMessageId,
+                    role: 'assistant',
+                    content: streamingContentRef.current,
+                    createdAt: new Date(),
+                }
+            ]);
+        }
+        
         setStreamingMessageId(null);
+        setStreamingDisplay('');
+        streamingContentRef.current = '';
         setIsLoading(false);
-        setMessages((current) => {
-            const lastMessage = current[current.length - 1];
-            if (lastMessage?.role === 'assistant' && !lastMessage.content.trim()) {
-                return current.slice(0, -1);
-            }
-
-            return current;
-        });
-    }, []);
+    }, [streamingMessageId]);
 
     const handleInputChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
         setInput(event.target.value);
@@ -390,19 +740,21 @@ export default function Chat() {
             createdAt: new Date(),
         };
         const assistantMessageId = createMessageId('assistant');
-        const assistantPlaceholder: ChatMessage = {
-            id: assistantMessageId,
-            role: 'assistant',
-            content: '',
-            createdAt: new Date(),
-        };
         const requestMessages = [...messages, userMessage];
 
         setHistoryError(null);
         setInput('');
         setIsLoading(true);
         setStreamingMessageId(assistantMessageId);
-        setMessages([...requestMessages, assistantPlaceholder]);
+        setStreamingDisplay('');
+        streamingContentRef.current = '';
+        pendingDeltaRef.current = '';
+        if (rafIdRef.current) {
+            cancelAnimationFrame(rafIdRef.current);
+            rafIdRef.current = null;
+        }
+        
+        setMessages(requestMessages);
 
         try {
             const response = await fetch('/api/chat', {
@@ -446,29 +798,49 @@ export default function Chat() {
             }
 
             await consumeFetchSse(response, async ({ event, data: rawEnvelope }) => {
-                // Unwrap envelope: server wraps payloads as { event, ts, meta, data: <payload> }
                 const payload = (rawEnvelope && typeof rawEnvelope === 'object' && 'data' in rawEnvelope)
                     ? (rawEnvelope as { data: unknown }).data
                     : rawEnvelope;
 
                 if (event === 'delta' && payload && typeof payload === 'object' && 'text' in payload && typeof payload.text === 'string') {
                     const deltaText = payload.text;
-                    setMessages((current) => current.map((message) => (
-                        message.id === assistantMessageId
-                            ? { ...message, content: `${message.content}${deltaText}` }
-                            : message
-                    )));
+                    
+                    // Phase 1A: Delta batching with requestAnimationFrame
+                    pendingDeltaRef.current += deltaText;
+                    streamingContentRef.current += deltaText;
+                    
+                    if (!rafIdRef.current) {
+                        rafIdRef.current = requestAnimationFrame(() => {
+                            setStreamingDisplay(streamingContentRef.current);
+                            rafIdRef.current = null;
+                            pendingDeltaRef.current = '';
+                            scrollToBottomThrottled();
+                        });
+                    }
                     return;
                 }
 
                 if (event === 'done' && payload && typeof payload === 'object' && 'content' in payload && typeof payload.content === 'string') {
                     const finalContent = payload.content;
+                    
+                    if (rafIdRef.current) {
+                        cancelAnimationFrame(rafIdRef.current);
+                        rafIdRef.current = null;
+                    }
+                    
                     setStreamingMessageId(null);
-                    setMessages((current) => current.map((message) => (
-                        message.id === assistantMessageId
-                            ? { ...message, content: finalContent }
-                            : message
-                    )));
+                    setStreamingDisplay('');
+                    streamingContentRef.current = '';
+                    
+                    setMessages((current) => [
+                        ...current,
+                        {
+                            id: assistantMessageId,
+                            role: 'assistant',
+                            content: finalContent,
+                            createdAt: new Date(),
+                        }
+                    ]);
                     return;
                 }
 
@@ -491,13 +863,21 @@ export default function Chat() {
             const fallbackMessage = error instanceof Error
                 ? error.message
                 : 'Failed to process chat request.';
+            
             setStreamingMessageId(null);
+            const currentContent = streamingContentRef.current;
+            setStreamingDisplay('');
+            streamingContentRef.current = '';
 
-            setMessages((current) => current.map((message) => (
-                message.id === assistantMessageId
-                    ? { ...message, content: message.content || fallbackMessage }
-                    : message
-            )));
+            setMessages((current) => [
+                ...current,
+                {
+                    id: assistantMessageId,
+                    role: 'assistant',
+                    content: currentContent || fallbackMessage,
+                    createdAt: new Date(),
+                }
+            ]);
         } finally {
             if (chatAbortControllerRef.current === controller) {
                 chatAbortControllerRef.current = null;
@@ -507,7 +887,7 @@ export default function Chat() {
             }
             setIsLoading(false);
         }
-    }, [activeConversationId, isLoading, language, messages, scheduleConversationRefresh, userId]);
+    }, [activeConversationId, isLoading, language, messages, scheduleConversationRefresh, userId, scrollToBottomThrottled]);
 
     useEffect(() => {
         if (!isAuthenticated) {
@@ -646,17 +1026,11 @@ export default function Chat() {
         }
     }, [activeConversationId, handleNewConversation, historyError?.conversationId]);
 
-    // ─── Save Session State ────────────────────────────────────
     const [showSaveModal, setShowSaveModal] = useState(false);
     const [saveSessionName, setSaveSessionName] = useState('');
     const [isSavingSession, setIsSavingSession] = useState(false);
     const [sessionSaved, setSessionSaved] = useState(false);
 
-    // ─── Guest Question Limit ─────────────────────────────────
-    // GUEST LIMIT: Currently enforced client-side only (localStorage).
-    // TODO: Add server-side IP-based rate limiting via a guest_rate_limit table.
-    // See: supabase/migrations/XXX_guest_rate_limit.sql (not yet created)
-    // The client-side gate prevents casual abuse but not determined bypasses.
     const GUEST_QUESTION_LIMIT = 3;
     const [guestQuestionCount, setGuestQuestionCount] = useState(0);
     const [showGuestGate, setShowGuestGate] = useState(false);
@@ -681,7 +1055,6 @@ export default function Chat() {
         }
     }, [guestQuestionCount]);
 
-    // ─── Save Session Handler ─────────────────────────────────
     const handleSaveSession = useCallback(async () => {
         if (!activeConversationId || !saveSessionName.trim() || isSavingSession) return;
 
@@ -713,7 +1086,6 @@ export default function Chat() {
     const handleSubmit = (e?: { preventDefault?: () => void }) => {
         e?.preventDefault?.();
 
-        // Guest limit check
         if (!isAuthenticated && guestQuestionCount >= GUEST_QUESTION_LIMIT) {
             setShowGuestGate(true);
             return;
@@ -726,7 +1098,6 @@ export default function Chat() {
         void sendMessage(input);
     };
     const [suggestedQuestions, setSuggestedQuestions] = useState<string[]>([]);
-    const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
     const [requestStartTime, setRequestStartTime] = useState<number | null>(null);
     const [responseTimes, setResponseTimes] = useState<Map<string, number>>(new Map());
     const [messageTimestamps, setMessageTimestamps] = useState<Map<string, Date>>(new Map());
@@ -734,10 +1105,59 @@ export default function Chat() {
     const [showScrollBtn, setShowScrollBtn] = useState(false);
     const [feedbackSubmitted, setFeedbackSubmitted] = useState<Set<string>>(new Set());
 
-    const handleFeedback = async (messageId: string, rating: number, isRelevant: boolean) => {
+    // ─── Phase 2: Interaction Handlers ────────────────────────
+    const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+    const [editInput, setEditInput] = useState('');
+
+    const handleRegenerate = useCallback(() => {
+        // Find last user message
+        const lastUserMsg = [...messages].reverse().find(m => m.role === 'user');
+        if (!lastUserMsg) return;
+
+        // Remove the last assistant message (if any) that followed this user message
+        setMessages(current => {
+            const lastMsg = current[current.length - 1];
+            if (lastMsg?.role === 'assistant') {
+                return current.slice(0, -1);
+            }
+            return current;
+        });
+
+        void sendMessage(lastUserMsg.content);
+    }, [messages, sendMessage]);
+
+    const handleEdit = useCallback((id: string, content: string) => {
+        setEditingMessageId(id);
+        setEditInput(content);
+    }, []);
+
+    const handleCancelEdit = useCallback(() => {
+        setEditingMessageId(null);
+        setEditInput('');
+    }, []);
+
+    const handleSaveEdit = useCallback(async () => {
+        if (!editingMessageId || !editInput.trim()) return;
+
+        const id = editingMessageId;
+        const newContent = editInput.trim();
+
+        setEditingMessageId(null);
+        setEditInput('');
+
+        // Find index of editing message
+        const index = messages.findIndex(m => m.id === id);
+        if (index === -1) return;
+
+        // Truncate history up to this message, replace it, then send
+        const newHistory = messages.slice(0, index);
+        setMessages(newHistory);
+        void sendMessage(newContent);
+    }, [editingMessageId, editInput, messages, sendMessage]);
+
+    const handleFeedback = useCallback(async (messageId: string, rating: number, isRelevant: boolean) => {
         if (feedbackSubmitted.has(messageId)) return;
 
-        // Find the user's query that prompted this response
         const msgIndex = messages.findIndex(m => m.id === messageId);
         const queryText = msgIndex > 0 ? messages[msgIndex - 1].content : '';
 
@@ -757,22 +1177,23 @@ export default function Chat() {
         } catch (error) {
             console.error('Failed to submit feedback', error);
         }
-    };
+    }, [feedbackSubmitted, messages]);
 
-    // Suggestions + rotation every 30s
     useEffect(() => {
         setSuggestedQuestions(getCuratedSuggestions());
         const interval = setInterval(() => setSuggestedQuestions(getCuratedSuggestions()), 30000);
         return () => clearInterval(interval);
     }, []);
 
-    // Auto-scroll to bottom
     useEffect(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: scrollBehaviorRef.current });
+        if (scrollBehaviorRef.current === 'smooth') {
+            scrollToBottomThrottled();
+        } else {
+            messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
+        }
         scrollBehaviorRef.current = 'smooth';
-    }, [messages]);
+    }, [messages, scrollToBottomThrottled]);
 
-    // Track response times
     useEffect(() => {
         if (isLoading && !requestStartTime) setRequestStartTime(performance.now());
         if (!isLoading && requestStartTime) {
@@ -783,7 +1204,6 @@ export default function Chat() {
         }
     }, [isLoading, messages, requestStartTime]);
 
-    // Track message timestamps
     useEffect(() => {
         setMessageTimestamps(prev => {
             let next = prev;
@@ -805,14 +1225,12 @@ export default function Chat() {
         });
     }, [messages]);
 
-    // Focus input
     useEffect(() => {
         if (!isLoading && !isLoadingHistory && !isSessionLoading) {
             inputRef.current?.focus();
         }
     }, [isLoading, isLoadingHistory, isSessionLoading, activeConversationId]);
 
-    // Scroll-to-bottom button visibility
     const handleScroll = useCallback(() => {
         const container = chatContainerRef.current;
         if (!container) return;
@@ -824,16 +1242,14 @@ export default function Chat() {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     };
 
-    // Copy to clipboard
-    const handleCopy = async (text: string, id: string) => {
+    const handleCopy = useCallback(async (text: string, id: string) => {
         try {
             await navigator.clipboard.writeText(text);
             setCopiedId(id);
             setTimeout(() => setCopiedId(null), 2000);
         } catch { /* noop */ }
-    };
+    }, []);
 
-    // Ctrl+Enter to send
     const handleKeyDown = (e: React.KeyboardEvent) => {
         if (e.key === 'Enter' && e.ctrlKey && input.trim() && !isLoading && !isLoadingHistory) {
             e.preventDefault();
@@ -842,7 +1258,6 @@ export default function Chat() {
     };
 
     const handleSuggestionClick = (question: string) => {
-        // Guest limit check
         if (!isAuthenticated && guestQuestionCount >= GUEST_QUESTION_LIMIT) {
             setShowGuestGate(true);
             return;
@@ -855,20 +1270,10 @@ export default function Chat() {
         void sendMessage(question);
     };
 
-    const getMessageTimeLabel = (message: ChatMessage) => {
-        const timestamp = message.createdAt instanceof Date
-            ? message.createdAt
-            : messageTimestamps.get(message.id);
-
-        return timestamp ? formatRelativeTime(timestamp) : '';
-    };
-
-    // ─── Welcome screen suggestion grid ─────────────────────
     const welcomeSuggestions = useMemo(() => {
         return suggestedQuestions.length >= 4 ? suggestedQuestions.slice(0, 4) : getCuratedSuggestions();
     }, [suggestedQuestions]);
 
-    // ─── Loading state (waiting for session check) ────────────
     if (isSessionLoading) {
         return (
             <div className="min-h-screen flex flex-col items-center justify-center p-4">
@@ -880,18 +1285,14 @@ export default function Chat() {
         );
     }
 
-    // ─── Chat Interface ───────────────────────────────────────
     const groupedConversations = groupConversationsByDate(conversations);
 
     return (
         <div className="flex h-[100dvh]">
-            {/* ─── Conversation Sidebar ─── */}
-            {/* Mobile overlay */}
             {isAuthenticated && sidebarOpen && (
                 <div className="fixed inset-0 bg-black/40 z-30 lg:hidden" onClick={() => setSidebarOpen(false)} />
             )}
 
-            {/* Floating sidebar toggle — visible when sidebar is closed, authenticated */}
             {isAuthenticated && !sidebarOpen && (
                 <div className="fixed top-0 left-0 z-50 h-16 flex items-center px-3">
                     <button
@@ -1030,9 +1431,7 @@ export default function Chat() {
                 </aside>
             )}
 
-            {/* ─── Main Chat Area ─── */}
             <div className="flex flex-col flex-1 min-w-0 transition-all duration-300">
-                {/* ─── Brushed Metal Header ─── */}
                 <header className="sticky top-0 z-20 skeuo-metal flex-shrink-0">
                     <div className="max-w-3xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between gap-2">
                         <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
@@ -1067,11 +1466,9 @@ export default function Chat() {
                     </div>
                 </header>
 
-                {/* ─── Chat Area ─── */}
                 <main ref={chatContainerRef} onScroll={handleScroll} className="flex-1 overflow-y-auto px-3 py-4 sm:px-6 sm:py-6">
                     <div className="max-w-3xl mx-auto space-y-4 sm:space-y-5">
 
-                        {/* ── Welcome Screen ── */}
                         {isLoadingHistory ? (
                             <div className="flex flex-col gap-4 p-4">
                                 {[0, 1, 2, 3].map(index => (
@@ -1123,13 +1520,12 @@ export default function Chat() {
                                         </div>
                                     </div>
                                     <h2 className="text-xl sm:text-2xl lg:text-3xl font-semibold mb-2 sm:mb-3 text-[#1C1917]">
-                                        {TEXT_MAP[language].welcome}
+                                        {TEXT_MAP[language as keyof typeof TEXT_MAP].welcome}
                                     </h2>
                                     <p className="text-[#78716C] max-w-md mx-auto leading-relaxed text-sm">
-                                        {TEXT_MAP[language].intro}
+                                        {TEXT_MAP[language as keyof typeof TEXT_MAP].intro}
                                     </p>
 
-                                    {/* Suggestion grid */}
                                     <div className="mt-6 sm:mt-8 grid gap-2.5 sm:gap-3 sm:grid-cols-2 text-sm text-left">
                                         {welcomeSuggestions.map((question, i) => {
                                             return (
@@ -1147,7 +1543,6 @@ export default function Chat() {
                                         })}
                                     </div>
 
-                                    {/* Capability tags */}
                                     <div className="mt-5 sm:mt-6 flex flex-wrap justify-center gap-1.5 sm:gap-2">
                                         {['Wiring Diagrams', 'Modbus RTU', 'I/O Fault', 'Commissioning', 'RS-485', 'Network Topology'].map((tag) => (
                                             <span key={tag} className="text-[10px] sm:text-[11px] px-2.5 py-1 rounded-full bg-[#F0EBE3] text-[#78716C] border border-[#D6CFC4] shadow-[inset_0_1px_2px_rgba(0,0,0,0.06)]">
@@ -1158,201 +1553,52 @@ export default function Chat() {
                                 </div>
                             </div>
                         ) : (
-                            /* ── Messages ── */
-                            messages.map((m) => {
-                                const parsed = m.role === 'assistant' ? parseMessageContent(m.content) : null;
-                                const isStreamingAssistant = m.role === 'assistant' && m.id === streamingMessageId;
-                                const showThinkingState = isStreamingAssistant && !m.content.trim();
-
-                                return (
-                                    <div key={m.id}
-                                        className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'} animate-fade-up`}
-                                        style={{ contentVisibility: 'auto' }}
-                                    >
-                                        <div className={`max-w-[92%] sm:max-w-[85%] ${m.role === 'user'
-                                            ? 'rounded-2xl p-3.5 sm:p-4 lg:p-5 bg-[#4b2e22] text-[#FAF7F2] shadow-[0_2px_4px_rgba(0,0,0,0.2)] rounded-tr-sm'
-                                            : parsed?.isDiagram
-                                                ? 'w-full' // diagram takes full width
-                                                : 'rounded-2xl p-4 sm:p-5 bg-[#FAF7F2] border border-[#D6CFC4] text-[#1C1917] shadow-sm rounded-tl-sm'
-                                            }`}>
-
-                                            {/* ── Assistant: Diagram Response ── */}
-                                            {m.role === 'assistant' && parsed?.isDiagram && parsed.diagram && (
-                                                <div className="w-full">
-                                                    {/* Bot label */}
-                                                    <div className="flex items-center gap-2 mb-1 px-1">
-                                                        <div className="w-5 h-5 rounded-md bg-blue-900/30 flex items-center justify-center text-blue-400 border border-blue-700/30">
-                                                            <FontAwesomeIcon icon={faDiagramProject} className="w-2.5 h-2.5" />
-                                                        </div>
-                                                        <span className="text-[10px] text-blue-400 font-semibold tracking-wide uppercase font-mono">
-                                                            Diagram Generated
-                                                        </span>
-                                                        {responseTimes.has(m.id) && (
-                                                            <span className="text-[10px] text-[#A8A29E] flex items-center gap-1 ml-auto">
-                                                                <FontAwesomeIcon icon={faBolt} className="w-2.5 h-2.5" />
-                                                                {responseTimes.get(m.id)!.toFixed(1)}s
-                                                            </span>
-                                                        )}
-                                                    </div>
-                                                    <DiagramCard
-                                                        markdown={parsed.diagram.markdown}
-                                                        title={parsed.diagram.title}
-                                                        diagramType={parsed.diagram.diagramType}
-                                                        panelType={parsed.diagram.panelType}
-                                                        hasKBContext={parsed.diagram.hasKBContext}
-                                                        language={language}
-                                                    />
-                                                    <div className="mt-2 flex items-center justify-end">
-                                                        <div className="flex items-center gap-1">
-                                                            <button
-                                                                onClick={() => handleFeedback(m.id, 5, true)}
-                                                                disabled={feedbackSubmitted.has(m.id)}
-                                                                className={`p-1.5 rounded transition-colors ${feedbackSubmitted.has(m.id) ? 'opacity-40 cursor-not-allowed text-[#A8A29E]' : 'hover:bg-[#E8E0D4] hover:text-[#0D9488] text-[#A8A29E]'}`}
-                                                                title="Helpful"
-                                                            >
-                                                                <FontAwesomeIcon icon={faThumbsUp} className="w-3 h-3" />
-                                                            </button>
-                                                            <button
-                                                                onClick={() => handleFeedback(m.id, 1, false)}
-                                                                disabled={feedbackSubmitted.has(m.id)}
-                                                                className={`p-1.5 rounded transition-colors ${feedbackSubmitted.has(m.id) ? 'opacity-40 cursor-not-allowed text-[#A8A29E]' : 'hover:bg-[#E8E0D4] hover:text-red-600 text-[#A8A29E]'}`}
-                                                                title="Not helpful"
-                                                            >
-                                                                <FontAwesomeIcon icon={faThumbsDown} className="w-3 h-3" />
-                                                            </button>
-                                                        </div>
-                                                    </div>
-                                                    {getMessageTimeLabel(m) && (
-                                                        <div className="mt-2 px-1 text-[10px] text-[#A8A29E]">
-                                                            {getMessageTimeLabel(m)}
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            )}
-
-                                            {/* ── Assistant: Normal Text Response ── */}
-                                            {m.role === 'assistant' && !parsed?.isDiagram && (
-                                                <>
-                                                    <div className="flex items-center justify-between mb-2.5">
-                                                        <div className="flex items-center gap-2">
-                                                            <div className="w-5 h-5 sm:w-6 sm:h-6 rounded-md bg-[#0D9488]/15 flex items-center justify-center text-[#0D9488] border border-[#0D9488]/20">
-                                                                <FontAwesomeIcon icon={faRobot} className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
-                                                            </div>
-                                                            <div className="text-[10px] sm:text-xs text-[#0D9488] font-semibold tracking-wide uppercase">Support AI</div>
-                                                            {isStreamingAssistant && (
-                                                                <div className="flex gap-1 items-center ml-1">
-                                                                    <div className="w-1.5 h-1.5 rounded-full bg-[#CA8A04] animate-bounce" style={{ animationDelay: '0ms' }} />
-                                                                    <div className="w-1.5 h-1.5 rounded-full bg-[#D97706] animate-bounce" style={{ animationDelay: '150ms' }} />
-                                                                    <div className="w-1.5 h-1.5 rounded-full bg-[#0D9488] animate-bounce" style={{ animationDelay: '300ms' }} />
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                        {m.content.trim() && (
-                                                            <button onClick={() => handleCopy(m.content, m.id)}
-                                                                className="p-1 rounded text-[#A8A29E] hover:text-[#CA8A04] transition-colors cursor-pointer"
-                                                                title="Copy response">
-                                                                <FontAwesomeIcon icon={copiedId === m.id ? faCheck : faCopy}
-                                                                    className={`w-3 h-3 ${copiedId === m.id ? 'text-emerald-600' : ''}`} />
-                                                            </button>
-                                                        )}
-                                                    </div>
-                                                    <div className="text-sm sm:text-[15px] leading-relaxed">
-                                                        {showThinkingState ? (
-                                                            <div className="space-y-3">
-                                                                <div className="space-y-2">
-                                                                    <div className="h-3 rounded-full w-[88%] animate-shimmer bg-[#E8E0D4]" />
-                                                                    <div className="h-3 rounded-full w-[72%] animate-shimmer bg-[#E8E0D4]" style={{ animationDelay: '90ms' }} />
-                                                                    <div className="h-3 rounded-full w-[58%] animate-shimmer bg-[#E8E0D4]" style={{ animationDelay: '180ms' }} />
-                                                                </div>
-                                                                <span className="text-[10px] sm:text-[11px] text-[#A8A29E] block">
-                                                                    {TEXT_MAP[language].thinking}
-                                                                </span>
-                                                            </div>
-                                                        ) : (
-                                                            <>
-                                                                <ReactMarkdown remarkPlugins={[remarkGfm]} components={{
-                                                                    p: (props: MarkdownElementProps<'p'>) => <p className="mb-2.5 last:mb-0 whitespace-pre-wrap" {...stripMarkdownNode(props)} />,
-                                                                    ul: (props: MarkdownElementProps<'ul'>) => <ul className="list-disc pl-5 mb-2.5 space-y-1" {...stripMarkdownNode(props)} />,
-                                                                    ol: (props: MarkdownElementProps<'ol'>) => <ol className="list-decimal pl-5 mb-2.5 space-y-1" {...stripMarkdownNode(props)} />,
-                                                                    li: (props: MarkdownElementProps<'li'>) => <li {...stripMarkdownNode(props)} />,
-                                                                    strong: (props: MarkdownElementProps<'strong'>) => <strong className="font-semibold text-[#1C1917]" {...stripMarkdownNode(props)} />,
-                                                                    table: (props: MarkdownElementProps<'table'>) => (
-                                                                        <div className="overflow-x-auto -mx-1 my-3">
-                                                                            <table className="w-full border-collapse text-xs sm:text-sm" {...stripMarkdownNode(props)} />
-                                                                        </div>
-                                                                    ),
-                                                                    thead: (props: MarkdownElementProps<'thead'>) => <thead className="bg-[#F0EBE3]" {...stripMarkdownNode(props)} />,
-                                                                    th: (props: MarkdownElementProps<'th'>) => <th className="border border-[#D6CFC4] px-2.5 py-1.5 sm:px-3 sm:py-2 text-left text-[#1C1917] font-semibold" {...stripMarkdownNode(props)} />,
-                                                                    td: (props: MarkdownElementProps<'td'>) => <td className="border border-[#D6CFC4] px-2.5 py-1.5 sm:px-3 sm:py-2" {...stripMarkdownNode(props)} />,
-                                                                    code: (props: MarkdownElementProps<'code'>) => (
-                                                                        <code className="px-1.5 py-0.5 rounded text-xs sm:text-sm bg-[#F0EBE3] text-[#0D9488] border border-[#D6CFC4]" {...stripMarkdownNode(props)} />
-                                                                    ),
-                                                                }}>
-                                                                    {m.content}
-                                                                </ReactMarkdown>
-                                                                {isStreamingAssistant && (
-                                                                    <div className="mt-2">
-                                                                        <span className="inline-block h-4 w-1.5 rounded-sm bg-[#0D9488] animate-pulse" aria-hidden="true" />
-                                                                    </div>
-                                                                )}
-                                                            </>
-                                                        )}
-                                                    </div>
-                                                    {!isStreamingAssistant && (
-                                                        <div className="mt-2 flex items-center gap-3 text-[10px] text-[#A8A29E]">
-                                                            {responseTimes.has(m.id) && (
-                                                                <span className="flex items-center gap-1">
-                                                                    <FontAwesomeIcon icon={faBolt} className="w-2.5 h-2.5" />
-                                                                    {responseTimes.get(m.id)!.toFixed(1)}s
-                                                                </span>
-                                                            )}
-                                                            {getMessageTimeLabel(m) && <span>{getMessageTimeLabel(m)}</span>}
-                                                            <div className="flex items-center gap-1 ml-auto">
-                                                                <button
-                                                                    onClick={() => handleFeedback(m.id, 5, true)}
-                                                                    disabled={feedbackSubmitted.has(m.id)}
-                                                                    className={`p-1.5 rounded transition-colors ${feedbackSubmitted.has(m.id) ? 'opacity-40 cursor-not-allowed' : 'hover:bg-[#E8E0D4] hover:text-[#0D9488]'}`}
-                                                                    title="Helpful"
-                                                                >
-                                                                    <FontAwesomeIcon icon={faThumbsUp} className="w-3 h-3" />
-                                                                </button>
-                                                                <button
-                                                                    onClick={() => handleFeedback(m.id, 1, false)}
-                                                                    disabled={feedbackSubmitted.has(m.id)}
-                                                                    className={`p-1.5 rounded transition-colors ${feedbackSubmitted.has(m.id) ? 'opacity-40 cursor-not-allowed' : 'hover:bg-[#E8E0D4] hover:text-red-600'}`}
-                                                                    title="Not helpful"
-                                                                >
-                                                                    <FontAwesomeIcon icon={faThumbsDown} className="w-3 h-3" />
-                                                                </button>
-                                                            </div>
-                                                        </div>
-                                                    )}
-                                                </>
-                                            )}
-
-                                            {/* ── User message ── */}
-                                            {m.role === 'user' && (
-                                                <>
-                                                    <div className="text-sm sm:text-[15px] leading-relaxed">
-                                                        <ReactMarkdown remarkPlugins={[remarkGfm]} components={{
-                                                            p: (props: MarkdownElementProps<'p'>) => <p className="mb-2.5 last:mb-0 whitespace-pre-wrap" {...stripMarkdownNode(props)} />,
-                                                            strong: (props: MarkdownElementProps<'strong'>) => <strong className="font-semibold text-[#CA8A04]" {...stripMarkdownNode(props)} />,
-                                                            code: (props: MarkdownElementProps<'code'>) => (
-                                                                <code className="px-1.5 py-0.5 rounded text-xs sm:text-sm bg-white/15 text-[#EAB308]" {...stripMarkdownNode(props)} />
-                                                            ),
-                                                        }}>
-                                                            {m.content}
-                                                        </ReactMarkdown>
-                                                    </div>
-                                                    <div className="mt-2 flex items-center gap-3 text-[10px] text-white/40">
-                                                        {getMessageTimeLabel(m) && <span>{getMessageTimeLabel(m)}</span>}
-                                                    </div>
-                                                </>
-                                            )}
-                                        </div>
-                                    </div>
-                                );
-                            })
+                            <>
+                                {messages.map((m, index) => {
+                                    const isLastAssistant = m.role === 'assistant' && index === messages.length - 1;
+                                    return (
+                                        <MessageBubble
+                                            key={m.id}
+                                            message={m}
+                                            language={language}
+                                            streamingMessageId={null}
+                                            responseTimes={responseTimes}
+                                            messageTimestamps={messageTimestamps}
+                                            copiedId={copiedId}
+                                            feedbackSubmitted={feedbackSubmitted}
+                                            handleCopy={handleCopy}
+                                            handleFeedback={handleFeedback}
+                                            isLastAssistant={isLastAssistant}
+                                            onRegenerate={handleRegenerate}
+                                            onEdit={handleEdit}
+                                            isEditing={editingMessageId === m.id}
+                                            editInput={editInput}
+                                            setEditInput={setEditInput}
+                                            onSaveEdit={handleSaveEdit}
+                                            onCancelEdit={handleCancelEdit}
+                                        />
+                                    );
+                                })}
+                                {isLoading && streamingMessageId && (
+                                    <MessageBubble
+                                        key={streamingMessageId}
+                                        message={{
+                                            id: streamingMessageId,
+                                            role: 'assistant',
+                                            content: streamingDisplay,
+                                            createdAt: new Date()
+                                        }}
+                                        language={language}
+                                        streamingMessageId={streamingMessageId}
+                                        responseTimes={responseTimes}
+                                        messageTimestamps={messageTimestamps}
+                                        copiedId={copiedId}
+                                        feedbackSubmitted={feedbackSubmitted}
+                                        handleCopy={handleCopy}
+                                        handleFeedback={handleFeedback}
+                                    />
+                                )}
+                            </>
                         )}
 
 
@@ -1360,7 +1606,6 @@ export default function Chat() {
                     </div>
                 </main>
 
-                {/* ─── Scroll-to-bottom FAB ─── */}
                 {showScrollBtn && (
                     <button onClick={scrollToBottom}
                         className="fixed bottom-28 sm:bottom-32 right-4 sm:right-6 z-30 skeuo-raised w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center rounded-full shadow-lg animate-fade-up cursor-pointer"
@@ -1369,11 +1614,9 @@ export default function Chat() {
                     </button>
                 )}
 
-                {/* ─── Input Bar ─── */}
                 <div className="flex-shrink-0 bg-gradient-to-t from-[#E8E0D4] via-[#E8E0D4]/95 to-transparent pt-3 sm:pt-4 pb-[env(safe-area-inset-bottom,12px)] sm:pb-5 px-3 sm:px-4 z-20">
                     <div className="max-w-3xl mx-auto">
 
-                        {/* ── Save Session Bar ── */}
                         {isAuthenticated && activeConversationId && messages.length > 0 && !sessionSaved && (
                             <div className="mb-2">
                                 {showSaveModal ? (
@@ -1427,7 +1670,6 @@ export default function Chat() {
                             </div>
                         )}
 
-                        {/* ── Session Saved Confirmation ── */}
                         {sessionSaved && (
                             <div className="mb-2 flex items-center justify-center gap-2 py-1.5 text-xs text-[#16A34A] animate-fade-up">
                                 <FontAwesomeIcon icon={faCheck} className="w-3 h-3" />
@@ -1435,7 +1677,6 @@ export default function Chat() {
                             </div>
                         )}
 
-                        {/* ── Guest Gate or Input Form ── */}
                         {showGuestGate && !isAuthenticated ? (
                             <div className="skeuo-card rounded-2xl p-5 text-center animate-fade-up">
                                 <div className="w-10 h-10 mx-auto rounded-xl bg-[#CA8A04]/10 flex items-center justify-center mb-3">
@@ -1463,7 +1704,7 @@ export default function Chat() {
                                         id="chat-input"
                                         className="skeuo-input w-full p-3 sm:p-4 pl-4 sm:pl-5 pr-12 sm:pr-14 text-sm sm:text-[15px]"
                                         value={input}
-                                        placeholder={TEXT_MAP[language].placeholder}
+                                        placeholder={TEXT_MAP[language as keyof typeof TEXT_MAP].placeholder}
                                         onChange={handleInputChange}
                                         onKeyDown={handleKeyDown}
                                         disabled={isLoading || isLoadingHistory}
@@ -1479,7 +1720,7 @@ export default function Chat() {
                                 </form>
                                 <div className="flex items-center justify-between mt-2">
                                     <p className="text-[10px] sm:text-[11px] text-[#A8A29E]">
-                                        {TEXT_MAP[language].footer} <span className="hidden sm:inline">· Ctrl+Enter to send</span>
+                                        {TEXT_MAP[language as keyof typeof TEXT_MAP].footer} <span className="hidden sm:inline">· Ctrl+Enter to send</span>
                                     </p>
                                     {!isAuthenticated && (
                                         <span className="text-[10px] text-[#A8A29E]">
