@@ -52,6 +52,7 @@ export async function POST(req: NextRequest) {
         ].join('\n');
 
         const vector = await embedText(embeddingText);
+        const vectorString = `[${vector.join(',')}]`;
 
         const knowledgeId = `admin_seed_${Date.now()}`;
         const { error: insertError } = await supabase.from('hms_knowledge').insert({
@@ -63,7 +64,7 @@ export async function POST(req: NextRequest) {
             product: 'HMS Panel',
             tags: [],
             content: embeddingText,
-            embedding: vector,
+            embedding: vectorString,
             source: 'admin',
             source_name: 'Admin Dashboard',
         });

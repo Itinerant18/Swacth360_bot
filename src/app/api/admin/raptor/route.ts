@@ -44,23 +44,26 @@ export async function POST(req: NextRequest) {
 
         const llm = getLLM('complex', { temperature: 0.1, maxTokens: 1024 });
 
+        // Run build in background to prevent 504 timeouts
+        const buildPromise = (async () => {
+            try {
+                const stats = await buildRaptorTree(llm);
+                console.info('[admin.raptor.post] background_success', stats);
+            } catch (err) {
+                console.error('[admin.raptor.post] background_error', err);
+            }
+        })();
 
-        // This route remains synchronous so callers get final build stats.
-        const start = Date.now();
-        const stats = await buildRaptorTree(llm);
-        const latencyMs = Date.now() - start;
-
-        console.info('[admin.raptor.post] success', {
-            latencyMs,
-            ...stats,
-        });
+        // Vercel / Next.js waitUntil support
+        if (typeof (req as any).waitUntil === 'function') {
+            (req as any).waitUntil(buildPromise);
+        }
 
         return NextResponse.json({
             success: true,
-            message: 'RAPTOR tree built successfully',
-            stats,
-            latencyMs,
-        });
+            message: 'RAPTOR build started in background',
+            status: 'running',
+        }, { status: 202 });
     } catch (err: unknown) {
         if (err instanceof RaptorBuildInProgressError) {
             console.warn('[admin.raptor.post] build_in_progress', { message: err.message });

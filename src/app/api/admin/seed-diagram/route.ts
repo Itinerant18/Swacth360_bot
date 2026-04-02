@@ -66,6 +66,7 @@ export async function POST(req: NextRequest) {
         ].filter(Boolean).join('\n');
 
         const vector = await embedText(embeddingText);
+        const vectorString = `[${vector.join(',')}]`;
 
         const id = `diagram_admin_${Date.now()}_${diagramType}`;
 
@@ -78,7 +79,7 @@ export async function POST(req: NextRequest) {
             product: 'HMS Panel',
             tags: [diagramType, 'diagram', 'wiring', panelType?.toLowerCase(), ...entities.map((e: string) => e.toLowerCase())].filter(Boolean),
             content: embeddingText,
-            embedding: vector,
+            embedding: vectorString,
             source: 'admin',
             source_name: cleanSource,
             chunk_type: 'diagram',

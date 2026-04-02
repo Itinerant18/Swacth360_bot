@@ -188,7 +188,8 @@ export async function GET() {
                             : key === 'pdf_image' ? 'PDF Images'
                                 : key === 'admin' ? 'Admin Added'
                                     : key === 'json' ? 'Seed Data'
-                                        : row.source_name || key,
+                                        : key === 'manual' ? 'Technical Diagrams'
+                                            : row.source_name || key,
                 };
             }
             sourceMap[key].count++;

@@ -128,22 +128,16 @@ function kMeans(embeddings: number[][], k: number, maxIter = 20): number[] {
 
     if (k >= n) return embeddings.map((_, i) => i % k);
 
-    // Init: k-means++ seeding (spread initial centroids)
-    const centroids: number[][] = [embeddings[Math.floor(Math.random() * n)]];
+    // Init: simpler seeding for performance at scale
+    // k-means++ is O(n*k^2) during init, which hangs at 2500 chunks
+    const centroids: number[][] = [];
+    const usedIndices = new Set<number>();
     while (centroids.length < k) {
-        // Pick next centroid proportional to distance² from nearest existing
-        const distances = embeddings.map(emb => {
-            const dists = centroids.map(c => euclideanDistSq(emb, c));
-            return Math.min(...dists);
-        });
-        const totalDist = distances.reduce((s, d) => s + d, 0);
-        let rand = Math.random() * totalDist;
-        let chosen = 0;
-        for (let i = 0; i < n; i++) {
-            rand -= distances[i];
-            if (rand <= 0) { chosen = i; break; }
+        const idx = Math.floor(Math.random() * n);
+        if (!usedIndices.has(idx)) {
+            centroids.push([...embeddings[idx]]);
+            usedIndices.add(idx);
         }
-        centroids.push([...embeddings[chosen]]);
     }
 
     let assignments = new Array(n).fill(0);
@@ -329,7 +323,7 @@ export async function buildRaptorTree(llm: ChatOpenAI): Promise<{
         console.log(`\n🌳 RAPTOR BUILD STARTED`);
 
         // ── Step 1: Fetch level-0 chunks ────────────────────────────────────
-        console.log(`   Fetching KB chunks...`);
+        console.log(`   [Stage 1] Fetching KB chunks...`);
         const { data: rawChunks, error } = await supabase
             .from('hms_knowledge')
             .select('id, content, answer, category, entities, source_name, embedding')
@@ -340,6 +334,7 @@ export async function buildRaptorTree(llm: ChatOpenAI): Promise<{
 
         if (error || !rawChunks?.length) throw new Error(`Failed to fetch chunks: ${error?.message}`);
 
+        console.log(`   [Stage 1] Processing ${rawChunks.length} chunks...`);
         const chunks: KBChunk[] = rawChunks
             .map(r => ({
                 ...r,
@@ -348,10 +343,12 @@ export async function buildRaptorTree(llm: ChatOpenAI): Promise<{
             }))
             .filter((chunk) => chunk.embedding.length > 0);
 
-        console.log(`   ${chunks.length} chunks loaded`);
+        console.log(`   [Stage 1] ${chunks.length} valid chunks loaded`);
 
         // ── Step 2: Clear existing RAPTOR clusters ────────────────────────
+        console.log(`   [Stage 2] Clearing existing RAPTOR clusters...`);
         await supabase.from('raptor_clusters').delete().gte('level', 0);
+        console.log(`   [Stage 2] Old clusters cleared`);
 
         // ── Step 3: Build tree level by level ────────────────────────────
         let currentLevelChunks: KBChunk[] = chunks;
@@ -374,29 +371,41 @@ export async function buildRaptorTree(llm: ChatOpenAI): Promise<{
 
             console.log(`   → ${clusters.length} valid clusters`);
 
-            // Generate summaries + embeddings for each cluster (batch)
+            // Generate summaries + embeddings for each cluster (parallel batches)
+            console.log(`   Generating summaries for ${clusters.length} clusters in batches...`);
             const nodes: RaptorNode[] = [];
-            const summaries: string[] = [];
+            const LLM_BATCH_SIZE = 10; // Process 10 clusters at a time to stay under rate limits
 
-            for (let i = 0; i < clusters.length; i++) {
-                const cluster = clusters[i];
-                const summary = await generateClusterSummary(cluster, currentLevel, llm);
-                summaries.push(summary);
+            for (let i = 0; i < clusters.length; i += LLM_BATCH_SIZE) {
+                const batch = clusters.slice(i, i + LLM_BATCH_SIZE);
+                console.log(`     Processing summary batch ${Math.floor(i / LLM_BATCH_SIZE) + 1}/${Math.ceil(clusters.length / LLM_BATCH_SIZE)}...`);
+                
+                const summaryResults = await Promise.all(
+                    batch.map(async (cluster, batchIdx) => {
+                        const globalIdx = i + batchIdx;
+                        const summary = await generateClusterSummary(cluster, currentLevel, llm);
+                        return { cluster, i: globalIdx, summary };
+                    })
+                );
 
-                nodes.push({
-                    level: currentLevel,
-                    clusterId: i,
-                    summary,
-                    embedding: [],  // filled after batch embed
-                    childIds: cluster.memberIds,
-                    childLevel: currentLevel - 1,
-                    entryCount: cluster.members.length,
-                    category: cluster.category,
-                    entities: cluster.entities,
-                    sourceNames: cluster.sourceNames,
-                    qualityScore: computeQualityScore(cluster.members),
-                });
+                for (const { cluster, i: idx, summary } of summaryResults) {
+                    nodes.push({
+                        level: currentLevel,
+                        clusterId: idx,
+                        summary,
+                        embedding: [],  // filled after batch embed
+                        childIds: cluster.memberIds,
+                        childLevel: currentLevel - 1,
+                        entryCount: cluster.members.length,
+                        category: cluster.category,
+                        entities: cluster.entities,
+                        sourceNames: cluster.sourceNames,
+                        qualityScore: computeQualityScore(cluster.members),
+                    });
+                }
             }
+
+            const summaries = nodes.map(n => n.summary);
 
             // Batch embed all summaries
             console.log(`   Embedding ${summaries.length} summaries...`);

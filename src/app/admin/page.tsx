@@ -176,7 +176,13 @@ export default function AdminDashboard() {
             if (!res.ok) throw new Error(data.error || 'Failed to load RAPTOR data');
             const nextHealth = data.health || [];
             const nextBuildLog = data.buildLog || [];
-            const hasRunningBuild = nextBuildLog.some((log: { status?: string }) => log.status === 'running');
+            // Only consider it "running" if it started in the last hour
+            const hasRunningBuild = nextBuildLog.some((log: { status?: string; started_at: string }) => {
+                if (log.status !== 'running') return false;
+                const start = new Date(log.started_at).getTime();
+                const now = Date.now();
+                return (now - start) < 60 * 60 * 1000; // 1 hour
+            });
 
             setRaptorHealth(nextHealth);
             setRaptorBuildLog(nextBuildLog);
@@ -210,6 +216,16 @@ export default function AdminDashboard() {
                 keepBuilding = true;
                 setRaptorError('');
                 setRaptorInfo('RAPTOR build already in progress. Build history refreshes automatically.');
+                await fetchRaptor(true);
+                return;
+            }
+
+            if (res.status === 202) {
+                // Background build started
+                keepBuilding = true;
+                setRaptorError('');
+                setRaptorInfo('RAPTOR build started in background. Build history refreshes automatically.');
+                showToast('RAPTOR build started in background');
                 await fetchRaptor(true);
                 return;
             }
