@@ -323,6 +323,7 @@ const MessageBubble = React.memo(function MessageBubble({
                                         onClick={onRegenerate}
                                         className="p-1.5 rounded hover:bg-[#E8E0D4] text-[#A8A29E] hover:text-[#CA8A04] transition-colors"
                                         title="Regenerate"
+                                        aria-label="Regenerate"
                                     >
                                         <FontAwesomeIcon icon={faSignal} className="w-3 h-3" />
                                     </button>
@@ -332,6 +333,7 @@ const MessageBubble = React.memo(function MessageBubble({
                                     disabled={feedbackSubmitted.has(message.id)}
                                     className={`p-1.5 rounded transition-colors ${feedbackSubmitted.has(message.id) ? 'opacity-40 cursor-not-allowed text-[#A8A29E]' : 'hover:bg-[#E8E0D4] hover:text-[#0D9488] text-[#A8A29E]'}`}
                                     title="Helpful"
+                                    aria-label="Helpful"
                                 >
                                     <FontAwesomeIcon icon={faThumbsUp} className="w-3 h-3" />
                                 </button>
@@ -340,6 +342,7 @@ const MessageBubble = React.memo(function MessageBubble({
                                     disabled={feedbackSubmitted.has(message.id)}
                                     className={`p-1.5 rounded transition-colors ${feedbackSubmitted.has(message.id) ? 'opacity-40 cursor-not-allowed text-[#A8A29E]' : 'hover:bg-[#E8E0D4] hover:text-red-600 text-[#A8A29E]'}`}
                                     title="Not helpful"
+                                    aria-label="Not helpful"
                                 >
                                     <FontAwesomeIcon icon={faThumbsDown} className="w-3 h-3" />
                                 </button>
@@ -373,7 +376,8 @@ const MessageBubble = React.memo(function MessageBubble({
                             {message.content.trim() && (
                                 <button onClick={() => handleCopy(message.content, message.id)}
                                     className="p-1 rounded text-[#A8A29E] hover:text-[#CA8A04] transition-colors cursor-pointer"
-                                    title="Copy response">
+                                    title="Copy response"
+                                    aria-label="Copy response">
                                     <FontAwesomeIcon icon={copiedId === message.id ? faCheck : faCopy}
                                         className={`w-3 h-3 ${copiedId === message.id ? 'text-emerald-600' : ''}`} />
                                 </button>
@@ -476,6 +480,7 @@ const MessageBubble = React.memo(function MessageBubble({
                                             onClick={onRegenerate}
                                             className="p-1.5 rounded hover:bg-[#E8E0D4] hover:text-[#CA8A04] transition-colors"
                                             title="Regenerate"
+                                            aria-label="Regenerate"
                                         >
                                             <FontAwesomeIcon icon={faSignal} className="w-3 h-3" />
                                         </button>
@@ -485,6 +490,7 @@ const MessageBubble = React.memo(function MessageBubble({
                                         disabled={feedbackSubmitted.has(message.id)}
                                         className={`p-1.5 rounded transition-colors ${feedbackSubmitted.has(message.id) ? 'opacity-40 cursor-not-allowed' : 'hover:bg-[#E8E0D4] hover:text-[#0D9488]'}`}
                                         title="Helpful"
+                                        aria-label="Helpful"
                                     >
                                         <FontAwesomeIcon icon={faThumbsUp} className="w-3 h-3" />
                                     </button>
@@ -493,6 +499,7 @@ const MessageBubble = React.memo(function MessageBubble({
                                         disabled={feedbackSubmitted.has(message.id)}
                                         className={`p-1.5 rounded transition-colors ${feedbackSubmitted.has(message.id) ? 'opacity-40 cursor-not-allowed' : 'hover:bg-[#E8E0D4] hover:text-red-600'}`}
                                         title="Not helpful"
+                                        aria-label="Not helpful"
                                     >
                                         <FontAwesomeIcon icon={faThumbsDown} className="w-3 h-3" />
                                     </button>
@@ -535,6 +542,7 @@ const MessageBubble = React.memo(function MessageBubble({
                                             onClick={() => onEdit(message.id, message.content)}
                                             className="absolute -left-8 top-0 opacity-0 group-hover:opacity-100 p-1 rounded text-white/40 hover:text-white transition-all"
                                             title="Edit message"
+                                            aria-label="Edit message"
                                         >
                                             <FontAwesomeIcon icon={faPaperPlane} className="w-2.5 h-2.5 rotate-180" />
                                         </button>
@@ -1320,6 +1328,7 @@ export default function Chat() {
                                         onClick={() => setSidebarOpen(false)}
                                         className="flex items-center justify-center w-10 h-10 rounded-lg text-[#78716C] hover:text-[#1C1917] hover:bg-black/5 transition-colors"
                                         title="Close sidebar"
+                                        aria-label="Close sidebar"
                                     >
                                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                             <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
@@ -1332,6 +1341,7 @@ export default function Chat() {
                                     onClick={handleNewConversation}
                                     className="p-1.5 rounded-lg text-[#78716C] hover:text-[#CA8A04] hover:bg-[#CA8A04]/10 transition-colors"
                                     title="New conversation"
+                                    aria-label="New conversation"
                                 >
                                     <FontAwesomeIcon icon={faPlus} className="w-3.5 h-3.5" />
                                 </button>
@@ -1401,6 +1411,7 @@ export default function Chat() {
                                                                         : 'opacity-0 group-hover:opacity-100'
                                                                     }`}
                                                                 title="Delete"
+                                                                aria-label="Delete"
                                                             >
                                                                 <FontAwesomeIcon icon={faTrash} className="w-3 h-3" />
                                                             </button>
@@ -1453,7 +1464,7 @@ export default function Chat() {
                         <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
                             <LanguageSelector language={language} setLanguage={setLanguage} />
                             {isAuthenticated ? (
-                                <button onClick={handleSignOut} className="skeuo-raised flex items-center gap-1.5 text-xs text-[#44403C] px-2.5 py-1.5 sm:px-3 sm:py-2 transition-all hover:bg-red-50 hover:text-red-700 flex-shrink-0" title="Sign Out">
+                                <button onClick={handleSignOut} className="skeuo-raised flex items-center gap-1.5 text-xs text-[#44403C] px-2.5 py-1.5 sm:px-3 sm:py-2 transition-all hover:bg-red-50 hover:text-red-700 flex-shrink-0" title="Sign Out" aria-label="Sign Out">
                                     <FontAwesomeIcon icon={faSignOutAlt} className="w-3.5 h-3.5" />
                                     <span className="hidden sm:inline">Sign Out</span>
                                 </button>
@@ -1609,7 +1620,8 @@ export default function Chat() {
                 {showScrollBtn && (
                     <button onClick={scrollToBottom}
                         className="fixed bottom-28 sm:bottom-32 right-4 sm:right-6 z-30 skeuo-raised w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center rounded-full shadow-lg animate-fade-up cursor-pointer"
-                        title="Scroll to bottom">
+                        title="Scroll to bottom"
+                        aria-label="Scroll to bottom">
                         <FontAwesomeIcon icon={faChevronDown} className="w-3.5 h-3.5 text-[#44403C]" />
                     </button>
                 )}
@@ -1654,6 +1666,8 @@ export default function Chat() {
                                         <button
                                             onClick={() => { setShowSaveModal(false); setSaveSessionName(''); }}
                                             className="p-1.5 rounded-lg text-[#78716C] hover:text-[#1C1917] hover:bg-black/5 transition-colors"
+                                            title="Cancel save"
+                                            aria-label="Cancel save"
                                         >
                                             <FontAwesomeIcon icon={faTimes} className="w-3 h-3" />
                                         </button>
@@ -1711,7 +1725,8 @@ export default function Chat() {
                                         autoComplete="off"
                                     />
                                     <button type="submit" disabled={isLoading || isLoadingHistory || !input.trim()}
-                                        className="absolute right-1.5 sm:right-2 p-2 sm:p-2.5 skeuo-brass rounded-lg sm:rounded-xl disabled:opacity-30">
+                                        className="absolute right-1.5 sm:right-2 p-2 sm:p-2.5 skeuo-brass rounded-lg sm:rounded-xl disabled:opacity-30"
+                                        aria-label="Send message">
                                         {isLoading || isLoadingHistory
                                             ? <FontAwesomeIcon icon={faSpinner} className="w-3.5 h-3.5 sm:w-4 sm:h-4 animate-spin" />
                                             : <FontAwesomeIcon icon={faPaperPlane} className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
