@@ -270,15 +270,16 @@ export default function MermaidBlock({ code }: MermaidBlockProps) {
                 marginBottom: '6px',
                 justifyContent: 'flex-end',
             }}>
-                <button onClick={handleZoomOut} title="Zoom out" style={zoomBtnStyle}>−</button>
+                <button onClick={handleZoomOut} aria-label="Zoom out" title="Zoom out" style={zoomBtnStyle}>−</button>
                 <button
                     onClick={handleZoomReset}
+                    aria-label="Reset zoom"
                     title="Reset zoom"
                     style={{ ...zoomBtnStyle, width: 'auto', padding: '2px 8px', fontSize: '10px' }}
                 >
                     {Math.round(zoom * 100)}%
                 </button>
-                <button onClick={handleZoomIn} title="Zoom in" style={zoomBtnStyle}>+</button>
+                <button onClick={handleZoomIn} aria-label="Zoom in" title="Zoom in" style={zoomBtnStyle}>+</button>
             </div>
 
             {/* SVG container */}
