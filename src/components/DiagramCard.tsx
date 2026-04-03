@@ -6,7 +6,7 @@ import remarkGfm from 'remark-gfm';
 import dynamic from 'next/dynamic';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { 
-    faExpand, faCompress, faCopy, faCheck, 
+    faExpand, faCopy, faCheck,
     faBook, faWandSparkles, faTimes, faChevronRight 
 } from '@fortawesome/free-solid-svg-icons';
 
