@@ -6,7 +6,7 @@ import remarkGfm from 'remark-gfm';
 import dynamic from 'next/dynamic';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { 
-    faExpand, faCompress, faCopy, faCheck, 
+    faExpand, faCopy, faCheck,
     faBook, faWandSparkles, faTimes, faChevronRight 
 } from '@fortawesome/free-solid-svg-icons';
 
@@ -258,6 +258,7 @@ export default function DiagramCard({
                             onClick={() => setIsExpanded(true)}
                             className="p-1.5 sm:px-2.5 sm:py-1.5 rounded-md bg-[#21262d] text-[#8b949e] hover:text-white hover:bg-[#30363d] border border-[#30363d] text-[11px] font-medium transition-all flex items-center gap-1.5"
                             title={lbl.expand}
+                            aria-label={lbl.expand}
                         >
                             <FontAwesomeIcon icon={faExpand} className="text-[10px]" />
                             <span className="hidden sm:inline">{lbl.expand}</span>
@@ -270,6 +271,8 @@ export default function DiagramCard({
                                     ? 'bg-emerald-600/20 text-emerald-400 border-emerald-500/30' 
                                     : 'bg-[#21262d] text-[#8b949e] border-[#30363d] hover:text-white hover:bg-[#30363d]'
                             }`}
+                            title={copied ? lbl.copied : lbl.copy}
+                            aria-label={copied ? lbl.copied : lbl.copy}
                         >
                             <FontAwesomeIcon icon={copied ? faCheck : faCopy} className="text-[10px]" />
                             <span className="hidden sm:inline">{copied ? lbl.copied : lbl.copy}</span>
@@ -317,6 +320,8 @@ export default function DiagramCard({
                                             ? 'bg-emerald-600/20 text-emerald-400 border-emerald-500/30' 
                                             : 'bg-[#21262d] text-[#e6edf3] border-[#30363d] hover:bg-[#30363d]'
                                     }`}
+                                    title={copied ? lbl.copied : lbl.copy}
+                                    aria-label={copied ? lbl.copied : lbl.copy}
                                 >
                                     <FontAwesomeIcon icon={copied ? faCheck : faCopy} />
                                     <span className="hidden sm:inline">{copied ? lbl.copied : lbl.copy}</span>
@@ -326,6 +331,7 @@ export default function DiagramCard({
                                     onClick={() => setIsExpanded(false)}
                                     className="p-2 sm:p-2.5 rounded-lg bg-[#21262d] text-[#8b949e] hover:text-white hover:bg-red-500/20 hover:border-red-500/30 border border-[#30363d] transition-all"
                                     title="Close"
+                                    aria-label="Close diagram modal"
                                 >
                                     <FontAwesomeIcon icon={faTimes} className="text-base" />
                                 </button>
