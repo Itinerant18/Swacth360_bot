@@ -257,7 +257,7 @@ export default function DiagramCard({
                         <button
                             onClick={() => setIsExpanded(true)}
                             className="p-1.5 sm:px-2.5 sm:py-1.5 rounded-md bg-[#21262d] text-[#8b949e] hover:text-white hover:bg-[#30363d] border border-[#30363d] text-[11px] font-medium transition-all flex items-center gap-1.5"
-                            title={lbl.expand}
+                            title={lbl.expand} aria-label={lbl.expand}
                         >
                             <FontAwesomeIcon icon={faExpand} className="text-[10px]" />
                             <span className="hidden sm:inline">{lbl.expand}</span>
@@ -325,7 +325,7 @@ export default function DiagramCard({
                                 <button
                                     onClick={() => setIsExpanded(false)}
                                     className="p-2 sm:p-2.5 rounded-lg bg-[#21262d] text-[#8b949e] hover:text-white hover:bg-red-500/20 hover:border-red-500/30 border border-[#30363d] transition-all"
-                                    title="Close"
+                                    title="Close" aria-label="Close"
                                 >
                                     <FontAwesomeIcon icon={faTimes} className="text-base" />
                                 </button>
