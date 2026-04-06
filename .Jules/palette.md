@@ -1,0 +1,3 @@
+## 2026-04-06 - Icon-only buttons accessibility pattern
+**Learning:** This application extensively uses icon-only buttons (like in Chat component headers, sidebar toggles, and send actions) which previously lacked both `aria-label` attributes and semantic screen-reader text, limiting accessibility for users relying on assistive technologies. The pattern spans multiple component files, indicating a recurring a11y blind spot in the design system.
+**Action:** Always verify that icon-only buttons have a descriptive `aria-label` (and consider a `title` for visual tooltip) when reviewing components across this app. Check related components or siblings when one button is found missing an `aria-label`, as the pattern usually extends to others nearby.
