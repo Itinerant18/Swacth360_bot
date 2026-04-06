@@ -1,397 +1,501 @@
-# Chat Output & SSE Polish Plan
+# Chat UI Polish — 6 Fixes Execution Prompt
 
-**Created:** 2026-04-02
+**Created:** 2026-04-06
 **Author:** Claude Code (Opus 4.6)
-**Status:** READY FOR EXECUTION
-**Target:** Make chat output, diagrams, and SSE streaming polished like ChatGPT/Claude
+**Status:** READY FOR CODEX/GEMINI EXECUTION
+**Prerequisite:** The surgical refactoring (Phase 0-3) is COMPLETE. All files referenced below are post-refactoring paths.
 
 ---
 
-## Current State Assessment
+## CONTEXT
 
-| Area | Score | Key Gaps |
-|------|:-----:|----------|
-| SSE Streaming UX | 6/10 | No delta batching, full re-render per token, no stop/regenerate, no typing animation |
-| Chat Output Polish | 6/10 | No syntax highlighting, no per-code-block copy, no link styling, markdown flashes during stream |
-| Diagram Output | 7/10 | No fullscreen, no SVG/PNG export, dark theme clashes with light chat UI, no server-side validation |
-| Architecture | 8/10 | Solid SSE envelope pattern, clean separation — no changes needed |
+After the SSE/streaming implementation and UI refactoring, a validation pass identified 5 FAIL and 1 PARTIAL item. This plan fixes all 6. Each fix is isolated — they can be done in any order but must each pass `npx tsc --noEmit` individually.
+
+**Current chat palette (MUST match):**
+- Background: `#E8E0D4` (warm beige)
+- Card surface: `#FAF7F2` (cream)
+- Card border: `#D6CFC4`
+- Hover surface: `#F0EBE3`
+- Primary text: `#1C1917`
+- Muted text: `#78716C` / `#A8A29E`
+- Accent teal: `#0D9488`
+- Accent gold: `#CA8A04`
 
 ---
 
-## Phase 1: Streaming Performance (Critical)
+## FIX 1 — Stop Generation Button (HIGH PRIORITY)
 
-**Problem:** Every LLM token triggers `setMessages()` -> full React re-render -> ReactMarkdown re-parses ALL accumulated text. For a 500-token response, that's ~500 full markdown parses + DOM reconciliations.
+**Problem:** The `stop()` function exists in `useChatStream.ts` (line 68) and is returned from the hook (line 278), but there is NO visible button in the UI to trigger it during streaming.
 
-**Files to modify:**
-- `src/app/page.tsx`
+**Goal:** Add a "Stop generating" button that appears during streaming, positioned between the streaming message and the input bar.
 
-### Steps
+### Step 1.1 — Add `onStop` prop to `ChatInputBar`
 
-#### 1A — Delta batching with `requestAnimationFrame`
+**File:** `src/components/Chat/ChatInputBar.tsx`
 
-Accumulate deltas in a `useRef` buffer. Flush to React state once per animation frame (~60fps = one update per 16ms). This collapses ~500 state updates into ~30.
-
+1. Add a new import at the top:
 ```typescript
-// Concept:
-const pendingDeltaRef = useRef('');
-const rafIdRef = useRef<number | null>(null);
-
-// In SSE consumer, on each delta:
-pendingDeltaRef.current += deltaText;
-if (!rafIdRef.current) {
-    rafIdRef.current = requestAnimationFrame(() => {
-        const buffered = pendingDeltaRef.current;
-        pendingDeltaRef.current = '';
-        rafIdRef.current = null;
-        setMessages((current) => current.map((m) =>
-            m.id === assistantMessageId
-                ? { ...m, content: `${m.content}${buffered}` }
-                : m
-        ));
-    });
-}
+import { faStop } from '@fortawesome/free-solid-svg-icons';
 ```
 
-#### 1B — Separate streaming content from message array
-
-Use a dedicated `streamingContentRef` for the active stream. Only write to `messages` state on the `done` event. Render the streaming message separately.
-
-**Current flow:** delta -> setMessages() -> all messages re-render
-**Target flow:** delta -> ref update -> only streaming bubble re-renders -> done event -> write to messages state once
-
+2. Add these props to the `ChatInputBarProps` type:
 ```typescript
-// Concept:
-const streamingContentRef = useRef('');
-const [streamingDisplay, setStreamingDisplay] = useState('');
-
-// On delta: update ref + display
-// On done: write final content to messages array, clear streaming state
+onStop?: () => void;
+isStreaming?: boolean;
 ```
 
-#### 1C — Throttle scroll
+3. Add `onStop` and `isStreaming` to the destructured props in the component function signature.
 
-Scroll to bottom at most once per 100ms during streaming. Currently fires on every delta.
+4. Add a Stop button ABOVE the `<form>` element (inside the fragment `<>`, before the form). This button should only render when `isStreaming` is true:
 
-```typescript
-// Concept:
-const scrollThrottleRef = useRef<number | null>(null);
-
-function scrollToBottomThrottled() {
-    if (scrollThrottleRef.current) return;
-    scrollThrottleRef.current = window.setTimeout(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-        scrollThrottleRef.current = null;
-    }, 100);
-}
+```tsx
+{isStreaming && onStop && (
+    <button
+        onClick={onStop}
+        className="w-full flex items-center justify-center gap-2 py-2 mb-2 text-xs font-semibold text-[#78716C] hover:text-red-600 rounded-xl border border-[#D6CFC4] bg-[#FAF7F2] hover:bg-red-50 hover:border-red-200 transition-all duration-200"
+        type="button"
+    >
+        <FontAwesomeIcon icon={faStop} className="w-3 h-3" />
+        Stop generating
+    </button>
+)}
 ```
 
-#### 1D — Memoize rendered messages
+### Step 1.2 — Pass `stop` from page.tsx to ChatInputBar
 
-Wrap the message rendering in `React.memo` so non-streaming messages skip re-renders entirely.
+**File:** `src/app/page.tsx`
+
+Find the `<ChatInputBar` usage (around line 881). Add two new props:
+
+```tsx
+<ChatInputBar
+    // ... existing props ...
+    onStop={stop}
+    isStreaming={isLoading && !!streamingMessageId}
+/>
+```
+
+The `stop` function is already available in `page.tsx` from the `useChatStream` hook destructuring. Find where `useChatStream` is destructured and confirm `stop` is included. If not, add it:
 
 ```typescript
-const MessageBubble = React.memo(function MessageBubble({ message, ... }) {
-    // existing render logic
+const { sendMessage, stop, isLoading, streamingMessageId, streamingDisplay, messages, setMessages } = useChatStream({...});
+```
+
+---
+
+## FIX 2 — Link Styling in ReactMarkdown (HIGH PRIORITY)
+
+**Problem:** No `a:` renderer in the ReactMarkdown `components` config. Links render with default browser styling (blue, underlined) which clashes with the warm beige chat palette.
+
+**Goal:** Style links with the teal accent color, underline on hover, and open in new tab.
+
+### Step 2.1 — Add `a` renderer to assistant message ReactMarkdown
+
+**File:** `src/components/Chat/MessageBubble.tsx`
+
+Find the `<ReactMarkdown>` component inside the assistant message block (around line 239). The `components` object has entries for `p`, `ul`, `ol`, `li`, `strong`, `table`, `thead`, `th`, `td`, `code`. Add an `a` entry:
+
+```typescript
+a: ({ href, children, ...rest }: MarkdownElementProps<'a'> & { href?: string }) => (
+    <a
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-[#0D9488] hover:text-[#0A7A6E] underline decoration-[#0D9488]/30 hover:decoration-[#0D9488] transition-colors"
+        {...stripMarkdownNode(rest)}
+    >
+        {children}
+    </a>
+),
+```
+
+Place this AFTER the `strong:` entry and BEFORE the `table:` entry for readability.
+
+### Step 2.2 — Also add `a` renderer to DiagramCard ReactMarkdown
+
+**File:** `src/components/DiagramCard.tsx`
+
+Find the `renderMarkdown()` function (line 79). Inside the `<ReactMarkdown>` `components` prop, add an `a` renderer after the `em` entry (around line 212):
+
+```typescript
+a({ href, children }: React.AnchorHTMLAttributes<HTMLAnchorElement>) {
+    return (
+        <a
+            href={href ?? '#'}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[#58a6ff] hover:text-[#79c0ff] underline decoration-[#58a6ff]/30 hover:decoration-[#58a6ff] transition-colors"
+        >
+            {children}
+        </a>
+    );
+},
+```
+
+Note: DiagramCard uses the dark palette (`#58a6ff` blue) since we're converting it to light in Fix 4. If you do Fix 4 BEFORE Fix 2, use the light palette color (`#0D9488` teal) instead.
+
+---
+
+## FIX 3 — Diagram Light Theme (HIGH PRIORITY)
+
+**Problem:** `DiagramCard.tsx` and `MermaidBlock.tsx` use dark GitHub palette (`#0d1117`, `#161b22`, `#30363d`, `#e6edf3`). This clashes with the warm beige chat UI.
+
+**Goal:** Restyle both components to match the chat palette.
+
+### Step 3.1 — Update MermaidBlock.tsx Mermaid Config
+
+**File:** `src/components/MermaidBlock.tsx`
+
+Replace the entire `mermaid.initialize({...})` block (lines 30-61) with:
+
+```typescript
+mermaid.initialize({
+    startOnLoad: false,
+    theme: 'base',
+    themeVariables: {
+        darkMode: false,
+        background: '#FAF7F2',
+        primaryColor: '#0D9488',
+        primaryTextColor: '#1C1917',
+        primaryBorderColor: '#D6CFC4',
+        secondaryColor: '#F0EBE3',
+        secondaryTextColor: '#78716C',
+        tertiaryColor: '#E8E0D4',
+        lineColor: '#0D9488',
+        textColor: '#1C1917',
+        mainBkg: '#FAF7F2',
+        nodeBorder: '#D6CFC4',
+        clusterBkg: '#F0EBE3',
+        edgeLabelBackground: '#FAF7F2',
+        fontFamily: "'Segoe UI', system-ui, sans-serif",
+        fontSize: '14px',
+    },
+    flowchart: {
+        htmlLabels: true,
+        curve: 'basis',
+        padding: 15,
+    },
+    sequence: {
+        mirrorActors: false,
+        useMaxWidth: true,
+    },
+    securityLevel: 'loose',
 });
 ```
 
-**Validation criteria:**
-- React Profiler shows previous messages NOT re-rendering during stream
-- State updates reduced from ~500 to ~30 per response
-- Smooth scroll, no jank on mobile
-- `done` event still overwrites with final formatted answer
+### Step 3.2 — Update MermaidBlock.tsx Inline Styles
+
+**File:** `src/components/MermaidBlock.tsx`
+
+**Error fallback** (lines 194-224): Replace dark colors:
+- `background: '#1c1208'` → `background: '#FEF3C7'` (warm yellow)
+- `border: '1px solid #5a3e00'` → `border: '1px solid #D97706'`
+- `color: '#d29922'` → `color: '#92400E'`
+- `background: '#161b22'` → `background: '#FAF7F2'`
+- `border: '1px solid #30363d'` → `border: '1px solid #D6CFC4'`
+- `color: '#e6edf3'` → `color: '#1C1917'`
+
+**Loading state** (lines 228-260): Replace dark colors:
+- `background: '#161b22'` → `background: '#FAF7F2'`
+- `border: '1px solid #30363d'` → `border: '1px solid #D6CFC4'`
+- `color: '#8b949e'` → `color: '#78716C'`
+- `border: '2px solid #30363d'` → `border: '2px solid #D6CFC4'`
+- `borderTopColor: '#58a6ff'` → `borderTopColor: '#0D9488'`
+
+**SVG container** (lines 285-296): Replace dark colors:
+- `background: '#0d1117'` → `background: '#FAF7F2'`
+- `border: '1px solid #30363d'` → `border: '1px solid #D6CFC4'`
+
+**Zoom buttons** (`zoomBtnStyle` at lines 312-325): Replace:
+- `background: '#21262d'` → `background: '#F0EBE3'`
+- `color: '#8b949e'` → `color: '#78716C'`
+- `border: '1px solid #30363d'` → `border: '1px solid #D6CFC4'`
+
+### Step 3.3 — Update DiagramCard.tsx Dark Classes
+
+**File:** `src/components/DiagramCard.tsx`
+
+This is a systematic find-and-replace of dark Tailwind classes. Apply these replacements throughout the ENTIRE file:
+
+**Background colors:**
+| Old | New |
+|-----|-----|
+| `bg-[#0d1117]` | `bg-[#FAF7F2]` |
+| `bg-[#161b22]` | `bg-[#F0EBE3]` |
+| `bg-[#21262d]` | `bg-[#E8E0D4]` |
+| `bg-[#010409]/95` | `bg-black/50` |
+
+**Border colors:**
+| Old | New |
+|-----|-----|
+| `border-[#21262d]` | `border-[#D6CFC4]` |
+| `border-[#30363d]` | `border-[#D6CFC4]` |
+
+**Text colors:**
+| Old | New |
+|-----|-----|
+| `text-[#e6edf3]` | `text-[#1C1917]` |
+| `text-[#c9d1d9]` | `text-[#44403C]` |
+| `text-[#8b949e]` | `text-[#78716C]` |
+| `color-[#e6edf3]` | `text-[#1C1917]` |
+| `color-[#79c0ff]` | `text-[#0D9488]` |
+
+**Hover states:**
+| Old | New |
+|-----|-----|
+| `hover:bg-[#30363d]` | `hover:bg-[#D6CFC4]` |
+| `hover:bg-[#161b22]` | `hover:bg-[#F0EBE3]` |
+| `hover:text-white` | `hover:text-[#1C1917]` |
+
+**Accent colors remain as-is:** `text-blue-400`, `text-emerald-400`, `bg-blue-500/10`, `bg-emerald-500/10`, `border-blue-500/20`, `border-emerald-500/20` — these are already semantic and work on both light and dark.
+
+**Special cases:**
+- `hover:bg-red-500/20` → keep as-is (close button hover)
+- `hover:border-red-500/30` → keep as-is
+- `backdrop-blur-sm` → keep as-is (fullscreen overlay)
+
+**Also update the `MermaidBlock` loading fallback** inside DiagramCard (line 16):
+```tsx
+loading: () => (
+    <div className="bg-[#F0EBE3] border border-[#D6CFC4] rounded-lg p-5 text-center text-[#78716C] text-xs my-2.5">
+        Loading diagram renderer…
+    </div>
+),
+```
 
 ---
 
-## Phase 2: Interaction Controls (High Impact, Low Effort)
+## FIX 4 — Fullscreen ESC Key Handler (MEDIUM PRIORITY)
 
-**Problem:** No way to stop a streaming response or retry a bad one. No feedback during the 1-3s RAG pipeline phase before the first token arrives.
+**Problem:** DiagramCard fullscreen modal has no ESC key handler. Users expect pressing Escape to close the modal.
 
-**Files to modify:**
-- `src/app/page.tsx`
+**Goal:** Add keyboard event listener for Escape key.
 
-### Steps
+### Step 4.1 — Add ESC key `useEffect`
 
-#### 2A — Stop Generation button
+**File:** `src/components/DiagramCard.tsx`
 
-Show a button during streaming that aborts the SSE stream. The abort controller already exists at line 240 (`chatAbortControllerRef`).
+Add a new `useEffect` AFTER the existing body overflow `useEffect` (after line 69):
 
-```
-Location: Below the streaming message bubble or at the bottom of the chat area
-Label: "Stop generating" (with stop icon)
-Behavior: chatAbortControllerRef.current?.abort()
-Visibility: Only during active streaming (isLoading && streamingMessageId)
-After stop: Keep partial answer visible, set isLoading = false
-```
-
-#### 2B — Regenerate button
-
-On completed assistant messages, show a retry icon that re-sends the preceding user message.
-
-```
-Location: In the message footer row, next to thumbs up/down
-Icon: faArrowsRotate or faRedo
-Behavior: Find the user message before this assistant message, call sendMessage(userMessage.content)
-Visibility: Only on completed (non-streaming) assistant messages
-```
-
-#### 2C — Thinking phase indicator
-
-Show contextual text before the first delta arrives, with elapsed timer.
-
-```
-Current: Empty skeleton shimmer bars + "Analyzing and generating response..."
-Target:  Phase-aware text:
-  - "Searching knowledge base..." (0-1s)
-  - "Analyzing context..." (1-2s)
-  - "Generating response..." (2s+)
-  - Each with elapsed timer: "Searching knowledge base... 1.2s"
-
-Implementation:
-  - Add a `thinkingPhase` state that cycles via setTimeout intervals
-  - Clear when first delta arrives
-  - Show elapsed time from requestStartTime
-```
-
-**Validation criteria:**
-- Stop button visible during streaming, click aborts cleanly
-- Partial answer preserved after stop
-- Regenerate icon on completed messages, re-sends preceding user message
-- Thinking text shows with elapsed timer before first delta
-
----
-
-## Phase 3: Code Block & Markdown Polish (High Impact)
-
-**Problem:** Industrial operators see code snippets (Modbus configs, JSON, terminal commands) without syntax highlighting. No per-block copy. Links unstyled.
-
-**Files to modify:**
-- `src/app/page.tsx` (markdown renderer config)
-- NEW: `src/components/CodeBlock.tsx`
-
-### Steps
-
-#### 3A — Syntax highlighting with `react-syntax-highlighter`
-
-```bash
-npm install react-syntax-highlighter @types/react-syntax-highlighter
-```
-
-Create `src/components/CodeBlock.tsx`:
-- Detect language from markdown fence (```json, ```bash, etc.)
-- Use a warm-toned theme that matches the skeuomorphic palette
-- Fallback to plain monospace for unknown languages
-- Wrap in a container with header (language badge + copy button)
-
-#### 3B — Per-code-block copy button
-
-Inside `CodeBlock.tsx`:
-- Top-right "Copy" icon button
-- On click: `navigator.clipboard.writeText(code)`
-- Show checkmark for 2s after copy
-- Small, unobtrusive, appears on hover
-
-#### 3C — Language badge
-
-Inside `CodeBlock.tsx` header:
-- Left side: language label (e.g., "json", "bash", "python")
-- Right side: copy button
-- Subtle background (#F0EBE3), small text
-
-#### 3D — Link styling
-
-In the ReactMarkdown `components` config in `page.tsx`:
 ```typescript
-a: (props) => (
-    <a className="text-[#0D9488] underline hover:text-[#0B7C72] transition-colors"
-       target="_blank" rel="noopener noreferrer" {...stripMarkdownNode(props)} />
-)
-```
+useEffect(() => {
+    if (!isExpanded) return;
 
-**Validation criteria:**
-- Code blocks show syntax-colored keywords
-- Language badge visible on code blocks
-- Copy button on each code block, works correctly
-- Links have teal underline + hover effect
+    const handleKeyDown = (event: KeyboardEvent) => {
+        if (event.key === 'Escape') {
+            setIsExpanded(false);
+        }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+}, [isExpanded]);
+```
 
 ---
 
-## Phase 4: Diagram Output Polish
+## FIX 5 — SVG/PNG Diagram Export (MEDIUM PRIORITY)
 
-**Problem:** DiagramCard uses hardcoded GitHub dark theme (#0d1117) inside a light skeuomorphic chat. No fullscreen. No export.
+**Problem:** No download button for diagrams. Users can only copy the raw markdown text.
 
-**Files to modify:**
-- `src/components/DiagramCard.tsx`
-- `src/components/MermaidBlock.tsx`
+**Goal:** Add a "Download" button that exports the rendered diagram as SVG (with PNG fallback).
 
-### Steps
+### Step 5.1 — Add download handler to DiagramCard
 
-#### 4A — Light theme for diagrams
+**File:** `src/components/DiagramCard.tsx`
 
-Update MermaidBlock Mermaid config:
+1. Add import at top:
 ```typescript
-// Current: theme: 'dark', darkMode: true, primaryColor: '#1f6feb'
-// Target:  theme: 'base' (or custom), colors matching chat palette
-//   background: '#FAF7F2' (chat bg)
-//   primaryColor: '#0D9488' (teal accent)
-//   primaryTextColor: '#1C1917' (dark text)
-//   lineColor: '#D6CFC4' (border color)
-//   secondaryColor: '#F0EBE3' (section bg)
+import { faDownload } from '@fortawesome/free-solid-svg-icons';
 ```
 
-Update DiagramCard container styles:
-```
-// Current: background #0d1117, text #e6edf3
-// Target:  background #FAF7F2, text #1C1917, borders #D6CFC4
-```
-
-#### 4B — Fullscreen toggle
-
-Add expand icon in DiagramCard header:
-- Click opens a modal/overlay at full viewport
-- Modal has: close button (X), zoom controls, download button
-- Render same MermaidBlock inside modal at larger scale
-- ESC key closes modal
-
-#### 4C — SVG/PNG export
-
-Add download button in DiagramCard header (and in fullscreen modal):
-- SVG export: grab innerHTML of rendered SVG, create Blob, trigger download
-- PNG export: draw SVG to canvas via `new Image()` + `canvas.toDataURL('image/png')`
-- Filename: `{diagramType}-{timestamp}.svg` or `.png`
-
-#### 4D — Server-side Mermaid validation (optional)
-
-In `src/app/api/diagram/route.ts`:
-- Before returning diagram response, validate Mermaid syntax
-- If invalid, retry LLM generation once with error message in prompt
-- If still invalid, return with `syntaxValid: false` flag so client shows warning
-
-**Validation criteria:**
-- Diagram card matches chat theme (light, warm colors)
-- Fullscreen button opens modal at full viewport
-- Download button saves SVG/PNG file
-- Zoom controls work in both normal and fullscreen
-- Mermaid syntax errors caught before reaching client (if 4D implemented)
-
----
-
-## Phase 5: Streaming Animation Polish (Nice-to-Have)
-
-**Problem:** Text concatenates instantly with no reveal animation. Cursor is a detached block below text.
-
-**Files to modify:**
-- `src/app/page.tsx`
-- `src/app/globals.css`
-
-### Steps
-
-#### 5A — Word-by-word fade-in
-
-Wrap newly appended tokens in `<span>` elements with a CSS fade-in animation:
-```css
-@keyframes token-reveal {
-    from { opacity: 0; }
-    to { opacity: 1; }
-}
-.token-new {
-    animation: token-reveal 0.15s ease-out forwards;
-}
-```
-
-**Note:** This is complex to implement with ReactMarkdown. Alternative approach: apply a CSS `animation` on the last N characters of the rendered output using a pseudo-element or container transition. Simpler but less precise.
-
-#### 5B — Inline blinking caret
-
-Replace the current detached teal block cursor (`animate-pulse`, below message) with an inline thin caret:
-```css
-.streaming-caret::after {
-    content: '|';
-    animation: blink 0.8s step-end infinite;
-    color: #0D9488;
-    font-weight: 300;
-}
-@keyframes blink {
-    50% { opacity: 0; }
-}
-```
-
-This caret should appear inline at the end of the last rendered text, not as a separate div below.
-
-#### 5C — Staggered message entrance
-
-Use CSS custom property to stagger `animate-fade-up` timing:
+Update the existing icon import to include `faDownload`:
 ```typescript
-style={{ animationDelay: `${index * 50}ms` }}
+import { 
+    faExpand, faCompress, faCopy, faCheck, 
+    faBook, faWandSparkles, faTimes, faChevronRight, faDownload
+} from '@fortawesome/free-solid-svg-icons';
 ```
 
-**Validation criteria:**
-- New text appears with subtle fade-in (not instant)
-- Caret blinks inline at end of streaming text, disappears on done
-- New messages slide up with staggered timing
-- `prefers-reduced-motion` disables all animations
-
----
-
-## Execution Order
-
-```
-Phase 1 (Streaming Perf)  ──── CRITICAL, do first
-  └─► Phase 2 (Controls)  ──── High impact, depends on Phase 1 streaming changes
-       └─► Phase 3 (Code Blocks) ── Independent, can parallel with Phase 2
-            └─► Phase 4 (Diagrams) ── Independent
-                 └─► Phase 5 (Animations) ── Nice-to-have, do last
+2. Add `LABELS` entries for the download button. Update each language object:
+```typescript
+const LABELS = {
+    en: { copy: 'Copy', copied: 'Copied!', fromManual: 'Official Reference', aiGenerated: 'AI Generated', expand: 'Expand', download: 'Download' },
+    bn: { copy: 'কপি', copied: 'হয়েছে!', fromManual: 'অফিসিয়াল রেফারেন্স', aiGenerated: 'AI তৈরি', expand: 'বড় করুন', download: 'ডাউনলোড' },
+    hi: { copy: 'कॉपी', copied: 'हो गया!', fromManual: 'आधिकारिक संदर्भ', aiGenerated: 'AI जनित', expand: 'विस्तार करें', download: 'डाउनलोड' },
+};
 ```
 
-Phases 3 and 4 are independent of each other and can be done in parallel.
-Phase 5 depends on Phase 1 (delta batching must be in place for animation to work smoothly).
+3. Add a `containerRef` and download handler inside the component function (after `const icon = ...`):
 
----
+```typescript
+const diagramRef = useRef<HTMLDivElement>(null);
 
-## Tool Assignment
+const handleDownload = useCallback(() => {
+    const container = diagramRef.current;
+    if (!container) return;
 
-| Phase | Recommended Tool | Why |
-|-------|-----------------|-----|
-| Phase 1 | **Codex / Claude Code** | Requires careful React performance optimization, needs testing |
-| Phase 2 | **Codex / Claude Code** | UI logic changes, abort controller wiring |
-| Phase 3 | **Codex** | New component creation, npm install, straightforward |
-| Phase 4 | **Gemini CLI** | Multi-file changes across DiagramCard + MermaidBlock, theme redesign |
-| Phase 5 | **Claude Code** | CSS animation + React integration, needs iterative testing |
+    const svgElement = container.querySelector('svg');
+    if (!svgElement) return;
 
----
+    const svgData = new XMLSerializer().serializeToString(svgElement);
+    const blob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
 
-## Files Reference
-
-| File | Phases | Purpose |
-|------|--------|---------|
-| `src/app/page.tsx` | 1, 2, 3, 5 | Main chat UI — streaming, controls, markdown config |
-| `src/app/globals.css` | 5 | Animation keyframes |
-| `src/components/CodeBlock.tsx` | 3 | NEW — syntax highlighted code block with copy + language badge |
-| `src/components/DiagramCard.tsx` | 4 | Diagram container — theme, fullscreen, export |
-| `src/components/MermaidBlock.tsx` | 4 | Mermaid SVG renderer — theme colors |
-| `src/app/api/diagram/route.ts` | 4 (optional) | Server-side Mermaid validation |
-| `src/lib/sse.ts` | — | No changes needed |
-| `src/lib/fetchSse.ts` | — | No changes needed |
-
----
-
-## Dependencies to Install
-
-```bash
-# Phase 3 — Syntax highlighting
-npm install react-syntax-highlighter @types/react-syntax-highlighter
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${title.replace(/[^a-zA-Z0-9]/g, '_')}_diagram.svg`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+}, [title]);
 ```
 
-No other new dependencies required. All other changes use existing libraries (React, Tailwind, Mermaid, FontAwesome).
+Also add `useRef` and `useCallback` to the React import:
+```typescript
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+```
+
+4. Add `ref={diagramRef}` to the diagram body container. Find the `{/* ── Body ── */}` div (around line 281):
+
+```tsx
+<div ref={diagramRef} className="p-4 sm:p-6 overflow-x-auto ...">
+```
+
+5. Add a Download button in the header button group (between the Expand and Copy buttons):
+
+```tsx
+<button
+    onClick={handleDownload}
+    className="p-1.5 sm:px-2.5 sm:py-1.5 rounded-md bg-[#E8E0D4] text-[#78716C] hover:text-[#1C1917] hover:bg-[#D6CFC4] border border-[#D6CFC4] text-[11px] font-medium transition-all flex items-center gap-1.5"
+    title={lbl.download}
+>
+    <FontAwesomeIcon icon={faDownload} className="text-[10px]" />
+    <span className="hidden sm:inline">{lbl.download}</span>
+</button>
+```
+
+6. Also add the Download button in the fullscreen modal header (between the Copy and Close buttons in the modal):
+
+```tsx
+<button
+    onClick={handleDownload}
+    className={`p-2 sm:px-4 sm:py-2 rounded-lg border text-xs font-semibold transition-all flex items-center gap-2 bg-[#E8E0D4] text-[#1C1917] border-[#D6CFC4] hover:bg-[#D6CFC4]`}
+>
+    <FontAwesomeIcon icon={faDownload} />
+    <span className="hidden sm:inline">{lbl.download}</span>
+</button>
+```
 
 ---
 
-# Completion Status — ALL PHASES COMPLETED
-**Date:** 2026-04-02
-**Validator:** Gemini CLI
+## FIX 6 — Inline Streaming Caret (LOW PRIORITY)
 
-- [x] **Phase 1: Streaming Performance** — Delta batching, separate state, memoization, throttled scroll implemented.
-- [x] **Phase 2: Interaction Controls** — Stop, Regenerate, and Edit implemented.
-- [x] **Phase 3: Code Block & Markdown Polish** — Syntax highlighting, headers, copy button, link styling implemented.
-- [x] **Phase 4: Diagram Output Polish** — ChatGPT-like styling, expansion modal, FontAwesome icons implemented.
-- [x] **Phase 5: Streaming Animation Polish** — Fade-in transitions and thinking shimmer implemented.
+**Problem:** The blinking caret during streaming is rendered in a separate `<div>` below the text instead of inline with the last character.
+
+**Goal:** Make the caret appear inline at the end of the streaming text.
+
+### Step 6.1 — Change caret from block to inline
+
+**File:** `src/components/Chat/MessageBubble.tsx`
+
+Find the streaming caret (around line 299-302):
+
+```tsx
+{isStreamingAssistant && (
+    <div className="mt-2">
+        <span className="inline-block h-4 w-1.5 rounded-sm bg-[#0D9488] animate-pulse" aria-hidden="true" />
+    </div>
+)}
+```
+
+Replace with an inline caret that sits right after the text:
+
+```tsx
+{isStreamingAssistant && (
+    <span className="inline-block h-4 w-1.5 rounded-sm bg-[#0D9488] animate-pulse align-middle ml-0.5" aria-hidden="true" />
+)}
+```
+
+Note: Remove the wrapping `<div className="mt-2">`. The `<span>` must be placed AFTER the `</ReactMarkdown>` closing tag but INSIDE the same parent — so it flows inline with the last line of rendered markdown. The structure should be:
+
+```tsx
+) : (
+    <>
+        <ReactMarkdown ...>
+            {message.content}
+        </ReactMarkdown>
+        {isStreamingAssistant && (
+            <span className="inline-block h-4 w-1.5 rounded-sm bg-[#0D9488] animate-pulse align-middle ml-0.5" aria-hidden="true" />
+        )}
+    </>
+)}
+```
+
+---
+
+## CRITICAL CONSTRAINTS
+
+1. **Do NOT modify `src/lib/sse.ts` or `src/lib/fetchSse.ts`** — SSE system is validated and working.
+2. **Do NOT change the SSE envelope pattern** or delta batching in `useChatStream.ts`.
+3. **Do NOT modify admin routes or admin dashboard** — not in scope.
+4. **Do NOT add new npm dependencies.** All needed icons (`faStop`, `faDownload`) are already in `@fortawesome/free-solid-svg-icons`.
+5. **Match the warm beige palette** for all light theme conversions — use the color table at the top of this document.
+6. **Reset the mermaid init guard** when changing theme: Since `_mermaidInitialized` is a module-level flag, you MUST set it back to `false` after changing the theme config, OR remove the guard and always call `initialize()`. The simplest approach: remove the `if (!_mermaidInitialized)` check and always call `mermaid.initialize()` — it's cheap and idempotent.
+7. **Every fix must pass `npx tsc --noEmit` individually.**
+8. **Preserve `prefers-reduced-motion` support** — do not add new animations that don't respect the media query in `globals.css`.
+
+---
+
+## FILES TO MODIFY
+
+| File | Fixes Applied |
+|------|---------------|
+| `src/components/Chat/ChatInputBar.tsx` | Fix 1 (stop button) |
+| `src/app/page.tsx` | Fix 1 (pass stop + isStreaming props) |
+| `src/components/Chat/MessageBubble.tsx` | Fix 2 (link styling), Fix 6 (inline caret) |
+| `src/components/DiagramCard.tsx` | Fix 2 (link styling), Fix 3 (light theme), Fix 4 (ESC key), Fix 5 (SVG export) |
+| `src/components/MermaidBlock.tsx` | Fix 3 (light theme) |
+
+## FILES NOT TO TOUCH
+
+- `src/lib/sse.ts`
+- `src/lib/fetchSse.ts`
+- `src/hooks/useChatStream.ts`
+- `src/lib/pipeline.ts`
+- `src/app/api/chat/route.ts`
+- All admin routes and components
+- `src/middleware.ts`
+
+---
+
+## EXECUTION ORDER
+
+```
+Fix 1: Stop button (ChatInputBar + page.tsx)
+Fix 2: Link styling (MessageBubble + DiagramCard)
+Fix 3: Diagram light theme (MermaidBlock + DiagramCard) — LARGEST change
+Fix 4: ESC key (DiagramCard)
+Fix 5: SVG export (DiagramCard)
+Fix 6: Inline caret (MessageBubble)
+    ↓
+Verify: npx tsc --noEmit (0 errors)
+Verify: npm run build (succeeds)
+Verify: npm run test:smoke (7/7 pass)
+```
+
+Fixes 1, 2, 4, 5, 6 are independent. Fix 3 changes DiagramCard class names which affects Fix 2's DiagramCard `a` renderer color — if doing both, use light palette (`#0D9488`) for the link color in DiagramCard.
+
+---
+
+## POST-EXECUTION MANUAL VERIFICATION
+
+After all fixes, verify in browser:
+
+1. **Stop button:** Start a chat → while streaming, a "Stop generating" button appears above input → clicking it stops the stream and preserves partial answer
+2. **Link styling:** Ask a question that generates a link → link appears in teal, underlined, opens in new tab
+3. **Diagram light theme:** Ask for a wiring diagram → diagram renders with cream/beige palette, no dark GitHub colors
+4. **ESC key:** Open diagram fullscreen → press Escape → modal closes
+5. **SVG export:** Open diagram → click Download → `.svg` file downloads
+6. **Inline caret:** During streaming → blinking teal caret appears at end of text, not on a separate line

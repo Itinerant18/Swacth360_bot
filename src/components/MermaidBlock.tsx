@@ -29,22 +29,22 @@ async function getMermaid() {
     if (!_mermaidInitialized) {
         mermaid.initialize({
             startOnLoad: false,
-            theme: 'dark',
+            theme: 'base',
             themeVariables: {
-                darkMode: true,
-                background: '#0d1117',
-                primaryColor: '#1f6feb',
-                primaryTextColor: '#e6edf3',
-                primaryBorderColor: '#30363d',
-                secondaryColor: '#161b22',
-                secondaryTextColor: '#8b949e',
-                tertiaryColor: '#21262d',
-                lineColor: '#58a6ff',
-                textColor: '#c9d1d9',
-                mainBkg: '#161b22',
-                nodeBorder: '#30363d',
-                clusterBkg: '#0d1117',
-                edgeLabelBackground: '#161b22',
+                darkMode: false,
+                background: '#FAF7F2',
+                primaryColor: '#0D9488',
+                primaryTextColor: '#1C1917',
+                primaryBorderColor: '#D6CFC4',
+                secondaryColor: '#F0EBE3',
+                secondaryTextColor: '#78716C',
+                tertiaryColor: '#E8E0D4',
+                lineColor: '#0D9488',
+                textColor: '#1C1917',
+                mainBkg: '#FAF7F2',
+                nodeBorder: '#D6CFC4',
+                clusterBkg: '#F0EBE3',
+                edgeLabelBackground: '#FAF7F2',
                 fontFamily: "'Segoe UI', system-ui, sans-serif",
                 fontSize: '14px',
             },
@@ -192,19 +192,19 @@ export default function MermaidBlock({ code }: MermaidBlockProps) {
         return (
             <div style={{ margin: '10px 0' }}>
                 <div style={{
-                    background: '#1c1208',
-                    border: '1px solid #5a3e00',
+                    background: '#FEF3C7',
+                    border: '1px solid #D97706',
                     borderRadius: '6px',
                     padding: '8px 12px',
                     fontSize: '11px',
-                    color: '#d29922',
+                    color: '#92400E',
                     marginBottom: '8px',
                 }}>
                     ⚠️ {error}
                 </div>
                 <pre style={{
-                    background: '#161b22',
-                    border: '1px solid #30363d',
+                    background: '#FAF7F2',
+                    border: '1px solid #D6CFC4',
                     borderRadius: '8px',
                     padding: '14px 16px',
                     overflowX: 'auto',
@@ -213,7 +213,7 @@ export default function MermaidBlock({ code }: MermaidBlockProps) {
                     <code style={{
                         fontFamily: "'Courier New', Consolas, monospace",
                         fontSize: '12px',
-                        color: '#e6edf3',
+                        color: '#1C1917',
                         whiteSpace: 'pre',
                         display: 'block',
                     }}>
@@ -228,15 +228,15 @@ export default function MermaidBlock({ code }: MermaidBlockProps) {
     if (!svgContent) {
         return (
             <div style={{
-                background: '#161b22',
-                border: '1px solid #30363d',
+                background: '#FAF7F2',
+                border: '1px solid #D6CFC4',
                 borderRadius: '8px',
                 padding: '30px',
                 textAlign: 'center',
                 margin: '10px 0',
             }}>
                 <div style={{
-                    color: '#8b949e',
+                    color: '#78716C',
                     fontSize: '12px',
                     display: 'flex',
                     alignItems: 'center',
@@ -247,8 +247,8 @@ export default function MermaidBlock({ code }: MermaidBlockProps) {
                         display: 'inline-block',
                         width: '14px',
                         height: '14px',
-                        border: '2px solid #30363d',
-                        borderTopColor: '#58a6ff',
+                        border: '2px solid #D6CFC4',
+                        borderTopColor: '#0D9488',
                         borderRadius: '50%',
                         animation: 'mermaid-spin 0.7s linear infinite',
                     }} />
@@ -285,8 +285,8 @@ export default function MermaidBlock({ code }: MermaidBlockProps) {
             <div
                 ref={containerRef}
                 style={{
-                    background: '#0d1117',
-                    border: '1px solid #30363d',
+                    background: '#FAF7F2',
+                    border: '1px solid #D6CFC4',
                     borderRadius: '8px',
                     padding: '16px',
                     overflowX: 'auto',
@@ -310,9 +310,9 @@ export default function MermaidBlock({ code }: MermaidBlockProps) {
 }
 
 const zoomBtnStyle: React.CSSProperties = {
-    background: '#21262d',
-    color: '#8b949e',
-    border: '1px solid #30363d',
+    background: '#F0EBE3',
+    color: '#78716C',
+    border: '1px solid #D6CFC4',
     borderRadius: '4px',
     width: '24px',
     height: '24px',

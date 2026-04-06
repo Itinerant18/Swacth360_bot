@@ -38,8 +38,6 @@
   ],
   "exclude": [
     "node_modules",
-    "scripts",
-    "route.ts",
-    "hybridSearch.ts"
+    "scripts"
   ]
 }
