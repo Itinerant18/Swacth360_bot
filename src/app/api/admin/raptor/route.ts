@@ -14,6 +14,24 @@ import { requireAdmin } from '@/lib/admin-auth';
 import { getLLM } from '@/lib/llm';
 
 const RAPTOR_CONFIG_TOKENS = 300;
+const RAPTOR_STALLED_BUILD_MS = 30 * 60 * 1000;
+
+type WaitUntilRequest = NextRequest & {
+    waitUntil?: (promise: Promise<unknown>) => void;
+};
+
+function isStalledBuild(startedAt: string | null | undefined): boolean {
+    if (!startedAt) {
+        return false;
+    }
+
+    const startedAtMs = new Date(startedAt).getTime();
+    if (!Number.isFinite(startedAtMs)) {
+        return false;
+    }
+
+    return (Date.now() - startedAtMs) > RAPTOR_STALLED_BUILD_MS;
+}
 
 export async function POST(req: NextRequest) {
     const auth = await requireAdmin();
@@ -30,7 +48,9 @@ export async function POST(req: NextRequest) {
             .order('started_at', { ascending: false })
             .limit(1)
             .maybeSingle();
-        if (runningBuild) {
+
+        let stalledBuildReset = false;
+        if (runningBuild && !isStalledBuild(runningBuild.started_at)) {
             console.warn('[admin.raptor.post] running_build', runningBuild);
             return NextResponse.json(
                 {
@@ -42,12 +62,67 @@ export async function POST(req: NextRequest) {
             );
         }
 
-        const llm = getLLM('complex', { temperature: 0.1, maxTokens: 1024 });
+        if (runningBuild && isStalledBuild(runningBuild.started_at)) {
+            console.warn('[admin.raptor.post] resetting_stalled_build', runningBuild);
+            const { error: resetError } = await supabase
+                .from('raptor_build_log')
+                .update({
+                    status: 'failed',
+                    error_msg: 'Marked stalled after exceeding 30 minutes.',
+                    completed_at: new Date().toISOString(),
+                })
+                .eq('id', runningBuild.id)
+                .eq('status', 'running');
+
+            if (resetError) {
+                throw new Error(`Failed to reset stalled RAPTOR build: ${resetError.message}`);
+            }
+
+            stalledBuildReset = true;
+        }
+
+        const { data: reservedBuild, error: reserveError } = await supabase
+            .from('raptor_build_log')
+            .insert({ triggered_by: 'manual', status: 'running' })
+            .select('id, started_at')
+            .single();
+
+        if (reserveError) {
+            if (reserveError.code === '23505') {
+                const { data: activeBuild } = await supabase
+                    .from('raptor_build_log')
+                    .select('id, started_at')
+                    .eq('status', 'running')
+                    .order('started_at', { ascending: false })
+                    .limit(1)
+                    .maybeSingle();
+
+                return NextResponse.json(
+                    {
+                        success: false,
+                        error: 'RAPTOR build already in progress',
+                        runningBuild: activeBuild ?? null,
+                    },
+                    { status: 409 },
+                );
+            }
+
+            throw new Error(`Failed to reserve RAPTOR build slot: ${reserveError.message}`);
+        }
+
+        if (!reservedBuild?.id) {
+            throw new Error('Failed to reserve RAPTOR build slot');
+        }
+
+        const llm = getLLM('complex', { temperature: 0.1, maxTokens: RAPTOR_CONFIG_TOKENS });
 
         // Run build in background to prevent 504 timeouts
         const buildPromise = (async () => {
             try {
-                const stats = await buildRaptorTree(llm);
+                const stats = await buildRaptorTree(llm, {
+                    buildLogId: reservedBuild.id,
+                    triggeredBy: 'manual',
+                });
                 console.info('[admin.raptor.post] background_success', stats);
             } catch (err) {
                 console.error('[admin.raptor.post] background_error', err);
@@ -55,14 +130,19 @@ export async function POST(req: NextRequest) {
         })();
 
         // Vercel / Next.js waitUntil support
-        if (typeof (req as any).waitUntil === 'function') {
-            (req as any).waitUntil(buildPromise);
+        const requestWithWaitUntil = req as WaitUntilRequest;
+        if (typeof requestWithWaitUntil.waitUntil === 'function') {
+            requestWithWaitUntil.waitUntil(buildPromise);
         }
 
         return NextResponse.json({
             success: true,
-            message: 'RAPTOR build started in background',
+            message: stalledBuildReset
+                ? 'RAPTOR build started after resetting a stalled build'
+                : 'RAPTOR build started in background',
             status: 'running',
+            buildId: reservedBuild.id,
+            stalledBuildReset,
         }, { status: 202 });
     } catch (err: unknown) {
         if (err instanceof RaptorBuildInProgressError) {

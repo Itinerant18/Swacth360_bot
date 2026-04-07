@@ -7,14 +7,7 @@
 
 import { NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/auth-server';
-
-const ADMIN_EMAILS_RAW = process.env.ALLOWED_ADMIN_EMAILS ?? '';
-
-function isAllowedAdmin(email: string | undefined): boolean {
-    if (!email) return false;
-    const allowed = ADMIN_EMAILS_RAW.split(',').map((value) => value.trim().toLowerCase());
-    return allowed.includes(email.trim().toLowerCase());
-}
+import { isAdminEmail } from '@/lib/admin-emails';
 
 export interface AdminAuthResult {
     authorized: boolean;
@@ -49,7 +42,7 @@ export async function requireAdmin(): Promise<AdminAuthResult> {
             };
         }
 
-        if (!isAllowedAdmin(user.email)) {
+        if (!isAdminEmail(user.email, process.env.ALLOWED_ADMIN_EMAILS ?? '')) {
             return {
                 authorized: false,
                 response: NextResponse.json(

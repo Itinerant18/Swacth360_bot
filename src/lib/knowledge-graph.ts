@@ -284,7 +284,7 @@ export async function submitFeedback(
     queryText: string,
     resultId: string,
     rating: number,
-    isRelevant: boolean,
+    isRelevant: boolean | null,
     feedbackText?: string
 ): Promise<void> {
     const supabase = getSupabase();
@@ -298,7 +298,7 @@ export async function submitFeedback(
     });
 
     if (error) {
-        console.warn('⚠️  Failed to submit feedback:', error);
+        throw new Error(error.message);
     }
 }
 

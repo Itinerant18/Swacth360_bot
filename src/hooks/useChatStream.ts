@@ -6,6 +6,7 @@ export type ChatMessage = {
     role: 'user' | 'assistant';
     content: string;
     createdAt?: Date;
+    knowledgeId?: string;
 };
 
 export function createMessageId(prefix: 'user' | 'assistant'): string {
@@ -161,14 +162,10 @@ export function useChatStream(options: UseChatStreamOptions): {
                 throw new Error(errorMessage);
             }
 
-            await consumeFetchSse(response, async ({ event, data: rawEnvelope }) => {
-                const payload = (rawEnvelope && typeof rawEnvelope === 'object' && 'data' in rawEnvelope)
-                    ? (rawEnvelope as { data: unknown }).data
-                    : rawEnvelope;
-
-                if (event === 'delta' && payload && typeof payload === 'object' && 'text' in payload && typeof payload.text === 'string') {
-                    pendingDeltaRef.current += payload.text;
-                    streamingContentRef.current += payload.text;
+            await consumeFetchSse(response, async ({ event, data }) => {
+                if (event === 'delta' && data && typeof data === 'object' && 'text' in data && typeof data.text === 'string') {
+                    pendingDeltaRef.current += data.text;
+                    streamingContentRef.current += data.text;
 
                     if (!rafIdRef.current) {
                         rafIdRef.current = requestAnimationFrame(() => {
@@ -181,8 +178,11 @@ export function useChatStream(options: UseChatStreamOptions): {
                     return;
                 }
 
-                if (event === 'done' && payload && typeof payload === 'object' && 'content' in payload && typeof payload.content === 'string') {
-                    const finalContent = payload.content;
+                if (event === 'done' && data && typeof data === 'object' && 'content' in data && typeof data.content === 'string') {
+                    const finalContent = data.content;
+                    const knowledgeId = 'knowledgeId' in data && typeof data.knowledgeId === 'string'
+                        ? data.knowledgeId
+                        : undefined;
 
                     if (rafIdRef.current) {
                         cancelAnimationFrame(rafIdRef.current);
@@ -200,14 +200,15 @@ export function useChatStream(options: UseChatStreamOptions): {
                             role: 'assistant',
                             content: finalContent,
                             createdAt: new Date(),
+                            knowledgeId,
                         },
                     ]);
                     return;
                 }
 
                 if (event === 'error') {
-                    if (payload && typeof payload === 'object' && 'message' in payload && typeof payload.message === 'string') {
-                        throw new Error(payload.message);
+                    if (data && typeof data === 'object' && 'message' in data && typeof data.message === 'string') {
+                        throw new Error(data.message);
                     }
 
                     throw new Error('Failed to process chat request.');

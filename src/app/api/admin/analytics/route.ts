@@ -16,9 +16,11 @@ type RecentSessionRow = {
     created_at: string;
 };
 
-type KnowledgeRow = {
-    source: string;
-    source_name: string;
+type KnowledgeSourceSummaryRow = {
+    source: string | null;
+    source_name: string | null;
+    entry_count: number | null;
+    source_label: string | null;
 };
 
 type RecentMessageRow = {
@@ -35,9 +37,9 @@ type FeedbackRow = {
     is_relevant: boolean;
 };
 
-type TokenRow = {
-    tokens_used: number;
-    request_count: number;
+type TokenUsageSummaryRow = {
+    total_tokens: number | null;
+    total_requests: number | null;
 };
 
 function emptyQueryResult<T>(): QueryResult<T> {
@@ -60,6 +62,9 @@ const EMPTY_ANALYTICS_SUMMARY = {
     lowConfidenceQueries: [],
 };
 
+const GENERAL_ANSWER_MODES = ['general', 'partial', 'live', 'not_found', 'casual', 'cache', 'relational'] as const;
+const DIAGRAM_ANSWER_MODES = ['diagram', 'diagram_stored'] as const;
+
 function unwrap<T>(label: string, result: PromiseSettledResult<unknown>, fallback: T): T {
     if (result.status === 'fulfilled') {
         return result.value as T;
@@ -73,6 +78,29 @@ function logQueryError(label: string, result: QueryResult): void {
     const message = result?.error?.message;
     if (message) {
         console.error(`[admin.analytics] ${label} query error`, message);
+    }
+}
+
+function countOf(result: QueryResult): number {
+    return result.count ?? 0;
+}
+
+function getSourceDisplayName(source: string, fallbackName?: string | null): string {
+    switch (source) {
+        case 'pdf':
+            return 'PDF Uploads';
+        case 'pdf_image':
+            return 'PDF Images';
+        case 'admin':
+            return 'Admin Added';
+        case 'json':
+            return 'Seed Data';
+        case 'manual':
+            return 'Technical Diagrams';
+        case 'langextract':
+            return 'Structured Extraction';
+        default:
+            return fallbackName || source;
     }
 }
 
@@ -92,10 +120,13 @@ export async function GET() {
             legacyFallbackSettled,
             legacyRecentSettled,
             convTotalSettled,
-            messageTotalSettled,
+            messagesTableTotalSettled,
+            userMessageTotalSettled,
+            assistantMessageTotalSettled,
             msgRagSettled,
             msgFallbackSettled,
             msgDiagramSettled,
+            recentMessagesSettled,
             totalUnknownSettled,
             pendingUnknownSettled,
             reviewedUnknownSettled,
@@ -107,18 +138,26 @@ export async function GET() {
         ] = await Promise.allSettled([
             supabase.from('chat_sessions').select('*', { count: 'exact', head: true }),
             supabase.from('chat_sessions').select('*', { count: 'exact', head: true }).eq('answer_mode', 'rag'),
-            supabase.from('chat_sessions').select('*', { count: 'exact', head: true }).eq('answer_mode', 'diagram'),
-            supabase.from('chat_sessions').select('*', { count: 'exact', head: true }).in('answer_mode', ['general', 'partial', 'live']),
+            supabase.from('chat_sessions').select('*', { count: 'exact', head: true }).in('answer_mode', [...DIAGRAM_ANSWER_MODES]),
+            supabase.from('chat_sessions').select('*', { count: 'exact', head: true }).in('answer_mode', [...GENERAL_ANSWER_MODES]),
             supabase
                 .from('chat_sessions')
                 .select('user_question, answer_mode, top_similarity, created_at')
                 .order('created_at', { ascending: false })
                 .limit(10),
             supabase.from('conversations').select('*', { count: 'exact', head: true }),
+            supabase.from('messages').select('*', { count: 'exact', head: true }),
             supabase.from('messages').select('*', { count: 'exact', head: true }).eq('role', 'user'),
+            supabase.from('messages').select('*', { count: 'exact', head: true }).eq('role', 'assistant'),
             supabase.from('messages').select('*', { count: 'exact', head: true }).eq('role', 'assistant').eq('answer_mode', 'rag'),
-            supabase.from('messages').select('*', { count: 'exact', head: true }).eq('role', 'assistant').in('answer_mode', ['general', 'partial', 'live']),
-            supabase.from('messages').select('*', { count: 'exact', head: true }).eq('role', 'assistant').in('answer_mode', ['diagram', 'diagram_stored']),
+            supabase.from('messages').select('*', { count: 'exact', head: true }).eq('role', 'assistant').in('answer_mode', [...GENERAL_ANSWER_MODES]),
+            supabase.from('messages').select('*', { count: 'exact', head: true }).eq('role', 'assistant').in('answer_mode', [...DIAGRAM_ANSWER_MODES]),
+            supabase
+                .from('messages')
+                .select('content, role, created_at, conversation_id, answer_mode, top_similarity')
+                .eq('role', 'user')
+                .order('created_at', { ascending: false })
+                .limit(10),
             supabase.from('unknown_questions').select('*', { count: 'exact', head: true }),
             supabase.from('unknown_questions').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
             supabase.from('unknown_questions').select('*', { count: 'exact', head: true }).eq('status', 'reviewed'),
@@ -128,12 +167,9 @@ export async function GET() {
                 .eq('status', 'pending')
                 .order('frequency', { ascending: false })
                 .limit(10),
-            supabase.from('hms_knowledge').select('source, source_name'),
-            supabase.from('retrieval_feedback').select('id, rating, is_relevant'),
-            supabase.from('token_usage').select('tokens_used, request_count').gte(
-                'period_start',
-                new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
-            ),
+            supabase.from('kb_sources').select('source, source_name, entry_count, source_label'),
+            supabase.from('retrieval_feedback').select('rating, is_relevant'),
+            supabase.from('token_usage_summary').select('total_tokens, total_requests'),
             getAnalyticsSummary(24),
         ]);
 
@@ -143,17 +179,20 @@ export async function GET() {
         const legacyFallbackRes = unwrap<QueryResult>('legacyFallbackRes', legacyFallbackSettled, emptyQueryResult());
         const legacyRecentRes = unwrap<QueryResult<RecentSessionRow>>('legacyRecentRes', legacyRecentSettled, emptyQueryResult<RecentSessionRow>());
         const convTotalRes = unwrap<QueryResult>('convTotalRes', convTotalSettled, emptyQueryResult());
-        const messageTotalRes = unwrap<QueryResult>('messageTotalRes', messageTotalSettled, emptyQueryResult());
+        const messagesTableTotalRes = unwrap<QueryResult>('messagesTableTotalRes', messagesTableTotalSettled, emptyQueryResult());
+        const userMessageTotalRes = unwrap<QueryResult>('userMessageTotalRes', userMessageTotalSettled, emptyQueryResult());
+        const assistantMessageTotalRes = unwrap<QueryResult>('assistantMessageTotalRes', assistantMessageTotalSettled, emptyQueryResult());
         const msgRagRes = unwrap<QueryResult>('msgRagRes', msgRagSettled, emptyQueryResult());
         const msgFallbackRes = unwrap<QueryResult>('msgFallbackRes', msgFallbackSettled, emptyQueryResult());
         const msgDiagramRes = unwrap<QueryResult>('msgDiagramRes', msgDiagramSettled, emptyQueryResult());
+        const recentMessagesRes = unwrap<QueryResult<RecentMessageRow>>('recentMessagesRes', recentMessagesSettled, emptyQueryResult<RecentMessageRow>());
         const totalUnknownRes = unwrap<QueryResult>('totalUnknownRes', totalUnknownSettled, emptyQueryResult());
         const pendingUnknownRes = unwrap<QueryResult>('pendingUnknownRes', pendingUnknownSettled, emptyQueryResult());
         const reviewedUnknownRes = unwrap<QueryResult>('reviewedUnknownRes', reviewedUnknownSettled, emptyQueryResult());
         const topUnknownRes = unwrap<QueryResult>('topUnknownRes', topUnknownSettled, emptyQueryResult());
-        const kbCompositionRes = unwrap<QueryResult<KnowledgeRow>>('kbCompositionRes', kbCompositionSettled, emptyQueryResult<KnowledgeRow>());
+        const kbCompositionRes = unwrap<QueryResult<KnowledgeSourceSummaryRow>>('kbCompositionRes', kbCompositionSettled, emptyQueryResult<KnowledgeSourceSummaryRow>());
         const feedbackStatsRes = unwrap<QueryResult<FeedbackRow>>('feedbackStatsRes', feedbackStatsSettled, emptyQueryResult<FeedbackRow>());
-        const tokenStatsRes = unwrap<QueryResult<TokenRow>>('tokenStatsRes', tokenStatsSettled, emptyQueryResult<TokenRow>());
+        const tokenStatsRes = unwrap<QueryResult<TokenUsageSummaryRow>>('tokenStatsRes', tokenStatsSettled, emptyQueryResult<TokenUsageSummaryRow>());
         const assistantMonitoring = unwrap('assistantMonitoring', assistantMonitoringSettled, EMPTY_ANALYTICS_SUMMARY);
 
         const queryResults: Array<[string, QueryResult]> = [
@@ -163,10 +202,13 @@ export async function GET() {
             ['legacyFallbackRes', legacyFallbackRes],
             ['legacyRecentRes', legacyRecentRes],
             ['convTotalRes', convTotalRes],
-            ['messageTotalRes', messageTotalRes],
+            ['messagesTableTotalRes', messagesTableTotalRes],
+            ['userMessageTotalRes', userMessageTotalRes],
+            ['assistantMessageTotalRes', assistantMessageTotalRes],
             ['msgRagRes', msgRagRes],
             ['msgFallbackRes', msgFallbackRes],
             ['msgDiagramRes', msgDiagramRes],
+            ['recentMessagesRes', recentMessagesRes],
             ['totalUnknownRes', totalUnknownRes],
             ['pendingUnknownRes', pendingUnknownRes],
             ['reviewedUnknownRes', reviewedUnknownRes],
@@ -183,48 +225,34 @@ export async function GET() {
             if (!sourceMap[key]) {
                 sourceMap[key] = {
                     count: 0,
-                    name:
-                        key === 'pdf' ? 'PDF Uploads'
-                            : key === 'pdf_image' ? 'PDF Images'
-                                : key === 'admin' ? 'Admin Added'
-                                    : key === 'json' ? 'Seed Data'
-                                        : key === 'manual' ? 'Technical Diagrams'
-                                            : row.source_name || key,
+                    name: getSourceDisplayName(key, row.source_label || row.source_name),
                 };
             }
-            sourceMap[key].count++;
+            sourceMap[key].count += row.entry_count ?? 0;
         });
 
-        const legacyTotal = legacyTotalRes.count ?? 0;
-        const convTotal = convTotalRes.count ?? 0;
-        const messageTotal = messageTotalRes.count ?? 0;
+        const legacyTotal = countOf(legacyTotalRes);
+        const convTotal = countOf(convTotalRes);
+        const totalMessages = countOf(messagesTableTotalRes);
+        const userMessages = countOf(userMessageTotalRes);
+        const assistantMessages = countOf(assistantMessageTotalRes);
 
-        const useLegacy = legacyTotal > 0;
-        const total = useLegacy ? legacyTotal : messageTotal;
-        const rag = useLegacy ? (legacyRagRes.count ?? 0) : (msgRagRes.count ?? 0);
-        const diagram = useLegacy ? (legacyDiagramRes.count ?? 0) : (msgDiagramRes.count ?? 0);
-        const general = useLegacy ? (legacyFallbackRes.count ?? 0) : (msgFallbackRes.count ?? 0);
+        const useLegacy = totalMessages === 0 && legacyTotal > 0;
+        const rag = useLegacy ? countOf(legacyRagRes) : countOf(msgRagRes);
+        const diagram = useLegacy ? countOf(legacyDiagramRes) : countOf(msgDiagramRes);
+        const explicitGeneral = useLegacy ? countOf(legacyFallbackRes) : countOf(msgFallbackRes);
+        const activeTotal = useLegacy ? legacyTotal : Math.max(assistantMessages, userMessages);
+        const general = explicitGeneral + Math.max(activeTotal - (rag + diagram + explicitGeneral), 0);
+        const total = rag + diagram + general;
 
-        let recentSessions = legacyRecentRes.data ?? [];
-        if (recentSessions.length === 0 && !useLegacy) {
-            const { data: recentMessages, error: recentMessagesError } = await supabase
-                .from('messages')
-                .select('content, role, created_at, conversation_id, answer_mode, top_similarity')
-                .eq('role', 'user')
-                .order('created_at', { ascending: false })
-                .limit(10);
-
-            if (recentMessagesError) {
-                console.error('[admin.analytics] recentMessages query error', recentMessagesError.message);
-            }
-
-            recentSessions = (recentMessages ?? []).map((message: RecentMessageRow) => ({
+        const recentSessions = useLegacy
+            ? (legacyRecentRes.data ?? [])
+            : (recentMessagesRes.data ?? []).map((message: RecentMessageRow) => ({
                 user_question: message.content,
                 answer_mode: message.answer_mode || 'conversation',
                 top_similarity: message.top_similarity,
                 created_at: message.created_at,
             }));
-        }
 
         const feedbackData = feedbackStatsRes.data ?? [];
         const totalFeedback = feedbackData.length;
@@ -236,8 +264,8 @@ export async function GET() {
         ).length;
 
         const tokenData = tokenStatsRes.data ?? [];
-        const totalTokens = tokenData.reduce((sum, token) => sum + token.tokens_used, 0);
-        const totalRequests = tokenData.reduce((sum, token) => sum + token.request_count, 0);
+        const totalTokens = tokenData.reduce((sum, token) => sum + (token.total_tokens ?? 0), 0);
+        const totalRequests = tokenData.reduce((sum, token) => sum + (token.total_requests ?? 0), 0);
 
         return NextResponse.json({
             totalChats: total,
@@ -256,7 +284,7 @@ export async function GET() {
             recentSessions,
             conversations: {
                 total: convTotal,
-                totalMessages: messageTotal,
+                totalMessages: totalMessages,
                 isNewSystem: !useLegacy,
             },
             feedback: {

@@ -121,6 +121,7 @@ const MessageBubble = React.memo(function MessageBubble({
     const parsed = message.role === 'assistant' ? parseMessageContent(message.content) : null;
     const isStreamingAssistant = message.role === 'assistant' && message.id === streamingMessageId;
     const showThinkingState = isStreamingAssistant && !message.content.trim();
+    const canSubmitFeedback = Boolean(message.knowledgeId);
 
     const getMessageTimeLabel = (msg: ChatMessage) => {
         const timestamp = msg.createdAt instanceof Date
@@ -171,22 +172,26 @@ const MessageBubble = React.memo(function MessageBubble({
                                         <FontAwesomeIcon icon={faSignal} className="w-3 h-3" />
                                     </button>
                                 )}
-                                <button
-                                    onClick={() => handleFeedback(message.id, 5, true)}
-                                    disabled={feedbackSubmitted.has(message.id)}
-                                    className={`p-1.5 rounded transition-colors ${feedbackSubmitted.has(message.id) ? 'opacity-40 cursor-not-allowed text-[#A8A29E]' : 'hover:bg-[#E8E0D4] hover:text-[#0D9488] text-[#A8A29E]'}`}
-                                    title="Helpful"
-                                >
-                                    <FontAwesomeIcon icon={faThumbsUp} className="w-3 h-3" />
-                                </button>
-                                <button
-                                    onClick={() => handleFeedback(message.id, 1, false)}
-                                    disabled={feedbackSubmitted.has(message.id)}
-                                    className={`p-1.5 rounded transition-colors ${feedbackSubmitted.has(message.id) ? 'opacity-40 cursor-not-allowed text-[#A8A29E]' : 'hover:bg-[#E8E0D4] hover:text-red-600 text-[#A8A29E]'}`}
-                                    title="Not helpful"
-                                >
-                                    <FontAwesomeIcon icon={faThumbsDown} className="w-3 h-3" />
-                                </button>
+                                {canSubmitFeedback && (
+                                    <>
+                                        <button
+                                            onClick={() => handleFeedback(message.id, 5, true)}
+                                            disabled={feedbackSubmitted.has(message.id)}
+                                            className={`p-1.5 rounded transition-colors ${feedbackSubmitted.has(message.id) ? 'opacity-40 cursor-not-allowed text-[#A8A29E]' : 'hover:bg-[#E8E0D4] hover:text-[#0D9488] text-[#A8A29E]'}`}
+                                            title="Helpful"
+                                        >
+                                            <FontAwesomeIcon icon={faThumbsUp} className="w-3 h-3" />
+                                        </button>
+                                        <button
+                                            onClick={() => handleFeedback(message.id, 1, false)}
+                                            disabled={feedbackSubmitted.has(message.id)}
+                                            className={`p-1.5 rounded transition-colors ${feedbackSubmitted.has(message.id) ? 'opacity-40 cursor-not-allowed text-[#A8A29E]' : 'hover:bg-[#E8E0D4] hover:text-red-600 text-[#A8A29E]'}`}
+                                            title="Not helpful"
+                                        >
+                                            <FontAwesomeIcon icon={faThumbsDown} className="w-3 h-3" />
+                                        </button>
+                                    </>
+                                )}
                             </div>
                         </div>
                         {getMessageTimeLabel(message) && (
@@ -350,22 +355,26 @@ const MessageBubble = React.memo(function MessageBubble({
                                             <FontAwesomeIcon icon={faSignal} className="w-3 h-3" />
                                         </button>
                                     )}
-                                    <button
-                                        onClick={() => handleFeedback(message.id, 5, true)}
-                                        disabled={feedbackSubmitted.has(message.id)}
-                                        className={`p-1.5 rounded transition-colors ${feedbackSubmitted.has(message.id) ? 'opacity-40 cursor-not-allowed' : 'hover:bg-[#E8E0D4] hover:text-[#0D9488]'}`}
-                                        title="Helpful"
-                                    >
-                                        <FontAwesomeIcon icon={faThumbsUp} className="w-3 h-3" />
-                                    </button>
-                                    <button
-                                        onClick={() => handleFeedback(message.id, 1, false)}
-                                        disabled={feedbackSubmitted.has(message.id)}
-                                        className={`p-1.5 rounded transition-colors ${feedbackSubmitted.has(message.id) ? 'opacity-40 cursor-not-allowed' : 'hover:bg-[#E8E0D4] hover:text-red-600'}`}
-                                        title="Not helpful"
-                                    >
-                                        <FontAwesomeIcon icon={faThumbsDown} className="w-3 h-3" />
-                                    </button>
+                                    {canSubmitFeedback && (
+                                        <>
+                                            <button
+                                                onClick={() => handleFeedback(message.id, 5, true)}
+                                                disabled={feedbackSubmitted.has(message.id)}
+                                                className={`p-1.5 rounded transition-colors ${feedbackSubmitted.has(message.id) ? 'opacity-40 cursor-not-allowed' : 'hover:bg-[#E8E0D4] hover:text-[#0D9488]'}`}
+                                                title="Helpful"
+                                            >
+                                                <FontAwesomeIcon icon={faThumbsUp} className="w-3 h-3" />
+                                            </button>
+                                            <button
+                                                onClick={() => handleFeedback(message.id, 1, false)}
+                                                disabled={feedbackSubmitted.has(message.id)}
+                                                className={`p-1.5 rounded transition-colors ${feedbackSubmitted.has(message.id) ? 'opacity-40 cursor-not-allowed' : 'hover:bg-[#E8E0D4] hover:text-red-600'}`}
+                                                title="Not helpful"
+                                            >
+                                                <FontAwesomeIcon icon={faThumbsDown} className="w-3 h-3" />
+                                            </button>
+                                        </>
+                                    )}
                                 </div>
                             </div>
                         )}

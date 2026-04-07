@@ -32,7 +32,6 @@
 import { ChatOpenAI } from '@langchain/openai';
 import { embedTexts } from './embeddings';
 import { getSupabase } from './supabase';
-import { extractJson } from './llm';
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
@@ -87,6 +86,11 @@ export class RaptorBuildInProgressError extends Error {
         super('RAPTOR build already in progress');
         this.name = 'RaptorBuildInProgressError';
     }
+}
+
+interface BuildRaptorTreeOptions {
+    buildLogId?: string;
+    triggeredBy?: 'manual' | 'ingest' | 'scheduled';
 }
 
 function parsePgVector(value: unknown): number[] {
@@ -292,28 +296,35 @@ function computeQualityScore(members: KBChunk[]): number {
  *
  * Returns: build stats for the admin response
  */
-export async function buildRaptorTree(llm: ChatOpenAI): Promise<{
+export async function buildRaptorTree(
+    llm: ChatOpenAI,
+    options: BuildRaptorTreeOptions = {},
+): Promise<{
     levelsBuilt: number;
     clustersBuilt: number;
     chunksIndexed: number;
 }> {
     const supabase = getSupabase();
 
-    // Log start
-    const { data: buildLog, error: buildLogError } = await supabase
-        .from('raptor_build_log')
-        .insert({ triggered_by: 'manual', status: 'running' })
-        .select('id')
-        .single();
-    if (buildLogError) {
-        if (buildLogError.code === '23505') {
-            throw new RaptorBuildInProgressError();
-        }
-        throw new Error(`Failed to start RAPTOR build log: ${buildLogError.message}`);
-    }
-    const buildLogId = buildLog?.id;
+    let buildLogId = options.buildLogId;
+
     if (!buildLogId) {
-        throw new Error('Failed to start RAPTOR build log');
+        const { data: buildLog, error: buildLogError } = await supabase
+            .from('raptor_build_log')
+            .insert({ triggered_by: options.triggeredBy ?? 'manual', status: 'running' })
+            .select('id')
+            .single();
+        if (buildLogError) {
+            if (buildLogError.code === '23505') {
+                throw new RaptorBuildInProgressError();
+            }
+            throw new Error(`Failed to start RAPTOR build log: ${buildLogError.message}`);
+        }
+
+        buildLogId = buildLog?.id;
+        if (!buildLogId) {
+            throw new Error('Failed to start RAPTOR build log');
+        }
     }
 
     let totalClusters = 0;

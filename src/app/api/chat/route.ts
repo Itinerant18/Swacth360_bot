@@ -125,7 +125,7 @@ function buildChatResponse(
     requestId: string,
     rateLimitResult: Awaited<ReturnType<typeof checkRateLimit>>,
     extraHeaders: Record<string, string> = {},
-    meta?: { answerMode?: string; confidence?: number },
+    meta?: { answerMode?: string; confidence?: number; knowledgeId?: string | null },
 ): Response {
     return createSseResponse({
         headers: buildChatHeaders(activeConversationId, requestId, rateLimitResult, extraHeaders),
@@ -141,6 +141,7 @@ function buildChatResponse(
                 content: text,
                 answerMode: meta?.answerMode ?? null,
                 confidence: meta?.confidence ?? null,
+                knowledgeId: meta?.knowledgeId ?? null,
             });
         },
     });
@@ -428,6 +429,7 @@ export async function POST(req: Request) {
         originalQueryForLog = pipelineResult.originalQueryForLog;
         rewrittenQueryForLog = pipelineResult.rewrittenQueryForLog;
         const result = pipelineResult;
+        const knowledgeId = result.matches[0]?.id ?? null;
 
         const supabase = getSupabase();
         if (result.shouldLogUnknownQuestion) {
@@ -490,6 +492,7 @@ export async function POST(req: Request) {
                         return buildChatResponse(`DIAGRAM_RESPONSE:${payload}`, activeConversationId, requestId, rateLimitResult, {}, {
                             answerMode: 'diagram',
                             confidence: diagramData.hasKBContext ? result.confidence : 0.3,
+                            knowledgeId,
                         });
                     }
                 } catch (err: unknown) {
@@ -514,6 +517,7 @@ export async function POST(req: Request) {
                     return buildChatResponse(`DIAGRAM_RESPONSE:${fallbackPayload}`, activeConversationId, requestId, rateLimitResult, {}, {
                         answerMode: 'diagram',
                         confidence: result.confidence,
+                        knowledgeId,
                     });
                 }
             }
@@ -613,6 +617,7 @@ export async function POST(req: Request) {
                 {
                     answerMode: result.answerMode,
                     confidence: result.confidence,
+                    knowledgeId,
                 },
             );
         }
@@ -766,7 +771,12 @@ export async function POST(req: Request) {
                         await finalizeAnswer(answer, llmCallCount, buildGenerationStages(generationStartedAt));
 
                         if (!isClosed()) {
-                            send('done', { content: answer, answerMode: result.dbAnswerMode, confidence: result.confidence });
+                            send('done', {
+                                content: answer,
+                                answerMode: result.dbAnswerMode,
+                                confidence: result.confidence,
+                                knowledgeId,
+                            });
                         }
                     } catch (streamError) {
                         console.error('Chat API Stream Error:', streamError);
@@ -847,7 +857,7 @@ export async function POST(req: Request) {
 
         return buildChatResponse(answer, activeConversationId, requestId, rateLimitResult, {
             'x-pipeline-latency': `${(performance.now() - requestStart).toFixed(0)}ms`,
-        }, { answerMode: result.dbAnswerMode, confidence: result.confidence });
+        }, { answerMode: result.dbAnswerMode, confidence: result.confidence, knowledgeId });
     } catch (error: unknown) {
         console.error('Chat API Error:', error);
         const errorMessage = (error as Error).message || 'Unknown error';

@@ -5,7 +5,7 @@ import type { AuthChangeEvent, Session } from '@supabase/supabase-js';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
     faCheck, faChevronDown, faComment, faBookmark,
-    faRobot, faSignOutAlt, faSpinner, faTimes,
+    faRobot, faSignOutAlt, faSpinner, faTimes, faSignal,
 } from '@fortawesome/free-solid-svg-icons';
 import LanguageSelector from '../components/LanguageSelector';
 import MessageBubble from '@/components/Chat/MessageBubble';
@@ -13,6 +13,7 @@ import ConversationSidebar, { type ConversationSidebarConversation } from '@/com
 import ChatInputBar from '@/components/Chat/ChatInputBar';
 import { signOut, isAdminEmail, getSupabaseAuth, sanitizeAuthSession } from '@/lib/auth';
 import { useChatStream, type ChatMessage } from '@/hooks/useChatStream';
+import { useAudioRecorder } from '@/hooks/useAudioRecorder';
 
 interface ConversationHistoryError {
     conversationId: string;
@@ -142,6 +143,16 @@ export default function Chat() {
     const [sessionSaved, setSessionSaved] = useState(false);
     const [guestQuestionCount, setGuestQuestionCount] = useState(0);
     const [showGuestGate, setShowGuestGate] = useState(false);
+
+    const audioRecorder = useAudioRecorder({
+        onTranscription: (text) => {
+            setInput(text);
+            requestAnimationFrame(() => inputRef.current?.focus());
+        },
+        onError: (message) => {
+            window.alert(message);
+        },
+    });
 
     const refreshConversations = useCallback(async () => {
         if (!isAuthenticated) {
@@ -556,20 +567,32 @@ export default function Chat() {
         if (feedbackSubmitted.has(messageId)) return;
 
         const msgIndex = messages.findIndex((message) => message.id === messageId);
+        const targetMessage = msgIndex >= 0 ? messages[msgIndex] : null;
+        const knowledgeId = targetMessage?.knowledgeId?.trim();
         const queryText = msgIndex > 0 ? messages[msgIndex - 1].content : '';
 
+        if (!knowledgeId || !queryText.trim()) {
+            return;
+        }
+
         try {
-            await fetch('/api/admin/feedback', {
+            const response = await fetch('/api/admin/feedback', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     queryText,
-                    resultId: messageId,
+                    resultId: knowledgeId,
                     rating,
                     isRelevant,
                     feedbackText: '',
                 }),
             });
+
+            if (!response.ok) {
+                const payload = await response.json().catch(() => null) as { error?: string } | null;
+                throw new Error(payload?.error || 'Failed to submit feedback');
+            }
+
             setFeedbackSubmitted((prev) => new Set(prev).add(messageId));
         } catch (error) {
             console.error('Failed to submit feedback', error);
@@ -673,9 +696,14 @@ export default function Chat() {
             <div className="flex flex-col flex-1 min-w-0 transition-all duration-300">
                 <header className="sticky top-0 z-20 backdrop-blur-sm bg-[#E8E0D4]/85 border-b border-[#D6CFC4]">
                     <div className="max-w-5xl mx-auto px-3 sm:px-4 lg:px-6 h-16 flex items-center justify-between gap-3">
-                        <div className="min-w-0">
-                            <h1 className="text-sm sm:text-base font-semibold text-[#1C1917] truncate">Dexter HMS Bot</h1>
-                            <p className="text-[10px] sm:text-xs text-[#78716C] truncate">Technical support, troubleshooting, and diagrams</p>
+                        <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
+                            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl skeuo-leather flex items-center justify-center shadow-md flex-shrink-0">
+                                <FontAwesomeIcon icon={faSignal} className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[#CA8A04]" />
+                            </div>
+                            <div className="min-w-0">
+                                <h1 className="text-sm sm:text-base font-semibold text-[#1C1917] truncate">Dexter HMS Bot</h1>
+                                <p className="text-[10px] sm:text-xs text-[#78716C] truncate">Technical support, troubleshooting, and diagrams</p>
+                            </div>
                         </div>
                         <div className="flex items-center gap-2">
                             <LanguageSelector language={language} setLanguage={setLanguage} />
@@ -894,6 +922,11 @@ export default function Chat() {
                             guestQuestionsLeft={guestQuestionsLeft}
                             onStop={stop}
                             isStreaming={isLoading && !!streamingMessageId}
+                            recordingState={audioRecorder.state}
+                            recordingDuration={audioRecorder.durationSeconds}
+                            onStartRecording={() => void audioRecorder.startRecording()}
+                            onStopRecording={audioRecorder.stopRecording}
+                            onCancelRecording={audioRecorder.cancelRecording}
                         />
                     </div>
                 </div>
