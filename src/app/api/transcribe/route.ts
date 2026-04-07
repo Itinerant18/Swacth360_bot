@@ -50,12 +50,14 @@ export async function POST(request: NextRequest) {
             );
         }
 
+        const languageParam = formData.get('language') as string | null;
+
         const openai = getOpenAI();
 
         const transcription = await openai.audio.transcriptions.create({
             model: 'whisper-1',
             file: audioFile,
-            language: undefined,  // auto-detect language
+            language: languageParam && ['en', 'hi', 'bn'].includes(languageParam) ? languageParam : undefined,
         });
 
         return NextResponse.json({ text: transcription.text });

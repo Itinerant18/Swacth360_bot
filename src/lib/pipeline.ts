@@ -31,8 +31,8 @@ const UNKNOWN_THRESHOLD = 0.35;
 
 const NOT_FOUND_MESSAGES: Record<string, string> = {
     en: "I don't have specific information about this in my knowledge base. Please consult the HMS panel manual or contact technical support.",
-    bn: "à¦†à¦®à¦¾à¦° à¦•à¦¾à¦›à§‡ à¦à¦‡ à¦¬à¦¿à¦·à§Ÿà§‡ à¦¨à¦¿à¦°à§à¦¦à¦¿à¦·à§à¦Ÿ à¦¤à¦¥à§à¦¯ à¦¨à§‡à¦‡à¥¤ à¦…à¦¨à§à¦—à§à¦°à¦¹ à¦•à¦°à§‡ HMS à¦ªà§à¦¯à¦¾à¦¨à§‡à¦²à§‡à¦° à¦®à§à¦¯à¦¾à¦¨à§à§Ÿà¦¾à¦² à¦¦à§‡à¦–à§à¦¨ à¦¬à¦¾ à¦Ÿà§‡à¦•à¦¨à¦¿à¦•à§à¦¯à¦¾à¦² à¦¸à¦¾à¦ªà§‹à¦°à§à¦Ÿà§‡ à¦¯à§‹à¦—à¦¾à¦¯à§‹à¦— à¦•à¦°à§à¦¨à¥¤",
-    hi: "à¤®à¥‡à¤°à¥‡ à¤ªà¤¾à¤¸ à¤‡à¤¸ à¤µà¤¿à¤·à¤¯ à¤®à¥‡à¤‚ à¤µà¤¿à¤¶à¤¿à¤·à¥à¤Ÿ à¤œà¤¾à¤¨à¤•à¤¾à¤°à¥€ à¤¨à¤¹à¥€à¤‚ à¤¹à¥ˆà¥¤ à¤•à¥ƒà¤ªà¤¯à¤¾ HMS à¤ªà¥ˆà¤¨à¤² à¤®à¥ˆà¤¨à¥à¤…à¤² à¤¦à¥‡à¤–à¥‡à¤‚ à¤¯à¤¾ à¤¤à¤•à¤¨à¥€à¤•à¥€ à¤¸à¤¹à¤¾à¤¯à¤¤à¤¾ à¤¸à¥‡ à¤¸à¤‚à¤ªà¤°à¥à¤• à¤•à¤°à¥‡à¤‚à¥¤",
+    bn: "আমার কাছে এই বিষয়ে নির্দিষ্ট তথ্য নেই। অনুগ্রহ করে HMS প্যানেলের ম্যানুয়াল দেখুন বা টেকনিক্যাল সাপোর্টে যোগাযোগ করুন।",
+    hi: "मेरे पास इस विषय में विशिष्ट जानकारी नहीं है। कृपया HMS पैनल मैनुअल देखें या तकनीकी सहायता से संपर्क करें।",
 };
 
 type PipelineMetrics = {
@@ -811,7 +811,7 @@ export async function runPipeline(input: PipelineInput): Promise<PipelineResult>
     }
 
     const decomposed = isSimple
-        ? { isDecomposed: false as const, subQueries: [], reasoning: 'Skipped â€” simple query', originalQuery: retrievalQuestion }
+        ? { isDecomposed: false as const, subQueries: [], reasoning: 'Skipped - simple query', originalQuery: retrievalQuestion }
         : await decomposeQuery(retrievalQuestion, baseAnalysis, complexLlm);
     const decomposedPrefix = buildDecomposedPromptPrefix(decomposed);
     const retrieveOptions = buildRetrievalPlan({

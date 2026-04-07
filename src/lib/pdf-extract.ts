@@ -60,7 +60,7 @@ export async function extractPdfText(buffer: ArrayBuffer): Promise<string> {
         });
     } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        console.warn(`âš ï¸  pdf2json failed: ${message} â€” trying fallback`);
+        console.warn(`Warning: pdf2json failed: ${message} - trying fallback`);
     }
 
     // ── Strategy 2: pdfjs-dist (no worker mode) ──────────────────
@@ -72,7 +72,7 @@ export async function extractPdfText(buffer: ArrayBuffer): Promise<string> {
             () => import('pdfjs-dist' as any)
         );
 
-        // Disable worker entirely â€” run in main thread
+        // Disable worker entirely - run in main thread
         pdfjsLib.GlobalWorkerOptions.workerSrc = '';
 
         const loadingTask = pdfjsLib.getDocument({
@@ -101,7 +101,7 @@ export async function extractPdfText(buffer: ArrayBuffer): Promise<string> {
 
     } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        console.warn(`âš ï¸  pdfjs-dist failed: ${message} â€” trying raw fallback`);
+        console.warn(`Warning: pdfjs-dist failed: ${message} - trying raw fallback`);
     }
 
     // ── Strategy 3: Raw text scrape (last resort) ─────────────────
@@ -140,12 +140,12 @@ export async function extractPdfText(buffer: ArrayBuffer): Promise<string> {
             .trim();
 
         if (combined.length > 50) {
-            console.warn('âš ï¸  Using raw text fallback â€” quality may be lower');
+            console.warn('Warning: Using raw text fallback - quality may be lower');
             return combined;
         }
     } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        console.warn(`âš ï¸  Raw fallback failed: ${message}`);
+        console.warn(`Warning: Raw fallback failed: ${message}`);
     }
 
     throw new Error(

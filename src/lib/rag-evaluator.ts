@@ -375,9 +375,9 @@ export async function storeEvalResult(
             user_id: userId ?? null,
         });
     } catch (err) {
-        // Silently fail â€” evals must never break the main flow
+        // Silently fail - evals must never break the main flow
         const message = err instanceof Error ? err.message : String(err);
-        console.warn(`âš ï¸  Eval storage failed: ${message}`);
+        console.warn(`Warning: Eval storage failed: ${message}`);
     }
 }
 
@@ -385,7 +385,7 @@ export async function storeEvalResult(
  * evaluateAndStore()
  *
  * Convenience wrapper: evaluate + store in one call.
- * Use `void evaluateAndStore(...)` in chat route â€” non-blocking.
+ * Use `void evaluateAndStore(...)` in chat route - non-blocking.
  */
 export async function evaluateAndStore(params: {
     question: string;
@@ -408,12 +408,12 @@ export async function evaluateAndStore(params: {
         console.log(`   Overall:          ${(s.overallScore * 100).toFixed(0)}%`);
 
         if (result.flags.length > 0) {
-            console.warn(`   âš ï¸  Flags: ${result.flags.map(f => f.message).join(' | ')}`);
+            console.warn(`   Warning: Flags: ${result.flags.map(f => f.message).join(' | ')}`);
         }
 
         await storeEvalResult(result, params.userId);
     } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        console.warn(`âš ï¸  Eval pipeline failed: ${message}`);
+        console.warn(`Warning: Eval pipeline failed: ${message}`);
     }
 }

@@ -117,8 +117,8 @@ export async function raptorSearch(
 
     } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        console.warn(`âš ï¸  RAPTOR search failed: ${message}`);
-        return []; // graceful degradation â€” falls back to regular vector search
+        console.warn(`Warning: RAPTOR search failed: ${message}`);
+        return []; // graceful degradation - falls back to regular vector search
     }
 }
 

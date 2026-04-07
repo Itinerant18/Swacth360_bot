@@ -5,6 +5,7 @@ import { useState, useRef, useCallback } from 'react';
 export type RecordingState = 'idle' | 'recording' | 'transcribing';
 
 interface UseAudioRecorderOptions {
+    language?: 'en' | 'bn' | 'hi';
     onTranscription: (text: string) => void;
     onError?: (message: string) => void;
 }
@@ -18,6 +19,7 @@ interface UseAudioRecorderReturn {
 }
 
 export function useAudioRecorder({
+    language,
     onTranscription,
     onError,
 }: UseAudioRecorderOptions): UseAudioRecorderReturn {
@@ -51,6 +53,9 @@ export function useAudioRecorder({
             try {
                 const formData = new FormData();
                 formData.append('audio', audioBlob, 'recording.webm');
+                if (language) {
+                    formData.append('language', language);
+                }
 
                 const response = await fetch('/api/transcribe', {
                     method: 'POST',
@@ -77,7 +82,7 @@ export function useAudioRecorder({
                 setState('idle');
             }
         },
-        [onTranscription, onError],
+        [language, onTranscription, onError],
     );
 
     const startRecording = useCallback(async () => {

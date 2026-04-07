@@ -507,7 +507,7 @@ export async function POST(req: Request) {
                     const fallbackPayload = JSON.stringify({
                         __type: 'diagram',
                         markdown: `## Diagram Generation Error\n\nUnable to generate ${result.diagramType || 'wiring'} diagram at this time.\n\nPlease try again or contact technical support if the issue persists.`,
-                        title: `${result.diagramType || 'wiring'} diagram â€” Error`,
+                        title: `${result.diagramType || 'wiring'} diagram - Error`,
                         diagramType: result.diagramType || 'wiring',
                         panelType: 'HMS Panel',
                         hasKBContext: false,

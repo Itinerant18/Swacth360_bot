@@ -90,7 +90,7 @@ export async function hybridSearch(
     );
 
     if (vectorError) {
-        console.warn('âš ï¸  Hybrid search RPC failed, using fallback');
+        console.warn('Warning: Hybrid search RPC failed, using fallback');
         return fallbackHybridSearch(query, queryVector, opts as Required<HybridSearchOptions>);
     }
 

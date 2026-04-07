@@ -27,7 +27,7 @@ function stripMarkdownNode<Tag extends keyof ReactJSX.IntrinsicElements>({
 
 const ReactMarkdown = dynamic(() => import('react-markdown'), {
     ssr: false,
-    loading: () => <span className="text-[#A8A29E] text-sm">â€¦</span>,
+    loading: () => <span className="text-[#A8A29E] text-sm">...</span>,
 });
 
 interface DiagramResponse {
@@ -75,8 +75,8 @@ function formatRelativeTime(value: Date | string): string {
 
 const THINKING_COPY = {
     en: 'Analyzing and generating response...',
-    bn: 'à¦¬à¦¿à¦¶à§à¦²à§‡à¦·à¦£ à¦“ à¦‰à¦¤à§à¦¤à¦° à¦¤à§ˆà¦°à¦¿ à¦¹à¦šà§à¦›à§‡â€¦',
-    hi: 'à¤µà¤¿à¤¶à¥à¤²à¥‡à¤·à¤£ à¤”à¤° à¤‰à¤¤à¥à¤¤à¤° à¤¤à¥ˆà¤¯à¤¾à¤° à¤•à¤¿à¤¯à¤¾ à¤œà¤¾ à¤°à¤¹à¤¾ à¤¹à¥ˆ...',
+    bn: 'বিশ্লেষণ ও উত্তর তৈরি হচ্ছে...',
+    hi: 'विश्लेषण और उत्तर तैयार किया जा रहा है...',
 } as const;
 
 type MessageBubbleProps = {

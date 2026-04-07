@@ -89,21 +89,21 @@ function getCuratedSuggestions(): string[] {
 const TEXT_MAP = {
     en: {
         welcome: 'Ask about HMS Panel Troubleshooting',
-        intro: 'I am SAI, your HMS support assistant. Ask me anything â€” troubleshooting, configuration, or installation.',
+        intro: 'I am SAI, your HMS support assistant. Ask me anything — troubleshooting, configuration, or installation.',
         placeholder: 'Ask anything...',
-        footer: 'HMS Panel Expert Â· AI Powered Â· Diagrams supported',
+        footer: 'HMS Panel Expert · AI Powered · Diagrams supported',
     },
     bn: {
-        welcome: 'HMS à¦ªà§à¦¯à¦¾à¦¨à§‡à¦² à¦Ÿà§à¦°à¦¾à¦¬à¦²à¦¶à§à¦Ÿà¦¿à¦‚ à¦¸à¦®à§à¦ªà¦°à§à¦•à§‡ à¦œà¦¿à¦œà§à¦žà¦¾à¦¸à¦¾ à¦•à¦°à§à¦¨',
-        intro: 'à¦†à¦®à¦¿ SAI, à¦†à¦ªà¦¨à¦¾à¦° HMS à¦¸à¦¾à¦ªà§‹à¦°à§à¦Ÿ à¦…à§à¦¯à¦¾à¦¸à¦¿à¦¸à§à¦Ÿà§à¦¯à¦¾à¦¨à§à¦Ÿà¥¤ à¦Ÿà§à¦°à¦¾à¦¬à¦²à¦¶à§à¦Ÿà¦¿à¦‚, à¦•à¦¨à¦«à¦¿à¦—à¦¾à¦°à§‡à¦¶à¦¨, à¦¬à¦¾ à¦‡à¦¨à§à¦¸à¦Ÿà¦²à§‡à¦¶à¦¨ à¦¸à¦®à§à¦ªà¦°à§à¦•à§‡ à¦œà¦¿à¦œà§à¦žà¦¾à¦¸à¦¾ à¦•à¦°à§à¦¨à¥¤',
-        placeholder: 'à¦¯à§‡ à¦•à§‹à¦¨à§‹ à¦ªà§à¦°à¦¶à§à¦¨ à¦•à¦°à§à¦¨...',
-        footer: 'HMS à¦ªà§à¦¯à¦¾à¦¨à§‡à¦² à¦¬à¦¿à¦¶à§‡à¦·à¦œà§à¦ž Â· AI à¦¦à§à¦¬à¦¾à¦°à¦¾ à¦šà¦¾à¦²à¦¿à¦¤ Â· à¦¡à¦¾à¦¯à¦¼à¦¾à¦—à§à¦°à¦¾à¦® à¦¸à¦®à¦°à§à¦¥à¦¿à¦¤',
+        welcome: 'HMS প্যানেল ট্রাবলশুটিং সম্পর্কে জিজ্ঞাসা করুন',
+        intro: 'আমি SAI, আপনার HMS সাপোর্ট অ্যাসিস্ট্যান্ট। ট্রাবলশুটিং, কনফিগারেশন, বা ইনস্টলেশন সম্পর্কে জিজ্ঞাসা করুন।',
+        placeholder: 'যে কোনো প্রশ্ন করুন...',
+        footer: 'HMS প্যানেল বিশেষজ্ঞ · AI দ্বারা চালিত · ডায়াগ্রাম সমর্থিত',
     },
     hi: {
-        welcome: 'HMS à¤ªà¥ˆà¤¨à¤² à¤Ÿà¥à¤°à¤¬à¤²à¤¶à¥‚à¤Ÿà¤¿à¤‚à¤— à¤•à¥‡ à¤¬à¤¾à¤°à¥‡ à¤®à¥‡à¤‚ à¤ªà¥‚à¤›à¥‡à¤‚',
-        intro: 'à¤®à¥ˆà¤‚ SAI à¤¹à¥‚à¤, à¤†à¤ªà¤•à¤¾ HMS à¤¸à¤ªà¥‹à¤°à¥à¤Ÿ à¤…à¤¸à¤¿à¤¸à¥à¤Ÿà¥‡à¤‚à¤Ÿà¥¤ à¤Ÿà¥à¤°à¤¬à¤²à¤¶à¥‚à¤Ÿà¤¿à¤‚à¤—, à¤•à¥‰à¤¨à¥à¤«à¤¼à¤¿à¤—à¤°à¥‡à¤¶à¤¨ à¤¯à¤¾ à¤‡à¤‚à¤¸à¥à¤Ÿà¥‰à¤²à¥‡à¤¶à¤¨ à¤•à¥‡ à¤¬à¤¾à¤°à¥‡ à¤®à¥‡à¤‚ à¤ªà¥‚à¤›à¥‡à¤‚à¥¤',
-        placeholder: 'à¤•à¥à¤› à¤­à¥€ à¤ªà¥‚à¤›à¥‡à¤‚...',
-        footer: 'HMS à¤ªà¥ˆà¤¨à¤² à¤µà¤¿à¤¶à¥‡à¤·à¤œà¥à¤ž Â· AI à¤¸à¤‚à¤šà¤¾à¤²à¤¿à¤¤ Â· à¤¡à¤¾à¤¯à¤—à¥à¤°à¤¾à¤® à¤¸à¤®à¤°à¥à¤¥à¤¿à¤¤',
+        welcome: 'HMS पैनल ट्रबलशूटिंग के बारे में पूछें',
+        intro: 'मैं SAI हूँ, आपका HMS सपोर्ट असिस्टेंट। ट्रबलशूटिंग, कॉन्फ़िगरेशन या इंस्टॉलेशन के बारे में पूछें।',
+        placeholder: 'कुछ भी पूछें...',
+        footer: 'HMS पैनल विशेषज्ञ · AI संचालित · डायग्राम समर्थित',
     },
 };
 
@@ -145,6 +145,7 @@ export default function Chat() {
     const [showGuestGate, setShowGuestGate] = useState(false);
 
     const audioRecorder = useAudioRecorder({
+        language,
         onTranscription: (text) => {
             setInput(text);
             requestAnimationFrame(() => inputRef.current?.focus());
@@ -701,7 +702,7 @@ export default function Chat() {
                                 <FontAwesomeIcon icon={faSignal} className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[#CA8A04]" />
                             </div>
                             <div className="min-w-0">
-                                <h1 className="text-sm sm:text-base font-semibold text-[#1C1917] truncate">Dexter HMS Bot</h1>
+                                <h1 className="text-sm sm:text-base font-semibold text-[#1C1917] truncate">SAI Tech Support</h1>
                                 <p className="text-[10px] sm:text-xs text-[#78716C] truncate">Technical support, troubleshooting, and diagrams</p>
                             </div>
                         </div>
@@ -780,7 +781,7 @@ export default function Chat() {
                                                 onClick={() => handleSuggestionClick(question)}
                                                 className="bg-[#FAF7F2] hover:bg-[#F0EBE3] border border-[#D6CFC4] rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.05)] group p-3 sm:p-4 text-left flex items-start gap-2.5 text-xs sm:text-sm transition-all text-[#44403C]"
                                             >
-                                                <span className="mt-0.5 flex-shrink-0 text-sm opacity-60">â†’</span>
+                                                <span className="mt-0.5 flex-shrink-0 text-sm opacity-60">-&gt;</span>
                                                 <span className="flex-1 leading-snug">{question}</span>
                                             </button>
                                         ))}
