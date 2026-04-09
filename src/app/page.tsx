@@ -850,7 +850,7 @@ export default function Chat() {
                 </main>
 
                 {showScrollBtn && (
-                    <button onClick={scrollToBottom} className="fixed bottom-28 sm:bottom-32 right-4 sm:right-6 z-30 skeuo-raised w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center rounded-full shadow-lg animate-fade-up cursor-pointer" title="Scroll to bottom">
+                    <button onClick={scrollToBottom} className="fixed bottom-28 sm:bottom-32 right-4 sm:right-6 z-30 skeuo-raised w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center rounded-full shadow-lg animate-fade-up cursor-pointer" title="Scroll to bottom" aria-label="Scroll to bottom">
                         <FontAwesomeIcon icon={faChevronDown} className="w-3.5 h-3.5 text-[#44403C]" />
                     </button>
                 )}
