@@ -92,7 +92,7 @@ export default function ConversationSidebar({
                 <div className="px-3 border-b border-[#D6CFC4]">
                     <div className="flex items-center justify-between h-16">
                         <div className="flex items-center gap-2">
-                            <button onClick={onClose} className="flex items-center justify-center w-10 h-10 rounded-lg text-[#78716C] hover:text-[#1C1917] hover:bg-black/5 transition-colors" title="Close sidebar">
+                            <button onClick={onClose} className="flex items-center justify-center w-10 h-10 rounded-lg text-[#78716C] hover:text-[#1C1917] hover:bg-black/5 transition-colors" title="Close sidebar" aria-label="Close sidebar">
                                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                     <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
                                     <line x1="9" y1="3" x2="9" y2="21" />
@@ -100,7 +100,7 @@ export default function ConversationSidebar({
                             </button>
                             <p className="text-xs font-semibold text-[#44403C] uppercase tracking-[0.14em]">History</p>
                         </div>
-                        <button onClick={onNew} className="p-1.5 rounded-lg text-[#78716C] hover:text-[#CA8A04] hover:bg-[#CA8A04]/10 transition-colors" title="New conversation">
+                        <button onClick={onNew} className="p-1.5 rounded-lg text-[#78716C] hover:text-[#CA8A04] hover:bg-[#CA8A04]/10 transition-colors" title="New conversation" aria-label="New conversation">
                             <FontAwesomeIcon icon={faPlus} className="w-3.5 h-3.5" />
                         </button>
                     </div>
@@ -165,6 +165,7 @@ export default function ConversationSidebar({
                                                         }}
                                                         className={`rounded-md p-1 text-[#A8A29E] hover:text-red-600 hover:bg-red-50 transition-all ${isActive || isConversationLoading ? 'opacity-0 pointer-events-none' : 'opacity-0 group-hover:opacity-100'}`}
                                                         title="Delete"
+                                                        aria-label="Delete"
                                                     >
                                                         <FontAwesomeIcon icon={faTrash} className="w-3 h-3" />
                                                     </button>
