@@ -897,10 +897,6 @@ export async function POST(req: NextRequest) {
 
                     processedUnits++;
                     emitProgress('text', `Processed text chunk ${processedUnits} of ${totalUnits}`);
-
-                    if (i < chunkPairs.length - 1) {
-                        await new Promise((resolve) => setTimeout(resolve, 150));
-                    }
                 } catch (err: unknown) {
                     const result: ResultItem = { id, question: '(error)', status: 'error', type: 'text', error: (err as Error).message };
                     pushResult(result);
@@ -1080,10 +1076,6 @@ Output the diagram in markdown only. No preamble.`;
 
                         processedUnits++;
                         emitProgress('image', `Processed item ${processedUnits} of ${totalUnits}`);
-
-                        if (i < extractedImages.length - 1) {
-                            await new Promise((resolve) => setTimeout(resolve, 150));
-                        }
                     } catch (err: unknown) {
                         const result: ResultItem = {
                             id,
