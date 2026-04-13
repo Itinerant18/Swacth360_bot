@@ -184,7 +184,7 @@ async function checkRedisRateLimit(
         // Sliding window with sorted set
         const pipeline = redis.pipeline();
         pipeline.zremrangebyscore(key, 0, windowStart);
-        pipeline.zadd(key, { score: now, member: `${now}:${Math.random().toString(36).slice(2, 8)}` });
+        pipeline.zadd(key, { score: now, member: `${now}:${crypto.randomUUID()}` });
         pipeline.zcard(key);
         pipeline.expire(key, config.windowSeconds + 1);
 

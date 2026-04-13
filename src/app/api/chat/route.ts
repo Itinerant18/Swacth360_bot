@@ -231,6 +231,22 @@ function recordPipelineMetric(params: {
 
 export async function POST(req: Request) {
     const requestStart = performance.now();
+    const stageTimer = createStageTimer();
+    const requestEmbeddingCache = createEmbeddingStore();
+    const requestId = `req_${crypto.randomUUID()}`;
+    const metricsSnapshot: Partial<PipelineMetric> = {
+        requestId,
+        cacheHit: false,
+        cacheTier: null,
+        answerMode: 'unknown',
+        confidence: 0,
+        matchCount: 0,
+        hydeUsed: false,
+        queryExpansionUsed: false,
+        error: null,
+    };
+    let cacheSource: CacheSource = 'none';
+    let llmCallCount = 0;
     const requestId = `req_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     let originalQueryForLog = '';
     let rewrittenQueryForLog = '';

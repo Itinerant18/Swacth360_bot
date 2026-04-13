@@ -74,6 +74,77 @@ function normalizeHistoryMessages(payload: HistoryMessagesPayload | HistoryMessa
     }));
 }
 
+function createMessageId(prefix: 'user' | 'assistant'): string {
+    return `${prefix}-${crypto.randomUUID()}`;
+}
+
+function groupConversationsByDate(conversations: Conversation[]): [string, Conversation[]][] {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const yesterday = new Date(today.getTime() - 86400000);
+    const thisWeekStart = new Date(today.getTime() - 7 * 86400000);
+    const thisMonthStart = new Date(today.getTime() - 30 * 86400000);
+
+    const groups: Record<string, Conversation[]> = {
+        Today: [],
+        Yesterday: [],
+        'Previous 7 Days': [],
+        'Previous 30 Days': [],
+        Older: [],
+    };
+
+    for (const conversation of conversations) {
+        const updatedAt = new Date(conversation.updatedAt);
+        if (updatedAt >= today) {
+            groups.Today.push(conversation);
+        } else if (updatedAt >= yesterday) {
+            groups.Yesterday.push(conversation);
+        } else if (updatedAt >= thisWeekStart) {
+            groups['Previous 7 Days'].push(conversation);
+        } else if (updatedAt >= thisMonthStart) {
+            groups['Previous 30 Days'].push(conversation);
+        } else {
+            groups.Older.push(conversation);
+        }
+    }
+
+    return Object.entries(groups).filter(([, items]) => items.length > 0);
+}
+
+// Lazy-load heavy markdown renderer
+const ReactMarkdown = dynamic(() => import('react-markdown'), {
+    ssr: false,
+    loading: () => <span className="text-[#A8A29E] text-sm">…</span>
+});
+
+// ─── Diagram response type ────────────────────────────────────
+interface DiagramResponse {
+    __type: 'diagram';
+    markdown: string;   // text-based markdown + ASCII art diagram
+    title: string;
+    diagramType: string;
+    panelType: string;
+    hasKBContext: boolean;
+}
+
+// ─── Parse message content ─────────────────────────────────────
+function parseMessageContent(content: string): {
+    isDiagram: boolean;
+    diagram?: DiagramResponse;
+    text: string;
+} {
+    if (content.startsWith('DIAGRAM_RESPONSE:')) {
+        try {
+            const json = content.slice('DIAGRAM_RESPONSE:'.length);
+            const diagram = JSON.parse(json) as DiagramResponse;
+            return { isDiagram: true, diagram, text: diagram.title || '' };
+        } catch {
+            return { isDiagram: false, text: content };
+        }
+    }
+    return { isDiagram: false, text: content };
+}
+
 function getCuratedSuggestions(): string[] {
     const staticSuggestions = [
         'What does HMS stand for in the context of industrial control panels?',
