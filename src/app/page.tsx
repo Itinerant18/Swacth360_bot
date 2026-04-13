@@ -119,7 +119,7 @@ export default function Chat() {
     const historyRequestIdRef = useRef(0);
     const scrollBehaviorRef = useRef<ScrollBehavior>('smooth');
     const sidebarRefreshTimeoutRef = useRef<number | null>(null);
-
+    
     const [conversations, setConversations] = useState<ConversationSidebarConversation[]>([]);
     const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
     const [sidebarOpen, setSidebarOpen] = useState(false);
