@@ -83,12 +83,29 @@ type IngestProgress = {
 // Tab type
 type Tab = 'review' | 'analytics' | 'users' | 'ingest' | 'graph' | 'settings' | 'feedback' | 'raptor';
 
+const RAPTOR_ACTIVE_BUILD_WINDOW_MS = 30 * 60 * 1000;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return Boolean(value && typeof value === 'object');
+}
+
+function isRaptorBuildActive(startedAt: string): boolean {
+    const startedAtMs = new Date(startedAt).getTime();
+    return Number.isFinite(startedAtMs) && (Date.now() - startedAtMs) < RAPTOR_ACTIVE_BUILD_WINDOW_MS;
+}
+
+function isRaptorBuildSuccessful(status: string): boolean {
+    return status === 'complete' || status === 'completed';
+}
+
 export default function AdminDashboard() {
     const [tab, setTab] = useState<Tab>('review');
     const [questions, setQuestions] = useState<UnknownQuestion[]>([]);
     const [users, setUsers] = useState<TrackedUser[]>([]);
     const [reviewLoading, setReviewLoading] = useState(false);
     const [usersLoading, setUsersLoading] = useState(false);
+    const [reviewBadgeReady, setReviewBadgeReady] = useState(false);
+    const [usersBadgeReady, setUsersBadgeReady] = useState(false);
     const [expandedId, setExpandedId] = useState<string | null>(null);
     const [answerText, setAnswerText] = useState('');
     const [category, setCategory] = useState('');
@@ -118,6 +135,7 @@ export default function AdminDashboard() {
     const [ingestProgress, setIngestProgress] = useState<IngestProgress | null>(null);
     const [ingestLiveResults, setIngestLiveResults] = useState<IngestResult[]>([]);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const didPrefetchCountsRef = useRef(false);
 
     const handleSignOut = async () => {
         await signOut();
@@ -142,8 +160,10 @@ export default function AdminDashboard() {
         } catch (err: unknown) {
             setQuestions([]);
             setReviewError((err as Error).message || 'Failed to load review queue');
+        } finally {
+            setReviewLoading(false);
+            setReviewBadgeReady(true);
         }
-        setReviewLoading(false);
     }, []);
 
     const fetchUsers = useCallback(async () => {
@@ -161,8 +181,10 @@ export default function AdminDashboard() {
         } catch (err: unknown) {
             setUsers([]);
             setUsersError((err as Error).message || 'Failed to load users');
+        } finally {
+            setUsersLoading(false);
+            setUsersBadgeReady(true);
         }
-        setUsersLoading(false);
     }, []);
 
     const fetchRaptor = useCallback(async (background = false) => {
@@ -176,12 +198,9 @@ export default function AdminDashboard() {
             if (!res.ok) throw new Error(data.error || 'Failed to load RAPTOR data');
             const nextHealth = data.health || [];
             const nextBuildLog = data.buildLog || [];
-            // Only consider it "running" if it started in the last hour
             const hasRunningBuild = nextBuildLog.some((log: { status?: string; started_at: string }) => {
                 if (log.status !== 'running') return false;
-                const start = new Date(log.started_at).getTime();
-                const now = Date.now();
-                return (now - start) < 60 * 60 * 1000; // 1 hour
+                return isRaptorBuildActive(log.started_at);
             });
 
             setRaptorHealth(nextHealth);
@@ -215,17 +234,16 @@ export default function AdminDashboard() {
             if (res.status === 409) {
                 keepBuilding = true;
                 setRaptorError('');
-                setRaptorInfo('RAPTOR build already in progress. Build history refreshes automatically.');
+                setRaptorInfo(data.error || 'RAPTOR build already in progress. Build history refreshes automatically.');
                 await fetchRaptor(true);
                 return;
             }
 
             if (res.status === 202) {
-                // Background build started
                 keepBuilding = true;
                 setRaptorError('');
-                setRaptorInfo('RAPTOR build started in background. Build history refreshes automatically.');
-                showToast('RAPTOR build started in background');
+                setRaptorInfo(data.message || 'RAPTOR build started in background.');
+                showToast(data.message || 'RAPTOR build started in background');
                 await fetchRaptor(true);
                 return;
             }
@@ -248,10 +266,20 @@ export default function AdminDashboard() {
     };
 
     useEffect(() => {
-        if (tab === 'review') void fetchQuestions();
-        else if (tab === 'users') void fetchUsers();
-        else if (tab === 'raptor') void fetchRaptor();
-    }, [tab, fetchQuestions, fetchUsers, fetchRaptor]);
+        if (didPrefetchCountsRef.current) {
+            return;
+        }
+
+        didPrefetchCountsRef.current = true;
+        void fetchQuestions();
+        void fetchUsers();
+    }, [fetchQuestions, fetchUsers]);
+
+    useEffect(() => {
+        if (tab === 'raptor') {
+            void fetchRaptor();
+        }
+    }, [tab, fetchRaptor]);
 
     useEffect(() => {
         if (tab !== 'raptor' || !raptorBuilding) {
@@ -437,25 +465,20 @@ export default function AdminDashboard() {
             if (contentType.includes('text/event-stream')) {
                 let finalResult: IngestResponse | null = null;
 
-                await consumeFetchSse(response, async ({ event, data: rawEnvelope }) => {
-                    // Unwrap envelope: server wraps payloads as { event, ts, meta, data: <payload> }
-                    const payload = (rawEnvelope && typeof rawEnvelope === 'object' && 'data' in rawEnvelope)
-                        ? (rawEnvelope as { data: unknown }).data
-                        : rawEnvelope;
-
-                    if (event === 'progress' && payload && typeof payload === 'object') {
-                        const progress = payload as IngestProgress;
+                await consumeFetchSse(response, async ({ event, data }) => {
+                    if (event === 'progress' && isRecord(data)) {
+                        const progress = data as IngestProgress;
                         setIngestProgress(progress);
                         return;
                     }
 
-                    if (event === 'chunk' && payload && typeof payload === 'object') {
-                        setIngestLiveResults((current) => [...current, payload as IngestResult]);
+                    if (event === 'chunk' && isRecord(data)) {
+                        setIngestLiveResults((current) => [...current, data as IngestResult]);
                         return;
                     }
 
-                    if (event === 'complete' && payload && typeof payload === 'object') {
-                        const complete = payload as IngestResponse;
+                    if (event === 'complete' && isRecord(data)) {
+                        const complete = data as IngestResponse;
                         finalResult = complete;
                         setIngestResult(complete);
                         setIngestProgress(null);
@@ -463,8 +486,8 @@ export default function AdminDashboard() {
                     }
 
                     if (event === 'error') {
-                        if (payload && typeof payload === 'object' && 'message' in payload && typeof payload.message === 'string') {
-                            throw new Error(payload.message);
+                        if (isRecord(data) && typeof data.message === 'string') {
+                            throw new Error(data.message);
                         }
 
                         throw new Error('Training failed');
@@ -557,35 +580,40 @@ export default function AdminDashboard() {
 
                 <nav className="bg-white/95 backdrop-blur-sm border-b border-[#D6CFC4]/60 shadow-sm">
                     <div className="w-full max-w-[1600px] mx-auto px-4 md:px-6 xl:px-10 py-3">
-                        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-8 gap-2 w-full">
-                            {([
-                                { key: 'review' as const, label: 'Review', icon: faPenToSquare, badge: questions.length },
-                                { key: 'analytics' as const, label: 'Analytics', icon: faChartLine },
-                                { key: 'users' as const, label: 'Users', icon: faUsers, badge: users.length },
-                                { key: 'ingest' as const, label: 'Train Bot', icon: faCloudUploadAlt },
-                                { key: 'graph' as const, label: 'Graph', icon: faDiagramProject },
-                                { key: 'settings' as const, label: 'RAG Settings', icon: faSliders },
-                                { key: 'feedback' as const, label: 'Feedback', icon: faStar },
-                                { key: 'raptor' as const, label: 'RAPTOR', icon: faLayerGroup },
-                            ]).map(({ key, label, icon, badge }) => (
-                                <button
-                                    key={key}
-                                    onClick={() => setTab(key)}
-                                    aria-current={tab === key ? 'page' : undefined}
-                                    className={`w-full min-h-[44px] px-3 py-2.5 rounded-lg border text-center text-xs sm:text-sm font-medium transition-all duration-200 cursor-pointer flex items-center justify-center gap-2 ${tab === key
-                                        ? 'bg-[var(--accent-brass)] text-white border-[var(--accent-brass)] shadow-sm hover:bg-[#B45309]'
-                                        : 'bg-[#F5F5F4] text-[#57534E] border-[#E7E5E4] hover:bg-[#E7E5E4]'
-                                        }`}
-                                >
-                                    <FontAwesomeIcon icon={icon} className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
-                                    <span className="leading-tight text-center">{label}</span>
-                                    {badge !== undefined && badge > 0 && tab !== key && (
-                                        <span className="ml-1 bg-gradient-to-r from-[#EAB308] to-[#CA8A04] text-white text-[10px] px-1.5 py-0.5 rounded-full font-medium shadow-sm">
-                                            {badge}
-                                        </span>
-                                    )}
-                                </button>
-                            ))}
+                        <div className="overflow-x-auto scrollbar-hide">
+                            <div className="flex min-w-max gap-2 md:grid md:min-w-0 md:grid-cols-4 xl:grid-cols-8 w-full">
+                                {([
+                                    { key: 'review' as const, label: 'Review', icon: faPenToSquare, badge: reviewBadgeReady ? questions.length : null },
+                                    { key: 'analytics' as const, label: 'Analytics', icon: faChartLine },
+                                    { key: 'users' as const, label: 'Users', icon: faUsers, badge: usersBadgeReady ? users.length : null },
+                                    { key: 'ingest' as const, label: 'Train Bot', icon: faCloudUploadAlt },
+                                    { key: 'graph' as const, label: 'Graph', icon: faDiagramProject },
+                                    { key: 'settings' as const, label: 'RAG Settings', icon: faSliders },
+                                    { key: 'feedback' as const, label: 'Feedback', icon: faStar },
+                                    { key: 'raptor' as const, label: 'RAPTOR', icon: faLayerGroup },
+                                ]).map(({ key, label, icon, badge }) => (
+                                    <button
+                                        key={key}
+                                        onClick={() => setTab(key)}
+                                        aria-current={tab === key ? 'page' : undefined}
+                                        className={`w-full min-w-[9.5rem] md:min-w-0 min-h-[44px] px-3 py-2.5 rounded-lg border text-center text-xs sm:text-sm font-medium transition-all duration-200 cursor-pointer flex items-center justify-center gap-2 ${tab === key
+                                            ? 'bg-[var(--accent-brass)] text-white border-[var(--accent-brass)] shadow-sm hover:bg-[#B45309]'
+                                            : 'bg-[#F5F5F4] text-[#57534E] border-[#E7E5E4] hover:bg-[#E7E5E4]'
+                                            }`}
+                                    >
+                                        <FontAwesomeIcon icon={icon} className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+                                        <span className="leading-tight text-center">{label}</span>
+                                        {badge !== undefined && badge !== null && tab !== key && (
+                                            <span className={`ml-1 text-[10px] px-1.5 py-0.5 rounded-full font-medium shadow-sm transition-colors ${badge > 0
+                                                ? 'bg-gradient-to-r from-[#EAB308] to-[#CA8A04] text-white'
+                                                : 'bg-[#F0EBE3] text-[#78716C] border border-[#D6CFC4]'
+                                                }`}>
+                                                {badge}
+                                            </span>
+                                        )}
+                                    </button>
+                                ))}
+                            </div>
                         </div>
                     </div>
                 </nav>
@@ -613,7 +641,7 @@ export default function AdminDashboard() {
                                 <p className="text-sm text-red-700">{reviewError}</p>
                             </div>
                         )}
-                        {questions.length === 0 ? (
+                        {!reviewLoading && questions.length === 0 ? (
                             <div className="text-center py-16 sm:py-20 animate-fade-up">
                                 <FontAwesomeIcon icon={faCircleCheck} className="w-10 h-10 sm:w-12 sm:h-12 text-emerald-600 mb-3 sm:mb-4" />
                                 <h2 className="text-lg sm:text-xl font-semibold text-[#1C1917] mb-2">
@@ -1313,13 +1341,13 @@ export default function AdminDashboard() {
                                         <div className="space-y-4">
                                             <h3 className="text-xs text-[#78716C] uppercase tracking-wider font-medium">Build History</h3>
                                             {raptorBuildLog.map((log) => (
-                                                <div key={log.id} className={`flex items-center justify-between py-2 px-3 rounded-lg border ${log.status === 'completed' ? 'bg-emerald-50/50 border-emerald-200'
-                                                    : log.status === 'running' ? 'bg-blue-50/50 border-blue-200'
+                                                <div key={log.id} className={`flex items-center justify-between py-2 px-3 rounded-lg border ${isRaptorBuildSuccessful(log.status) ? 'bg-emerald-50/50 border-emerald-200'
+                                                    : log.status === 'running' && isRaptorBuildActive(log.started_at) ? 'bg-blue-50/50 border-blue-200'
                                                         : 'bg-red-50/50 border-red-200'
                                                     }`}>
                                                     <div className="flex items-center gap-2">
-                                                        <span className={`w-2 h-2 rounded-full ${log.status === 'completed' ? 'bg-emerald-500'
-                                                            : log.status === 'running' ? 'bg-blue-500 animate-pulse'
+                                                        <span className={`w-2 h-2 rounded-full ${isRaptorBuildSuccessful(log.status) ? 'bg-emerald-500'
+                                                            : log.status === 'running' && isRaptorBuildActive(log.started_at) ? 'bg-blue-500 animate-pulse'
                                                                 : 'bg-red-500'
                                                             }`} />
                                                         <span className="text-xs text-[#44403C] capitalize">{log.status}</span>

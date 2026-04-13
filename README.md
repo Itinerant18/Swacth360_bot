@@ -6,7 +6,6 @@
   </p>
 </div>
 
-
 ---
 
 ## 📋 Table of Contents
@@ -36,6 +35,7 @@
 ### **The Problem It Solves**
 
 When industrial equipment breaks down or operators need help, they currently:
+
 - ❌ Call support teams (wait hours for response)
 - ❌ Search through 500+ page manuals (confusing, error-prone)
 - ❌ Rely on experienced operators (not always available)
@@ -44,6 +44,7 @@ When industrial equipment breaks down or operators need help, they currently:
 ### **The Solution**
 
 Dexter Tech Support AI provides:
+
 - ✅ **Instant answers** (24/7, no waiting)
 - ✅ **Accurate solutions** (AI trained on actual manuals + real IoT data)
 - ✅ **Multilingual support** (English, Bengali, Hindi)
@@ -65,6 +66,7 @@ Dexter Tech Support AI provides:
 ## 🚀 Quick Start
 
 ### **Prerequisites**
+
 ```bash
 # Check if you have Node.js installed
 node --version  # Should be v20 or higher
@@ -100,70 +102,78 @@ You should see the chat interface! Try typing a question like: "What is the TB1 
 ## 📁 Project File Structure (Complete Breakdown)
 
 ### Configuration & Root Files
-* **`package.json`**: Project manifest, dependencies, and execution scripts (dev, build, test, benchmark).
-* **`tsconfig.json`**: TypeScript compiler options.
-* **`next.config.ts`**: Next.js framework configuration.
-* **`middleware.ts`**: Edge middleware, primarily intercepting requests for route-level authentication/authorization.
-* **`eslint.config.mjs`**: Modern flat-config ESLint rules.
-* **`postcss.config.mjs`**: Tailwind CSS integration pipeline.
-* **`.npmrc` / `.gitignore`**: Standard package management and source control ignores.
-* **`README.md`**: Project documentation (notes scaling needs like moving to Pinecone for >100K entries).
+
+- **`package.json`**: Project manifest, dependencies, and execution scripts (dev, build, test, benchmark).
+- **`tsconfig.json`**: TypeScript compiler options.
+- **`next.config.ts`**: Next.js framework configuration.
+- **`middleware.ts`**: Edge middleware, primarily intercepting requests for route-level authentication/authorization.
+- **`eslint.config.mjs`**: Modern flat-config ESLint rules.
+- **`postcss.config.mjs`**: Tailwind CSS integration pipeline.
+- **`.npmrc` / `.gitignore`**: Standard package management and source control ignores.
+- **`README.md`**: Project documentation (notes scaling needs like moving to Pinecone for >100K entries).
 
 ### `scripts/` (Data Pipeline & Admin Tools)
-* **`seed.ts` & `seed-supabase.ts`**: Initial database seeding logic. `seed.ts` contains latent logic for integrating with Pinecone (a secondary vector DB).
-* **`ingest-pdf.ts` & `ingest-jsonl.ts`**: Pipelines to extract text from raw documents, chunk them, generate embeddings, and push them to Supabase.
-* **`ingest-diagram.ts`**: Specifically ingests markdown-based diagram logic into the knowledge base.
-* **`run-rag-benchmark.ts`**: Executes automated evaluation of the RAG pipeline for retrieval quality, latency, and faithfulness.
-* **`audit-kb.ts`**: Knowledge Base Audit Tool to verify chunk integrity and vector dimensions.
-* **`clear.ts`**: Utility to wipe the database/cache states during testing.
-* **`langextract-ingest.py`**: A Python companion script for specialized language/text extraction prior to Node.js ingestion.
+
+- **`seed.ts` & `seed-supabase.ts`**: Initial database seeding logic. `seed.ts` contains latent logic for integrating with Pinecone (a secondary vector DB).
+- **`ingest-pdf.ts` & `ingest-jsonl.ts`**: Pipelines to extract text from raw documents, chunk them, generate embeddings, and push them to Supabase.
+- **`ingest-diagram.ts`**: Specifically ingests markdown-based diagram logic into the knowledge base.
+- **`run-rag-benchmark.ts`**: Executes automated evaluation of the RAG pipeline for retrieval quality, latency, and faithfulness.
+- **`audit-kb.ts`**: Knowledge Base Audit Tool to verify chunk integrity and vector dimensions.
+- **`clear.ts`**: Utility to wipe the database/cache states during testing.
+- **`langextract-ingest.py`**: A Python companion script for specialized language/text extraction prior to Node.js ingestion.
 
 ### `src/app/` (Routing & Pages)
-* **`layout.tsx` & `globals.css`**: Root layout wrapper and global Tailwind CSS imports.
-* **`page.tsx`**: Main entry point UI — the primary Chat Interface for end users.
-* **`favicon.ico`**: Site icon.
-* **`admin/page.tsx`**: Administrator dashboard for monitoring RAG analytics and triggering ingestions.
-* **`login/page.tsx` & `reset-password/page.tsx`**: Authentication flows powered by Supabase Auth.
-* **`auth/callback/route.ts`**: OAuth / Magic Link callback handler for Supabase session establishment.
+
+- **`layout.tsx` & `globals.css`**: Root layout wrapper and global Tailwind CSS imports.
+- **`page.tsx`**: Main entry point UI — the primary Chat Interface for end users.
+- **`favicon.ico`**: Site icon.
+- **`admin/page.tsx`**: Administrator dashboard for monitoring RAG analytics and triggering ingestions.
+- **`login/page.tsx` & `reset-password/page.tsx`**: Authentication flows powered by Supabase Auth.
+- **`auth/callback/route.ts`**: OAuth / Magic Link callback handler for Supabase session establishment.
 
 ### `src/app/api/` (API Endpoints)
-* **`chat/route.ts`**: **CRITICAL.** Main execution pipeline for the chat application. Receives queries and triggers the RAG engine.
-* **`conversations/route.ts` & `conversations/[id]/route.ts`**: CRUD operations for user chat histories.
-* **`conversations/[id]/messages/route.ts`**: Appends or retrieves specific messages within a session.
-* **`diagram/route.ts`**: Dynamic endpoint that leverages LLMs to generate Mermaid.js diagram code based on technical context.
-* **`admin/analytics/route.ts`**: Fetches usage statistics and RAG evaluation scores for the admin dashboard.
-* **`admin/ingest/route.ts`, `admin/raptor/route.ts`, `admin/seed-*/route.ts`**: Endpoints exposing script functionalities to the admin UI.
-* **`admin/rag-settings/route.ts`**: Allows dynamic updating of RAG parameters (like retrieval counts, reranking thresholds).
-* **`users/route.ts`**: User management endpoint.
-* **`test-email/route.ts`**: Validates the Resend integration.
+
+- **`chat/route.ts`**: **CRITICAL.** Main execution pipeline for the chat application. Receives queries and triggers the RAG engine.
+- **`conversations/route.ts` & `conversations/[id]/route.ts`**: CRUD operations for user chat histories.
+- **`conversations/[id]/messages/route.ts`**: Appends or retrieves specific messages within a session.
+- **`diagram/route.ts`**: Dynamic endpoint that leverages LLMs to generate Mermaid.js diagram code based on technical context.
+- **`admin/analytics/route.ts`**: Fetches usage statistics and RAG evaluation scores for the admin dashboard.
+- **`admin/ingest/route.ts`, `admin/raptor/route.ts`, `admin/seed-*/route.ts`**: Endpoints exposing script functionalities to the admin UI.
+- **`admin/rag-settings/route.ts`**: Allows dynamic updating of RAG parameters (like retrieval counts, reranking thresholds).
+- **`users/route.ts`**: User management endpoint.
+- **`test-email/route.ts`**: Validates the Resend integration.
 
 ### `src/components/` (React UI)
-* **`DiagramCard.tsx` / `MermaidBlock.tsx`**: Specialized components for rendering complex technical diagrams (e.g., Ademco protocols) directly in the chat stream using Mermaid.js.
-* **`LanguageSelector.tsx`**: UI toggle for multilingual support (English, Hindi, Bengali).
-* **`FeedbackTab.tsx` / `GraphTab.tsx`**: Sub-components of the admin dashboard for viewing user feedback and system metrics (using Recharts).
+
+- **`DiagramCard.tsx` / `MermaidBlock.tsx`**: Specialized components for rendering complex technical diagrams (e.g., Ademco protocols) directly in the chat stream using Mermaid.js.
+- **`LanguageSelector.tsx`**: UI toggle for multilingual support (English, Hindi, Bengali).
+- **`FeedbackTab.tsx` / `GraphTab.tsx`**: Sub-components of the admin dashboard for viewing user feedback and system metrics (using Recharts).
 
 ### `src/lib/` (Core Logic & RAG Engine)
-* **`rag-engine.ts`**: **CRITICAL.** The core orchestrator. Manages Multi-Vector Retrieval, MMR (Maximal Marginal Relevance), and invokes the reranker. Includes logic for saving tokens via contextual compression.
-* **`logical-router.ts`**: Analyzes the incoming query to determine if it needs vector search, standard DB lookups, or a hybrid approach.
-* **`hybrid-search.ts`**: Combines dense vector search with sparse BM25 keyword matching for superior recall.
-* **`raptor-builder.ts` & `raptor-retrieval.ts`**: Implements the RAPTOR methodology — clustering and summarizing leaf chunks into parent nodes for high-level conceptual retrieval.
-* **`query-decomposer.ts` & `query-expansion.ts`**: Intelligent pre-processing to break complex user questions into multiple sub-queries and generate synonyms/hypothetical answers (HYDE).
-* **`conversation-retrieval.ts`**: Rewrites user queries based on conversation history (e.g., turning "How do I fix *it*?" into "How do I fix the *Ademco sensor*?").
-* **`reranker.ts` & `feedback-reranker.ts`**: Cross-encoder logic (relying on HuggingFace) to re-score retrieved chunks.
-* **`embeddings.ts`**: Wrapper for OpenAI's `text-embedding-3-small` generation.
-* **`semantic-chunker.ts`**: Slices raw documents into semantically coherent pieces rather than arbitrary character counts.
-* **`knowledge-graph.ts`**: Logic for entity extraction and relationship mapping.
-* **`cache.ts` & `rate-limiter.ts`**: Upstash Redis implementations to prevent API abuse and cache frequent exact-match queries.
-* **`supabase.ts` / `auth.ts` / `auth-server.ts`**: Database clients and session management utilities.
-* **`sarvam.ts`**: Specialized LLM wrapper handling reasoning constraints and XML tag stripping.
-* **`rag-settings.ts`**: Shared configuration constants for retrieval thresholds.
-* **`rag-evaluator.ts`**: Logic for LLM-as-a-judge automated benchmarking.
+
+- **`rag-engine.ts`**: **CRITICAL.** The core orchestrator. Manages Multi-Vector Retrieval, MMR (Maximal Marginal Relevance), and invokes the reranker. Includes logic for saving tokens via contextual compression.
+- **`logical-router.ts`**: Analyzes the incoming query to determine if it needs vector search, standard DB lookups, or a hybrid approach.
+- **`hybrid-search.ts`**: Combines dense vector search with sparse BM25 keyword matching for superior recall.
+- **`raptor-builder.ts` & `raptor-retrieval.ts`**: Implements the RAPTOR methodology — clustering and summarizing leaf chunks into parent nodes for high-level conceptual retrieval.
+- **`query-decomposer.ts` & `query-expansion.ts`**: Intelligent pre-processing to break complex user questions into multiple sub-queries and generate synonyms/hypothetical answers (HYDE).
+- **`conversation-retrieval.ts`**: Rewrites user queries based on conversation history (e.g., turning "How do I fix _it_?" into "How do I fix the _Ademco sensor_?").
+- **`reranker.ts` & `feedback-reranker.ts`**: Cross-encoder logic (relying on HuggingFace) to re-score retrieved chunks.
+- **`embeddings.ts`**: Wrapper for OpenAI's `text-embedding-3-small` generation.
+- **`semantic-chunker.ts`**: Slices raw documents into semantically coherent pieces rather than arbitrary character counts.
+- **`knowledge-graph.ts`**: Logic for entity extraction and relationship mapping.
+- **`cache.ts` & `rate-limiter.ts`**: Upstash Redis implementations to prevent API abuse and cache frequent exact-match queries.
+- **`supabase.ts` / `auth.ts` / `auth-server.ts`**: Database clients and session management utilities.
+- **`sarvam.ts`**: Specialized LLM wrapper handling reasoning constraints and XML tag stripping.
+- **`rag-settings.ts`**: Shared configuration constants for retrieval thresholds.
+- **`rag-evaluator.ts`**: Logic for LLM-as-a-judge automated benchmarking.
 
 ### `supabase/migrations/` (Database Schema)
-* **`013_enhanced_rag.sql`**, **`016_raptor_hierarchical_index.sql`**, etc.: SQL scripts that create the `knowledge_chunks` tables, set up HNSW/IVFFlat indexes for `pgvector`, and define RPC functions for vector similarity math.
+
+- **`013_enhanced_rag.sql`**, **`016_raptor_hierarchical_index.sql`**, etc.: SQL scripts that create the `knowledge_chunks` tables, set up HNSW/IVFFlat indexes for `pgvector`, and define RPC functions for vector similarity math.
 
 ### `tests/`
-* **`admin-smoke.test.ts`**: Native Node.js `assert` based smoke tests validating the admin APIs and environment variables.
+
+- **`admin-smoke.test.ts`**: Native Node.js `assert` based smoke tests validating the admin APIs and environment variables.
 
 ---
 
@@ -302,15 +312,18 @@ Level 2: Cross-Topic Summaries
 ```
 
 **Admin Controls:**
+
 - **Build RAPTOR Index:** `POST /api/admin/raptor` — Triggers automatic tree rebuilding
 - **Check Build Status:** `GET /api/admin/raptor` — View health, coverage gaps, build progress
 - **Monitoring:** Non-overlapping builds (only one builds at a time), build guards prevent race conditions
 
 **Real-World Impact:**
+
 - **Before:** Q: "Compare power requirements across all terminals" → Retrieves individual terminal specs only
 - **After:** Q: "Compare power requirements across all terminals" → Retrieves synthesized summary showing all terminals
 
 **Configuration:**
+
 - Automatic clustering: On by default
 - Rebuild frequency: Manual via admin endpoint
 - Tree depth: 3 levels (tunable)
@@ -322,21 +335,25 @@ Level 2: Cross-Topic Summaries
 The system now combines three retrieval methods:
 
 **Method 1: Vector (Semantic) Search**
+
 - Uses OpenAI text-embedding-3-large (1536 dimensions)
 - Understands meaning: "battery low" ≈ "power depleted"
 - Accuracy: 85%
 
 **Method 2: BM25 Keyword Search**
+
 - Exact term matching + TF-IDF scoring
 - Catches specific terminology: "TB1 terminal" vs "battery"
 - Accuracy: 70%
 
 **Method 3: Cross-Encoder Reranking**
+
 - BGE reranker (fine-tuned BERT) scores results
 - Learns context: "What is X?" gets different ranking than "How do I fix X?"
 - Boosts top-1 accuracy to 98%
 
 **Hybrid Algorithm:**
+
 ```
 For each search result:
   score = (0.55 * vector_score) + (0.15 * bm25_score) + (0.30 * cross_encoder_score)
@@ -345,6 +362,7 @@ Return top-K sorted by score
 ```
 
 **User Control (Settings Tab):**
+
 - Toggle hybrid search on/off
 - Adjust alpha (0-1): balance between vector (55%) and BM25 (15%)
 - Enable/disable BGE reranker
@@ -357,6 +375,7 @@ Return top-K sorted by score
 Query Expansion generates synthetic hypothetical answers to improve recall:
 
 **Example:**
+
 ```
 User Q: "How do I connect TB1?"
 
@@ -364,8 +383,8 @@ System Expands to:
   1. Original: "How do I connect TB1?"
   2. Synonym expansion: "What is the method for connecting TB1?"
   3. HYDE: "To connect TB1, you should locate the 24V DC terminal,
-            insert the red wire, and tighten the connector. 
-            Never exceed 5A current. Reference the wiring diagram 
+            insert the red wire, and tighten the connector.
+            Never exceed 5A current. Reference the wiring diagram
             on page 42 of the manual."
 
 All three generate embeddings and search independently.
@@ -373,6 +392,7 @@ Results merged by relevance.
 ```
 
 **Benefits:**
+
 - 40-60% improvement in recall for ambiguous queries
 - Handles typos and colloquialisms
 - Works across multiple document domains
@@ -386,6 +406,7 @@ Results merged by relevance.
 Automatically extracts and links entities:
 
 **Entities Tracked:**
+
 - **Error Codes:** "E001", "E042", "TB1_FAULT"
 - **Terminals:** "TB1", "TB2", "TB3", etc.
 - **Devices:** "Power Supply", "Control Panel", "Battery"
@@ -393,6 +414,7 @@ Automatically extracts and links entities:
 - **Components:** "Relay", "Capacitor", "Diode"
 
 **Relationships:**
+
 ```
 E001 (error) → caused_by → TB1 (terminal) → connects_to → Power Supply (device)
                               ↓
@@ -400,15 +422,18 @@ E001 (error) → caused_by → TB1 (terminal) → connects_to → Power Supply (
 ```
 
 **Admin API Endpoint:** `POST /api/admin/graph`
+
 - Actions: `add_entities`, `extract_and_add`, `add_relationship`, `find_related`, `find_path`, `get_all`
 - Example: Find related entities to "TB1" (returns TB2, TB3, Power Supply, etc.)
 
 **UI Component:** `GraphTab.tsx` in admin dashboard
+
 - Visual knowledge graph viewer
 - Entity search and filtering
 - Relationship management
 
 **Retrieval Boost:**
+
 - When retrieving answer to "TB1", system also finds related TB2, TB3 → richer context
 - Boost factor: tunable (default 1.2x)
 
@@ -427,6 +452,7 @@ Automatic quality scoring after every query using 4 metrics:
 | **Context Precision** | No noise in results? | 0-1 | 15% | Precision of retrieval |
 
 **Scoring:**
+
 ```
 RAG_Score = (0.35 * faithfulness) + (0.30 * relevancy) + (0.20 * recall) + (0.15 * precision)
 
@@ -444,17 +470,20 @@ Example: (0.35 * 0.95) + (0.30 * 0.88) + (0.20 * 0.92) + (0.15 * 0.85) = 0.904 (
 Persistent per-user conversations with full message history:
 
 **API Endpoints:**
+
 - `GET /api/conversations` — List user's conversations
 - `GET /api/conversations/[id]/messages` — Get messages in conversation
 - `DELETE /api/conversations/[id]` — Delete a conversation
 - `POST /api/conversations` — Start new conversation
 
 **Database:** `conversations` and `messages` tables with RLS (Row-Level Security)
+
 - Only users can see their own chats
 - Auto-created when user first sends message
 - Auto-timestamps on updates
 
 **Features:**
+
 - Unlimited conversation history (paginated retrieval)
 - Legacy chat recovery from old `chat_sessions` table
 - Message metadata: timestamp, confidence, sources
@@ -468,16 +497,19 @@ Users can rate and comment on retrieval quality:
 **UI Component:** `FeedbackTab.tsx` in admin dashboard
 
 **Data Collected:**
+
 - **1-5 Star Rating** on retrieval relevance
 - **Thumbs Up/Down** on answer usefulness
 - **Optional Comment** for improvement suggestions
 
 **Admin Actions:**
+
 - View feedback statistics (avg rating, positive %, negative %)
 - Filter by rating/relevance
 - Identify patterns (e.g., "TB1 questions always get 5⭐")
 
 **Uses:**
+
 - Improve RAG weights
 - Identify missing knowledge
 - A/B test retrieval algorithms
@@ -516,11 +548,13 @@ User-controllable RAG pipeline configuration:
 ```
 
 **Components:**
+
 - Toggle switches for each feature
 - Slider controls for numeric parameters
 - Reset button to restore defaults
 
 **Impact on Response Time:**
+
 - All features on: 2-5 seconds
 - Disable HYDE: 2-3 seconds
 - Disable reranker: 1-2 seconds
@@ -532,6 +566,7 @@ User-controllable RAG pipeline configuration:
 Knowledge base entries stored at multiple levels:
 
 **Structure:**
+
 ```
 Parent Chunk (full context, ~500 tokens)
 ├── Level 0: Full document section
@@ -543,11 +578,13 @@ Parent Chunk (full context, ~500 tokens)
 ```
 
 **Retrieval Strategy:**
+
 1. Search for specific child chunks (precise matching)
 2. If found, return full parent (better context)
 3. Handles both detailed and high-level queries
 
 **Deduplication:**
+
 - Semantic similarity threshold: 0.92
 - Removes near-duplicate entries automatically
 - 15-20% knowledge base size reduction
@@ -559,6 +596,7 @@ Parent Chunk (full context, ~500 tokens)
 Different knowledge sources weighted differently:
 
 **Weights:**
+
 ```
 Propositions (atomic facts):        1.15x (highest confidence)
 Q&A pairs:                           1.00x
@@ -571,6 +609,7 @@ Example scoring:
 ```
 
 **Rationale:**
+
 - Propositions extracted by LLM: very accurate
 - Images: harder to parse accurately
 - Q&A: curated by humans, high quality
@@ -580,16 +619,19 @@ Example scoring:
 ### **11. Conversation History & Open Authentication** 👥
 
 **User Management (Migration 019):**
+
 - Removed `@seple.in` domain restriction
 - Now accepts any email address
 - Auto-creates `user_profiles` table on signup
 
 **User Profile Stores:**
+
 - Full name, phone, email
 - Query count, last active timestamp
 - Language preference
 
 **Row-Level Security (RLS):**
+
 ```sql
 -- Users can only see their own conversations
 CREATE POLICY "Users see own conversations"
@@ -604,6 +646,7 @@ CREATE POLICY "Users see own conversations"
 Enhanced analytics dashboard with detailed insights:
 
 **Metrics Tracked:**
+
 - Total chats by type (RAG %, Diagram %, General %, Fallback %)
 - Unknown questions by status (Pending, Reviewed, Dismissed)
 - Knowledge base composition (PDF sources, admin-added, seed data)
@@ -617,7 +660,7 @@ Enhanced analytics dashboard with detailed insights:
 
 ## System Architecture & Data Flow
 
-The system follows a **Layered Monolithic Architecture** centered around a sophisticated RAG engine. 
+The system follows a **Layered Monolithic Architecture** centered around a sophisticated RAG engine.
 
 ```text
 [ User Interface (Next.js React Client) ]
@@ -638,6 +681,7 @@ The system follows a **Layered Monolithic Architecture** centered around a sophi
 ```
 
 **Key Modules:**
+
 1. **Frontend UI Layer:** Chat interface, Markdown/Mermaid renderers, Admin dashboard.
 2. **API Layer:** Chat orchestration, Admin ingestion triggers, Diagram generation API.
 3. **Intelligence/RAG Layer:** Query expansion, vector retrieval, cross-encoder reranking, and RAPTOR hierarchical processing.
@@ -646,9 +690,10 @@ The system follows a **Layered Monolithic Architecture** centered around a sophi
 ### **Data & Control Flow**
 
 **Tracing a standard Chat Request:**
+
 1. **Entry:** User types a question in the UI (`src/app/page.tsx`).
-2. **API:** Request hits `src/app/api/chat/route.ts`. 
-3. **Preprocessing:** The `conversation-retrieval.ts` module looks at past messages and rewrites the query so it's fully contextualized. 
+2. **API:** Request hits `src/app/api/chat/route.ts`.
+3. **Preprocessing:** The `conversation-retrieval.ts` module looks at past messages and rewrites the query so it's fully contextualized.
 4. **Cache Check:** `cache.ts` checks Upstash Redis for an exact match. If found, it returns immediately.
 5. **Strategy:** `logical-router.ts` decides the search approach.
 6. **Expansion:** `query-expansion.ts` generates a HYDE hypothetical answer and synonym queries.
@@ -663,24 +708,25 @@ The system follows a **Layered Monolithic Architecture** centered around a sophi
 
 ## Technology Stack
 
-* **Project Type:** Full-Stack Web Application (Next.js App Router)
-* **Language:** TypeScript
-* **Frontend:** Next.js 16.1.6, React 19.2.3, Tailwind CSS v4, Lucide React, Mermaid.js (for dynamic protocol diagrams), Recharts.
-* **Backend/API:** Next.js Route Handlers (`src/app/api`).
-* **Database & Auth:** Supabase (PostgreSQL with `pgvector` for semantic search).
-* **Caching:** Upstash Redis (Tier 1 exact match cache) & Supabase pgvector (Tier 2 semantic match cache).
-* **AI / LLM Orchestration:**
-  * **LangChain** (`@langchain/openai`, `@langchain/core`, `@langchain/community`).
-  * **OpenAI** (for `text-embedding-3-small` and high-tier reasoning).
-  * **Sarvam AI** (specialized reasoning model handling, specifically stripping `<think>` tags).
-  * **HuggingFace** (for cross-encoder reranking).
-* **Infrastructure:** Hosted on Netlify (`@netlify/plugin-nextjs`).
+- **Project Type:** Full-Stack Web Application (Next.js App Router)
+- **Language:** TypeScript
+- **Frontend:** Next.js 16.1.6, React 19.2.3, Tailwind CSS v4, Lucide React, Mermaid.js (for dynamic protocol diagrams), Recharts.
+- **Backend/API:** Next.js Route Handlers (`src/app/api`).
+- **Database & Auth:** Supabase (PostgreSQL with `pgvector` for semantic search).
+- **Caching:** Upstash Redis (Tier 1 exact match cache) & Supabase pgvector (Tier 2 semantic match cache).
+- **AI / LLM Orchestration:**
+  - **LangChain** (`@langchain/openai`, `@langchain/core`, `@langchain/community`).
+  - **OpenAI** (for `text-embedding-3-small` and high-tier reasoning).
+  - **Sarvam AI** (specialized reasoning model handling, specifically stripping `<think>` tags).
+  - **HuggingFace** (for cross-encoder reranking).
+- **Infrastructure:** Hosted on Netlify (`@netlify/plugin-nextjs`).
 
 **What config files tell us:**
-* `package.json`: Shows heavy reliance on the LangChain ecosystem and custom scripts for benchmarking (`run-rag-benchmark.ts`) and testing. Notably uses `ai` v4 alongside Next 16.
-* `tsconfig.json`: Standard strict TypeScript configuration using `@/*` aliases for `src/*`.
-* `next.config.ts`: Handles Next.js environment mapping and server-side rendering configurations.
-* `middleware.ts`: Implements Edge-level routing, likely handling auth session checks before users hit protected `/admin` routes.
+
+- `package.json`: Shows heavy reliance on the LangChain ecosystem and custom scripts for benchmarking (`run-rag-benchmark.ts`) and testing. Notably uses `ai` v4 alongside Next 16.
+- `tsconfig.json`: Standard strict TypeScript configuration using `@/*` aliases for `src/*`.
+- `next.config.ts`: Handles Next.js environment mapping and server-side rendering configurations.
+- `middleware.ts`: Implements Edge-level routing, likely handling auth session checks before users hit protected `/admin` routes.
 
 ---
 
@@ -759,6 +805,7 @@ tech-support-ai/
 ## Quick Start Guide
 
 ### **Prerequisites**
+
 ```bash
 # Check if you have Node.js installed
 node --version  # Should be v20 or higher
@@ -850,24 +897,29 @@ NODE_ENV=development
 ### **How to Get Each Key**
 
 #### **Supabase Keys**
+
 1. Create account at [supabase.com](https://supabase.com)
 2. Create new project
 3. Go to Settings → API → Copy keys
 
 #### **OpenAI Key**
+
 1. Visit [platform.openai.com](https://platform.openai.com)
 2. Create API key
 3. Copy and paste
 
 #### **Sarvam AI Key**
+
 1. Visit [sarvam.ai](https://sarvam.ai) (or contact support)
 2. Get API key from dashboard
 3. Copy and paste
 
 #### **Gemini API Key**
+
 1. Visit [makersuite.google.com](https://makersuite.google.com)
 2. Create API key
 3. Enable Generative AI API
+
 ---
 
 ---
@@ -991,6 +1043,7 @@ vercel logs
 ---
 
 ### **Knowledge Base Management**
+
 ```bash
 # Seed Q&A from JSON file
 npx tsx scripts/seed-supabase.ts
@@ -1012,6 +1065,7 @@ npx tsx scripts/migrate-embeddings.ts
 ```
 
 ### **Database Management**
+
 ```bash
 # Apply all migrations (via Supabase dashboard or CLI)
 supabase migration list
@@ -1033,14 +1087,14 @@ supabase db dump --data-only > backup.sql
 ### **PUBLIC ENDPOINTS** (No authentication required)
 
 #### **1. Chat Endpoint - POST `/api/chat`** 🗨️
+
 Main conversational AI pipeline with RAG, translation, and diagram detection.
 
 **Request:**
+
 ```json
 {
-  "messages": [
-    { "role": "user", "content": "What is TB1 terminal?" }
-  ],
+  "messages": [{ "role": "user", "content": "What is TB1 terminal?" }],
   "userId": "user-123",
   "language": "en",
   "conversationId": "conv-456",
@@ -1055,12 +1109,14 @@ Main conversational AI pipeline with RAG, translation, and diagram detection.
 ```
 
 **Response:** Streaming JSON
+
 ```
 data: {"type":"message","content":"TB1 is the primary 24V DC power..."}
 data: {"type":"end","metadata":{"confidence":0.95,"sources":["qa_001","qa_042"]}}
 ```
 
 **Features:**
+
 - Multi-language support (EN/BN/HI)
 - Query classification (factual/procedural/diagnostic/visual)
 - RAPTOR hierarchical retrieval
@@ -1070,6 +1126,7 @@ data: {"type":"end","metadata":{"confidence":0.95,"sources":["qa_001","qa_042"]}
 - Streaming response
 
 **Response Modes:**
+
 - `rag_high`: HIGH confidence (>0.75) - Direct answer
 - `rag_medium`: MEDIUM confidence (0.55-0.75) - With caveats
 - `rag_partial`: LOW confidence (<0.55) - General expert mode
@@ -1078,9 +1135,11 @@ data: {"type":"end","metadata":{"confidence":0.95,"sources":["qa_001","qa_042"]}
 ---
 
 #### **2. Diagram Endpoint - POST `/api/diagram`** 📊
+
 Generate ASCII/Markdown technical diagrams.
 
 **Request:**
+
 ```json
 {
   "question": "Show me TB1 wiring",
@@ -1090,7 +1149,8 @@ Generate ASCII/Markdown technical diagrams.
 ```
 
 **Response:**
-```json
+
+````json
 {
   "success": true,
   "markdown": "```\n┌──────┐\n│ TB1  │\n└──────┘\n```",
@@ -1098,9 +1158,10 @@ Generate ASCII/Markdown technical diagrams.
   "diagramTypes": ["wiring", "power_distribution", "terminal_layout"],
   "description": "TB1 is the primary power input terminal..."
 }
-```
+````
 
 **Diagram Types Supported:** 25+
+
 - Wiring diagrams (power, signal, communication)
 - Block diagrams (system architecture)
 - Circuit diagrams (electrical schematics)
@@ -1114,9 +1175,11 @@ Generate ASCII/Markdown technical diagrams.
 ---
 
 #### **3. User Profile Endpoint - GET `/api/users`** 👤
+
 Get current user's profile information.
 
 **Response:**
+
 ```json
 {
   "id": "user-123",
@@ -1134,13 +1197,16 @@ Get current user's profile information.
 ### **CONVERSATION MANAGEMENT** (NEW!)
 
 #### **4. List Conversations - GET `/api/conversations`** 📋
+
 Retrieve all conversations for logged-in user (RLS protected).
 
 **Query Parameters:**
+
 - `limit`: 1-50 (default: 20)
 - `offset`: 0+ (default: 0)
 
 **Response:**
+
 ```json
 {
   "conversations": [
@@ -1160,13 +1226,16 @@ Retrieve all conversations for logged-in user (RLS protected).
 ---
 
 #### **5. Get Conversation Messages - GET `/api/conversations/[id]/messages`** 💬
+
 Fetch all messages in a conversation.
 
 **Query Parameters:**
+
 - `limit`: 1-100 (default: 50)
 - `offset`: 0+ (default: 0)
 
 **Response:**
+
 ```json
 {
   "messages": [
@@ -1193,9 +1262,11 @@ Fetch all messages in a conversation.
 ---
 
 #### **6. Delete Conversation - DELETE `/api/conversations/[id]`** 🗑️
+
 Delete a conversation (user can only delete own).
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -1208,9 +1279,11 @@ Delete a conversation (user can only delete own).
 ### **ADMIN ENDPOINTS** (Protected with `x-admin-key` header)
 
 #### **7. Analytics Dashboard - GET `/api/admin/analytics`** 📈
+
 System-wide analytics and metrics.
 
 **Response:**
+
 ```json
 {
   "totalChats": 15234,
@@ -1233,9 +1306,9 @@ System-wide analytics and metrics.
     "fromSeedData": 608
   },
   "costBreakdown": {
-    "openaiEmbeddings": 12.50,
+    "openaiEmbeddings": 12.5,
     "sarvamAI": 23.75,
-    "supabase": 25.00,
+    "supabase": 25.0,
     "total": 61.25
   }
 }
@@ -1246,6 +1319,7 @@ System-wide analytics and metrics.
 #### **8. RAPTOR Management - GET/POST `/api/admin/raptor`** 🌳
 
 **GET** - Check RAPTOR build status:
+
 ```json
 {
   "status": "ready",
@@ -1261,12 +1335,14 @@ System-wide analytics and metrics.
 ```
 
 **POST** - Trigger RAPTOR rebuild:
+
 ```bash
 curl -X POST /api/admin/raptor \
   -H "x-admin-key: your-secret-key"
 ```
 
 Response:
+
 ```json
 {
   "buildId": "build-2026-03-12-001",
@@ -1280,6 +1356,7 @@ Response:
 #### **9. Feedback Management - GET/POST `/api/admin/feedback`** ⭐
 
 **GET** - Retrieve feedback records:
+
 ```json
 {
   "feedback": [
@@ -1303,6 +1380,7 @@ Response:
 ```
 
 **POST** - Submit feedback:
+
 ```json
 {
   "chatId": "msg-042",
@@ -1317,6 +1395,7 @@ Response:
 #### **10. Unknown Questions - GET/PATCH `/api/admin/questions`** ❓
 
 **GET** - List unanswered questions:
+
 ```json
 {
   "questions": [
@@ -1333,6 +1412,7 @@ Response:
 ```
 
 **PATCH** - Update question status:
+
 ```json
 {
   "questionId": "unknown-001",
@@ -1384,15 +1464,14 @@ Response:
 ```
 
 **Response:**
+
 ```json
 {
   "nodes": [
-    {"id": "TB1", "type": "terminal", "label": "TB1 (24V DC)"},
-    {"id": "PSU", "type": "device", "label": "Power Supply"}
+    { "id": "TB1", "type": "terminal", "label": "TB1 (24V DC)" },
+    { "id": "PSU", "type": "device", "label": "Power Supply" }
   ],
-  "edges": [
-    {"from": "TB1", "to": "PSU", "relationship": "connects_to"}
-  ]
+  "edges": [{ "from": "TB1", "to": "PSU", "relationship": "connects_to" }]
 }
 ```
 
@@ -1403,6 +1482,7 @@ Response:
 Upload and process PDF documents for knowledge base training.
 
 **Request:** Multipart form data
+
 ```bash
 curl -X POST /api/admin/ingest \
   -F "file=@HMS-Manual.pdf" \
@@ -1410,6 +1490,7 @@ curl -X POST /api/admin/ingest \
 ```
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -1422,6 +1503,7 @@ curl -X POST /api/admin/ingest \
 ```
 
 **Features:**
+
 - Frontier-grade chunking (parent-child)
 - Proposition extraction (atomic facts)
 - Multi-vector embeddings
@@ -1435,6 +1517,7 @@ curl -X POST /api/admin/ingest \
 Train the bot with admin-provided answers.
 
 **Request:**
+
 ```json
 {
   "question": "What is TB1 terminal?",
@@ -1445,6 +1528,7 @@ Train the bot with admin-provided answers.
 ```
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -1457,44 +1541,49 @@ Train the bot with admin-provided answers.
 
 ### **LIBRARY FUNCTIONS** (TypeScript/JavaScript)
 
-#### **Query Classification** 
+#### **Query Classification**
+
 ```typescript
-import { classifyQuery } from '@/lib/rag-engine';
+import { classifyQuery } from "@/lib/rag-engine";
 
 const queryType = await classifyQuery("Is the battery low?");
 // Returns: { type: 'factual', needsIoT: true, complexity: 'simple' }
 ```
 
 #### **Semantic Caching**
+
 ```typescript
-import { querySemanticCache } from '@/lib/rag-engine';
+import { querySemanticCache } from "@/lib/rag-engine";
 
 const result = await querySemanticCache(embedding, 0.92);
 // Returns cached result if similarity > 0.92 threshold
 ```
 
 #### **RAPTOR Retrieval**
+
 ```typescript
-import { raptorRetrieval } from '@/lib/raptor-retrieval';
+import { raptorRetrieval } from "@/lib/raptor-retrieval";
 
 const results = await raptorRetrieval(query, {
   searchAllLevels: true,
   topK: 5,
-  minConfidence: 0.5
+  minConfidence: 0.5,
 });
 ```
 
 #### **Knowledge Graph Operations**
-```typescript
-import { findEntityPath } from '@/lib/knowledge-graph';
 
-const path = await findEntityPath('E001', 'TB1');
+```typescript
+import { findEntityPath } from "@/lib/knowledge-graph";
+
+const path = await findEntityPath("E001", "TB1");
 // Returns: E001 → caused_by → TB1_fault → connected_to → TB1
 ```
 
 ### **Public Endpoints**
 
 #### **1. Chat Endpoint** (Main)
+
 ```bash
 curl -X POST http://localhost:3000/api/chat \
   -H "Content-Type: application/json" \
@@ -1508,11 +1597,13 @@ curl -X POST http://localhost:3000/api/chat \
 ```
 
 **Response:** Streaming text (chunks)
+
 ```
 Answer about TB1 terminal...
 ```
 
 #### **2. Diagram Endpoint**
+
 ```bash
 curl -X POST http://localhost:3000/api/diagram \
   -H "Content-Type: application/json" \
@@ -1523,20 +1614,23 @@ curl -X POST http://localhost:3000/api/diagram \
 ```
 
 **Response:**
-```json
+
+````json
 {
   "success": true,
   "markdown": "```\n┌──────┐\n│ TB1  │\n└──────┘\n```",
   "hasKBContext": true
 }
-```
+````
 
 #### **3. User Profile Endpoint**
+
 ```bash
 curl http://localhost:3000/api/users
 ```
 
 **Response:**
+
 ```json
 {
   "id": "user-123",
@@ -1550,17 +1644,20 @@ curl http://localhost:3000/api/users
 ### **Admin Endpoints** (Protected)
 
 #### **Analytics**
+
 ```bash
 curl http://localhost:3000/api/admin/analytics \
   -H "Authorization: Bearer admin-password"
 ```
 
 #### **Feedback**
+
 ```bash
 curl http://localhost:3000/api/admin/feedback
 ```
 
 #### **Unknown Questions** (Manual Review)
+
 ```bash
 curl http://localhost:3000/api/admin/questions
 
@@ -1572,6 +1669,7 @@ PATCH to add admin answer:
 ```
 
 #### **Ingest PDFs** (Training)
+
 ```bash
 curl -X POST http://localhost:3000/api/admin/ingest \
   -F "file=@HMS-Manual.pdf"
@@ -1588,46 +1686,46 @@ curl -X POST http://localhost:3000/api/admin/ingest \
 ```sql
 CREATE TABLE hms_knowledge (
   id TEXT PRIMARY KEY DEFAULT gen_random_uuid(),
-  
+
   -- Content
   question TEXT NOT NULL,
   answer TEXT NOT NULL,
   content TEXT NOT NULL,
-  
+
   -- Vector Embedding (for search)
   embedding vector(1536),      -- OpenAI text-embedding-3-large
-  
+
   -- Metadata
   category TEXT,               -- "Hardware", "Troubleshooting", etc
   subcategory TEXT,            -- "Power", "Communication", etc
   tags TEXT[],                 -- ["error", "E001", "troubleshooting"]
   source TEXT DEFAULT 'json',  -- "json" or "pdf"
   source_name TEXT,            -- "hms-dexter-qa.json"
-  
+
   -- Hierarchy (for chunked content)
   parent_id TEXT REFERENCES hms_knowledge(id),
   chunk_level TEXT,            -- "parent" or "child"
   chunk_type TEXT,             -- "main", "example", "summary"
-  
+
   -- Relationships
   entities TEXT[],             -- ["TB1", "24V", "E001"]
   related_ids TEXT[],          -- IDs of related Q&A
-  
+
   -- Audit
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW(),
-  
+
   -- Indexes for fast search
   CONSTRAINT valid_chunk_level CHECK (chunk_level IN ('parent', 'child'))
 );
 
 -- Vector similarity search (IVFFlat - fast for <10K rows)
-CREATE INDEX hms_knowledge_embedding_idx 
+CREATE INDEX hms_knowledge_embedding_idx
   ON hms_knowledge USING ivfflat (embedding vector_cosine_ops)
   WITH (lists = 50);
 
 -- Full-text search (for keywords)
-CREATE INDEX hms_knowledge_fts_idx 
+CREATE INDEX hms_knowledge_fts_idx
   ON hms_knowledge USING GIN (to_tsvector('english', question || ' ' || content));
 
 -- Fast lookups by source
@@ -1643,22 +1741,22 @@ CREATE INDEX hms_knowledge_parent_idx ON hms_knowledge(parent_id);
 CREATE TABLE chat_history (
   id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL REFERENCES user_profiles(id),
-  
+
   -- Messages
   user_question TEXT NOT NULL,
   english_text TEXT,           -- Translated to English
   bot_answer TEXT,
-  
+
   -- Analysis
   answer_mode TEXT,            -- "rag_high", "rag_medium", "general", "unknown"
   confidence_score FLOAT,       -- 0.0 to 1.0
   top_similarity FLOAT,         -- Best match score
-  
+
   -- Query details
   language TEXT,               -- "en", "bn", "hi"
   query_type TEXT,            -- "factual", "diagnostic", "procedural"
   used_iot_data BOOLEAN DEFAULT FALSE,
-  
+
   -- Tracking
   created_at TIMESTAMPTZ DEFAULT NOW(),
   response_time_ms INTEGER     -- How long to generate answer
@@ -1673,15 +1771,15 @@ CREATE INDEX chat_history_mode_idx ON chat_history(answer_mode);
 ```sql
 CREATE TABLE unknown_questions (
   id TEXT PRIMARY KEY,
-  
+
   user_question TEXT NOT NULL,
   english_text TEXT,
   top_similarity FLOAT,        -- Best match (if < 0.45)
   frequency INT DEFAULT 1,     -- Asked how many times
-  
+
   status TEXT DEFAULT 'pending',  -- "pending", "answered", "rejected"
   admin_answer TEXT,
-  
+
   first_asked TIMESTAMPTZ DEFAULT NOW(),
   answered_at TIMESTAMPTZ
 );
@@ -1695,18 +1793,18 @@ CREATE TABLE user_profiles (
   email TEXT UNIQUE NOT NULL,
   name TEXT,
   phone TEXT,
-  
+
   query_count INTEGER DEFAULT 0,
   last_active TIMESTAMPTZ,
   language_preference TEXT DEFAULT 'en',
-  
+
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 ```
 
 ## 🏗️ System Architecture (Technical Deep Dive)
 
-The system follows a **Layered Monolithic Architecture** centered around a sophisticated RAG engine. 
+The system follows a **Layered Monolithic Architecture** centered around a sophisticated RAG engine.
 
 ```text
 [ User Interface (Next.js React Client) ]
@@ -1727,6 +1825,7 @@ The system follows a **Layered Monolithic Architecture** centered around a sophi
 ```
 
 **Key Modules:**
+
 1. **Frontend UI Layer:** Chat interface, Markdown/Mermaid renderers, Admin dashboard.
 2. **API Layer:** Chat orchestration, Admin ingestion triggers, Diagram generation API.
 3. **Intelligence/RAG Layer:** Query expansion, vector retrieval, cross-encoder reranking, and RAPTOR hierarchical processing.
@@ -1735,9 +1834,10 @@ The system follows a **Layered Monolithic Architecture** centered around a sophi
 ### **Data & Control Flow**
 
 **Tracing a standard Chat Request:**
+
 1. **Entry:** User types a question in the UI (`src/app/page.tsx`).
-2. **API:** Request hits `src/app/api/chat/route.ts`. 
-3. **Preprocessing:** The `conversation-retrieval.ts` module looks at past messages and rewrites the query so it's fully contextualized. 
+2. **API:** Request hits `src/app/api/chat/route.ts`.
+3. **Preprocessing:** The `conversation-retrieval.ts` module looks at past messages and rewrites the query so it's fully contextualized.
 4. **Cache Check:** `cache.ts` checks Upstash Redis for an exact match. If found, it returns immediately.
 5. **Strategy:** `logical-router.ts` decides the search approach.
 6. **Expansion:** `query-expansion.ts` generates a HYDE hypothetical answer and synonym queries.
@@ -1753,6 +1853,7 @@ The system follows a **Layered Monolithic Architecture** centered around a sophi
 ### **Public Endpoints**
 
 #### **1. Chat Endpoint** (Main)
+
 ```bash
 curl -X POST http://localhost:3000/api/chat \
   -H "Content-Type: application/json" \
@@ -1766,11 +1867,13 @@ curl -X POST http://localhost:3000/api/chat \
 ```
 
 **Response:** Streaming text (chunks)
+
 ```
 Answer about TB1 terminal...
 ```
 
 #### **2. Diagram Endpoint**
+
 ```bash
 curl -X POST http://localhost:3000/api/diagram \
   -H "Content-Type: application/json" \
@@ -1781,20 +1884,23 @@ curl -X POST http://localhost:3000/api/diagram \
 ```
 
 **Response:**
-```json
+
+````json
 {
   "success": true,
   "markdown": "```\n┌──────┐\n│ TB1  │\n└──────┘\n```",
   "hasKBContext": true
 }
-```
+````
 
 #### **3. User Profile Endpoint**
+
 ```bash
 curl http://localhost:3000/api/users
 ```
 
 **Response:**
+
 ```json
 {
   "id": "user-123",
@@ -1808,17 +1914,20 @@ curl http://localhost:3000/api/users
 ### **Admin Endpoints** (Protected)
 
 #### **Analytics**
+
 ```bash
 curl http://localhost:3000/api/admin/analytics \
   -H "Authorization: Bearer admin-password"
 ```
 
 #### **Feedback**
+
 ```bash
 curl http://localhost:3000/api/admin/feedback
 ```
 
 #### **Unknown Questions** (Manual Review)
+
 ```bash
 curl http://localhost:3000/api/admin/questions
 
@@ -1830,6 +1939,7 @@ PATCH to add admin answer:
 ```
 
 #### **Ingest PDFs** (Training)
+
 ```bash
 curl -X POST http://localhost:3000/api/admin/ingest \
   -F "file=@HMS-Manual.pdf"
@@ -1930,7 +2040,6 @@ npx tsx scripts/clear.ts
 
 ```
 
-
 ### **Git Commands**
 
 ```bash
@@ -2024,24 +2133,29 @@ NODE_ENV=development
 ### **How to Get Each Key**
 
 #### **Supabase Keys**
+
 1. Create account at [supabase.com](https://supabase.com)
 2. Create new project
 3. Go to Settings → API → Copy keys
 
 #### **OpenAI Key**
+
 1. Visit [platform.openai.com](https://platform.openai.com)
 2. Create API key
 3. Copy and paste
 
 #### **Sarvam AI Key**
+
 1. Visit [sarvam.ai](https://sarvam.ai) (or contact support)
 2. Get API key from dashboard
 3. Copy and paste
 
 #### **Gemini API Key**
+
 1. Visit [makersuite.google.com](https://makersuite.google.com)
 2. Create API key
 3. Enable Generative AI API
+
 ---
 
 ## 🗄️ Database Schema
@@ -2051,46 +2165,46 @@ NODE_ENV=development
 ```sql
 CREATE TABLE hms_knowledge (
   id TEXT PRIMARY KEY DEFAULT gen_random_uuid(),
-  
+
   -- Content
   question TEXT NOT NULL,
   answer TEXT NOT NULL,
   content TEXT NOT NULL,
-  
+
   -- Vector Embedding (for search)
   embedding vector(1536),      -- OpenAI text-embedding-3-large
-  
+
   -- Metadata
   category TEXT,               -- "Hardware", "Troubleshooting", etc
   subcategory TEXT,            -- "Power", "Communication", etc
   tags TEXT[],                 -- ["error", "E001", "troubleshooting"]
   source TEXT DEFAULT 'json',  -- "json" or "pdf"
   source_name TEXT,            -- "hms-dexter-qa.json"
-  
+
   -- Hierarchy (for chunked content)
   parent_id TEXT REFERENCES hms_knowledge(id),
   chunk_level TEXT,            -- "parent" or "child"
   chunk_type TEXT,             -- "main", "example", "summary"
-  
+
   -- Relationships
   entities TEXT[],             -- ["TB1", "24V", "E001"]
   related_ids TEXT[],          -- IDs of related Q&A
-  
+
   -- Audit
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW(),
-  
+
   -- Indexes for fast search
   CONSTRAINT valid_chunk_level CHECK (chunk_level IN ('parent', 'child'))
 );
 
 -- Vector similarity search (IVFFlat - fast for <10K rows)
-CREATE INDEX hms_knowledge_embedding_idx 
+CREATE INDEX hms_knowledge_embedding_idx
   ON hms_knowledge USING ivfflat (embedding vector_cosine_ops)
   WITH (lists = 50);
 
 -- Full-text search (for keywords)
-CREATE INDEX hms_knowledge_fts_idx 
+CREATE INDEX hms_knowledge_fts_idx
   ON hms_knowledge USING GIN (to_tsvector('english', question || ' ' || content));
 
 -- Fast lookups by source
@@ -2106,22 +2220,22 @@ CREATE INDEX hms_knowledge_parent_idx ON hms_knowledge(parent_id);
 CREATE TABLE chat_history (
   id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL REFERENCES user_profiles(id),
-  
+
   -- Messages
   user_question TEXT NOT NULL,
   english_text TEXT,           -- Translated to English
   bot_answer TEXT,
-  
+
   -- Analysis
   answer_mode TEXT,            -- "rag_high", "rag_medium", "general", "unknown"
   confidence_score FLOAT,       -- 0.0 to 1.0
   top_similarity FLOAT,         -- Best match score
-  
+
   -- Query details
   language TEXT,               -- "en", "bn", "hi"
   query_type TEXT,            -- "factual", "diagnostic", "procedural"
   used_iot_data BOOLEAN DEFAULT FALSE,
-  
+
   -- Tracking
   created_at TIMESTAMPTZ DEFAULT NOW(),
   response_time_ms INTEGER     -- How long to generate answer
@@ -2136,15 +2250,15 @@ CREATE INDEX chat_history_mode_idx ON chat_history(answer_mode);
 ```sql
 CREATE TABLE unknown_questions (
   id TEXT PRIMARY KEY,
-  
+
   user_question TEXT NOT NULL,
   english_text TEXT,
   top_similarity FLOAT,        -- Best match (if < 0.45)
   frequency INT DEFAULT 1,     -- Asked how many times
-  
+
   status TEXT DEFAULT 'pending',  -- "pending", "answered", "rejected"
   admin_answer TEXT,
-  
+
   first_asked TIMESTAMPTZ DEFAULT NOW(),
   answered_at TIMESTAMPTZ
 );
@@ -2158,11 +2272,11 @@ CREATE TABLE user_profiles (
   email TEXT UNIQUE NOT NULL,
   name TEXT,
   phone TEXT,
-  
+
   query_count INTEGER DEFAULT 0,
   last_active TIMESTAMPTZ,
   language_preference TEXT DEFAULT 'en',
-  
+
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 ```
@@ -2176,12 +2290,14 @@ CREATE TABLE user_profiles (
 ### **Dashboard Features**
 
 #### **1. Review Tab**
+
 - See questions that the AI couldn't answer confidently
 - Manually review and provide correct answers
 - These answers are added to the knowledge base
 - Helps train the AI over time
 
 #### **2. Analytics Tab**
+
 - Total chats count
 - RAG vs General mode split
 - Top unknown questions (most asked)
@@ -2189,23 +2305,27 @@ CREATE TABLE user_profiles (
 - User activity timeline
 
 #### **3. Users Tab**
+
 - List of all users
 - Query count per user
 - Last active timestamp
 - Preferred language
 
 #### **4. Train Bot Tab**
+
 - Upload PDF manuals
 - System extracts text → chunks → embeds them
 - Add Q&A pairs directly via form
 - Retrain embeddings
 
 #### **5. Graph Tab**
+
 - View knowledge graph relationships
 - See entity connections
 - Help identify gaps in knowledge
 
 #### **6. Settings Tab**
+
 - Configure RAG parameters
   - Enable/disable HYDE
   - Enable/disable hybrid search
@@ -2213,6 +2333,7 @@ CREATE TABLE user_profiles (
   - Configure reranking
 
 #### **7. Feedback Tab**
+
 - View user ratings (1-5 stars)
 - Read comments about answers
 - Identify common complaints
@@ -2236,6 +2357,7 @@ git push origin main
 ```
 
 **Netlify Configuration (automatic):**
+
 - Build command: `npm run build`
 - Publish directory: `.next`
 - Environment variables: Set in Netlify dashboard
@@ -2308,11 +2430,10 @@ NEXT_PUBLIC_ADMIN_PASSWORD=YourSecurePassword
 4. **Vercel AI SDK Version Lag:** `package.json` lists `ai: ^4.0.0` while the ecosystem is currently on `v6+`. Upgrading this later may require massive refactoring of streaming logic.
 5. **Testing Deficiencies:** There is no standard unit testing framework (Jest/Vitest). Testing relies solely on `tsx` execution of benchmark scripts and smoke tests.
 
-
-
 ### **Common Issues**
 
 #### **"Embedding API key not found"**
+
 ```
 ✗ Solution:
   1. Check .env.local has OPENAI_API_KEY
@@ -2321,6 +2442,7 @@ NEXT_PUBLIC_ADMIN_PASSWORD=YourSecurePassword
 ```
 
 #### **"Supabase connection refused"**
+
 ```
 ✗ Solution:
   1. Check NEXT_PUBLIC_SUPABASE_URL is correct
@@ -2329,6 +2451,7 @@ NEXT_PUBLIC_ADMIN_PASSWORD=YourSecurePassword
 ```
 
 #### **"No search results found"**
+
 ```
 ✗ Solution:
   1. Check if knowledge base is seeded:
@@ -2338,6 +2461,7 @@ NEXT_PUBLIC_ADMIN_PASSWORD=YourSecurePassword
 ```
 
 #### **"Chat response takes > 5 seconds"**
+
 ```
 ✗ Solution:
   1. HYDE is enabled (slow). Disable in settings.
@@ -2347,6 +2471,7 @@ NEXT_PUBLIC_ADMIN_PASSWORD=YourSecurePassword
 ```
 
 #### **"'any' type errors when building"**
+
 ```
 ✗ Solution:
   1. These are TypeScript warnings, not errors
@@ -2361,6 +2486,7 @@ A: No, requires internet (API keys, cloud database). For offline, consider local
 
 **Q: How much does this cost per month?**
 A: ~$50-200/month depending on:
+
 - OpenAI embeddings: $0.02 per 1M tokens
 - Sarvam AI: ~$10-50/month based on usage
 - Supabase: $25/month (free tier available)
@@ -2385,24 +2511,22 @@ A: Partially. Chat data is in Supabase. Create a script using `supabase-js` to e
 
 ## 🧭 Recommended Starting Points for New Developers
 
-
-
 ---
 
 ## 📊 Performance Metrics
 
 ### **Benchmarks (Production)**
 
-| Metric | Value | Target |
-|--------|-------|--------|
-| Chat Response Time | 3-5 seconds | < 8 seconds ✅ |
-| Knowledge Search Time | 200-400ms | < 500ms ✅ |
-| Embedding Creation | 100-150ms | < 200ms ✅ |
-| IoT Data Fetch | 400-800ms | < 1 second ✅ |
-| Matching Accuracy | 94% | > 90% ✅ |
-| Translation Fidelity | 98% | > 95% ✅ |
-| Page Load Time | 1-2 seconds | < 3 seconds ✅ |
-| Admin Dashboard | 500ms | < 1 second ✅ |
+| Metric                | Value       | Target         |
+| --------------------- | ----------- | -------------- |
+| Chat Response Time    | 3-5 seconds | < 8 seconds ✅ |
+| Knowledge Search Time | 200-400ms   | < 500ms ✅     |
+| Embedding Creation    | 100-150ms   | < 200ms ✅     |
+| IoT Data Fetch        | 400-800ms   | < 1 second ✅  |
+| Matching Accuracy     | 94%         | > 90% ✅       |
+| Translation Fidelity  | 98%         | > 95% ✅       |
+| Page Load Time        | 1-2 seconds | < 3 seconds ✅ |
+| Admin Dashboard       | 500ms       | < 1 second ✅  |
 
 ### **Cost Breakdown (Monthly)**
 
@@ -2432,6 +2556,7 @@ Total:                    ~$50-75/month
 ### **How to Contribute**
 
 1. **Report Bugs:**
+
    ```bash
    Create issue on GitHub with:
    - What you were doing
@@ -2510,17 +2635,20 @@ const get_user_data = (userId: any) => {
 ## 📚 Additional Resources
 
 ### **Documentation**
+
 - `TECHNICAL_ARCHITECTURE.md` — Deep technical dive
 - `MIGRATION_GUIDE.md` — Upgrading from Ollama to OpenAI
 - `DEPLOYMENT.md` — Hosting guide
 
 ### **Learning Resources**
+
 - [Next.js Docs](https://nextjs.org/docs)
 - [Supabase Docs](https://supabase.com/docs)
 - [LangChain Docs](https://js.langchain.com/)
 - [OpenAI API Docs](https://platform.openai.com/docs)
 
 ### **Related Projects**
+
 - [Supabase Vector Search Examples](https://github.com/supabase/supabase/tree/master/examples/vector-search)
 - [LangChain Templates](https://github.com/langchain-ai/langchain/tree/master/templates)
 
@@ -2544,72 +2672,84 @@ const get_user_data = (userId: any) => {
 ### **Today's Major Additions** ✨
 
 #### **1. RAPTOR Hierarchical Retrieval** 🌳
+
 - Implemented recursive clustering for complex multi-document queries
 - 3-level hierarchy: raw chunks → topic summaries → cross-topic synthesis
 - Build guards prevent concurrent builds (Migration 018)
 - Admin endpoint for triggering rebuilds: `POST /api/admin/raptor`
 
 #### **2. Hybrid Search System** 🔍
+
 - Combined vector search (OpenAI embeddings) + BM25 keyword matching
 - Cross-encoder reranking (BGE model) for relevance scoring
 - User-tunable alpha parameter (0-1) for balancing methods
 - Accuracy improved to 98% top-1 precision
 
 #### **3. Query Expansion with HYDE** 🧠
+
 - Hypothetical Document Embeddings (HYDE) for improved recall
 - Synonym expansion and colloquial term handling
 - 40-60% improvement on ambiguous queries
 - Configurable in Settings tab
 
 #### **4. Knowledge Graph System** 🔗
+
 - Entity extraction and relationship tracking
 - 5 entity types: error codes, terminals, devices, protocols, components
 - Admin graph visualization with entity search
 - `POST /api/admin/graph` endpoint for graph operations
 
 #### **5. RAG Evaluation Metrics** 📊
+
 - Automated quality scoring after every query
 - 4 metrics: Faithfulness (35%), Relevancy (30%), Recall (20%), Precision (15%)
 - Non-blocking async logging to `rag_evals` table
 - Admin dashboard aggregation and anomaly detection
 
 #### **6. Conversation Management** 💬
+
 - Persistent per-user conversation history
 - `conversations` and `messages` tables with RLS policies
 - APIs: `GET /api/conversations`, `GET /api/conversations/[id]/messages`
 - Legacy chat recovery from old `chat_sessions` table
 
 #### **7. Retrieval Feedback Collection** ⭐
+
 - User ratings (1-5 stars) on answer quality
 - Thumbs up/down relevance feedback
 - Optional comment collection
 - Admin dashboard aggregation and trend analysis
 
 #### **8. RAG Settings UI** 🎛️
+
 - `RAGSettingsTab.tsx` component in admin dashboard
 - Controls: Hybrid search toggle, reranker toggle, query expansion toggle
 - Sliders for: top-K (1-20), alpha (0-1), MMR lambda (0-1)
 - localStorage persistence across sessions
 
 #### **9. Multi-Granularity Chunking** 📝
+
 - Parent-child chunk structure for context-aware retrieval
 - Retrieve small child chunks, return full parent context
 - Semantic deduplication (0.92 similarity threshold)
 - Migration 013: `parent_id` and `chunk_level` columns
 
 #### **10. Weighted Retrieval** ⚖️
+
 - Different scoring weights by chunk type
 - Propositions: 1.15x, Q&A: 1.00x, Chunks: 1.00x, Images: 0.95x
 - `search_hms_knowledge_weighted()` database function (Migration 021)
 - Better accuracy on heterogeneous knowledge sources
 
 #### **11. User Profiles & Open Auth** 👥
+
 - Removed `@seple.in` domain restriction (Migration 019)
 - Open to any email domain
 - `user_profiles` table: name, phone, query count, last active
 - Trigger-based auto-creation on signup
 
 #### **12. Advanced Analytics** 📈
+
 - Enhanced admin dashboard with comprehensive metrics
 - Tracks: chat types, unknown questions, KB composition, session trends
 - Cost tracking by model usage
@@ -2619,17 +2759,17 @@ const get_user_data = (userId: any) => {
 
 ### **Database Migrations Added Today** 🗄️
 
-| Migration | Feature | Status |
-|-----------|---------|--------|
-| 016 | RAPTOR Hierarchical Index | ✅ Live |
-| 017 | RAG Evaluation Metrics | ✅ Live |
-| 018 | RAPTOR Build Guard | ✅ Live |
-| 019 | Open Auth + Chat History | ✅ Live |
-| 020 | Message Backfill (Repair Legacy) | ✅ Live |
-| 021 | Weighted Retrieval Scoring | ✅ Live |
-| 022 | Semantic Cache (Tier 2) | ✅ Live |
-| 023 | Diagram Chunk Type Support | ✅ Live |
-| 024 | Fix Active Users View | ✅ Live |
+| Migration | Feature                          | Status  |
+| --------- | -------------------------------- | ------- |
+| 016       | RAPTOR Hierarchical Index        | ✅ Live |
+| 017       | RAG Evaluation Metrics           | ✅ Live |
+| 018       | RAPTOR Build Guard               | ✅ Live |
+| 019       | Open Auth + Chat History         | ✅ Live |
+| 020       | Message Backfill (Repair Legacy) | ✅ Live |
+| 021       | Weighted Retrieval Scoring       | ✅ Live |
+| 022       | Semantic Cache (Tier 2)          | ✅ Live |
+| 023       | Diagram Chunk Type Support       | ✅ Live |
+| 024       | Fix Active Users View            | ✅ Live |
 
 **Total Migrations:** 24 (up from 15)
 
@@ -2637,16 +2777,16 @@ const get_user_data = (userId: any) => {
 
 ### **New API Endpoints** 🔌
 
-| Endpoint | Method | Purpose |
-|----------|--------|---------|
-| `/api/admin/raptor` | GET | Check RAPTOR build status |
-| `/api/admin/raptor` | POST | Trigger RAPTOR rebuild |
-| `/api/conversations` | GET | List user conversations |
-| `/api/conversations/[id]/messages` | GET | Fetch conversation messages |
-| `/api/conversations/[id]` | DELETE | Delete a conversation |
-| `/api/admin/graph` | POST | Graph operations (entities, relationships) |
-| `/api/admin/feedback` | GET | Retrieve feedback records |
-| `/api/admin/feedback` | POST | Submit feedback |
+| Endpoint                           | Method | Purpose                                    |
+| ---------------------------------- | ------ | ------------------------------------------ |
+| `/api/admin/raptor`                | GET    | Check RAPTOR build status                  |
+| `/api/admin/raptor`                | POST   | Trigger RAPTOR rebuild                     |
+| `/api/conversations`               | GET    | List user conversations                    |
+| `/api/conversations/[id]/messages` | GET    | Fetch conversation messages                |
+| `/api/conversations/[id]`          | DELETE | Delete a conversation                      |
+| `/api/admin/graph`                 | POST   | Graph operations (entities, relationships) |
+| `/api/admin/feedback`              | GET    | Retrieve feedback records                  |
+| `/api/admin/feedback`              | POST   | Submit feedback                            |
 
 **Total Public APIs:** 3 (chat, diagram, users)  
 **Total Admin APIs:** 15 (graph, feedback, questions, ingest, seed-answer, analytics, raptor, etc.)
@@ -2655,30 +2795,31 @@ const get_user_data = (userId: any) => {
 
 ### **New UI Components**
 
-| Component | File | Feature |
-|-----------|------|---------|
-| `RAGSettingsTab.tsx` | src/components/ | Configure retrieval pipeline |
-| `GraphTab.tsx` | src/components/ | Knowledge graph visualization |
-| `FeedbackTab.tsx` | src/components/ | Feedback collection interface |
-| `DiagramCard.tsx` | src/components/ | Multi-mode diagram viewer (Updated) |
+| Component            | File            | Feature                             |
+| -------------------- | --------------- | ----------------------------------- |
+| `RAGSettingsTab.tsx` | src/components/ | Configure retrieval pipeline        |
+| `GraphTab.tsx`       | src/components/ | Knowledge graph visualization       |
+| `FeedbackTab.tsx`    | src/components/ | Feedback collection interface       |
+| `DiagramCard.tsx`    | src/components/ | Multi-mode diagram viewer (Updated) |
 
 ---
 
 ### **Performance Improvements** ⚡
 
-| Metric | Before | After | Improvement |
-|--------|--------|-------|-------------|
-| Top-1 Accuracy | 85% | 98% | +13% |
-| Recall on Ambiguous Q | 45% | 68% | +23% |
-| Query Latency (avg) | 3-5s | 2-5s | Optimized |
-| Cost per Query | $0.15 | $0.12 | -20% |
-| Cache Hit Rate | 0% | 40-45% | +45% |
+| Metric                | Before | After  | Improvement |
+| --------------------- | ------ | ------ | ----------- |
+| Top-1 Accuracy        | 85%    | 98%    | +13%        |
+| Recall on Ambiguous Q | 45%    | 68%    | +23%        |
+| Query Latency (avg)   | 3-5s   | 2-5s   | Optimized   |
+| Cost per Query        | $0.15  | $0.12  | -20%        |
+| Cache Hit Rate        | 0%     | 40-45% | +45%        |
 
 ---
 
 ### **Status: PRODUCTION-READY WITH ENTERPRISE FEATURES** ✅
 
 All advanced RAG techniques now implemented:
+
 - ✅ Hierarchical retrieval (RAPTOR)
 - ✅ Hybrid search (vector + keyword + reranking)
 - ✅ Query expansion (HYDE)
@@ -2713,6 +2854,7 @@ All advanced RAG techniques now implemented:
 ### **What's Implemented** ✅
 
 **Core Features:**
+
 - ✅ Multilingual RAG (English, Bengali, Hindi)
 - ✅ Semantic vector search (1536-dim OpenAI embeddings)
 - ✅ PDF knowledge base training & ingestion
@@ -2725,6 +2867,7 @@ All advanced RAG techniques now implemented:
 - ✅ Chat history logging & per-user conversations with RLS
 
 **Advanced RAG Features (NEW TODAY):**
+
 - ✅ **RAPTOR hierarchical clustering** (3-level tree for complex queries)
 - ✅ **Query expansion with HYDE** (hypothetical document embeddings)
 - ✅ **Cross-encoder reranking** (BGE model for 98% top-1 accuracy)
@@ -2741,28 +2884,30 @@ All advanced RAG techniques now implemented:
 - ✅ **Diagram-specific knowledge types** (Migration 023)
 
 ### **New Database Migrations Today**
-| Migration | Feature | Tables |
-|-----------|---------|--------|
-| 016 | RAPTOR Hierarchical Index | raptor_clusters, raptor_build_log |
-| 017 | RAG Evaluation Metrics | rag_evals, eval_summary (view) |
-| 018 | RAPTOR Build Guard | (Adds unique constraint) |
-| 019 | Chat History + Open Auth | conversations, messages + RLS |
-| 020 | Message Backfill | (Repairs legacy data) |
-| 021 | Weighted Retrieval | (Database function) |
-| 022 | Semantic Cache (Tier 2) | semantic_cache |
-| 023 | Diagram Chunk Type | (Adds 'diagram' type to hms_knowledge) |
-| 024 | Fix Active Users View | active_users (joins profiles) |
+
+| Migration | Feature                   | Tables                                 |
+| --------- | ------------------------- | -------------------------------------- |
+| 016       | RAPTOR Hierarchical Index | raptor_clusters, raptor_build_log      |
+| 017       | RAG Evaluation Metrics    | rag_evals, eval_summary (view)         |
+| 018       | RAPTOR Build Guard        | (Adds unique constraint)               |
+| 019       | Chat History + Open Auth  | conversations, messages + RLS          |
+| 020       | Message Backfill          | (Repairs legacy data)                  |
+| 021       | Weighted Retrieval        | (Database function)                    |
+| 022       | Semantic Cache (Tier 2)   | semantic_cache                         |
+| 023       | Diagram Chunk Type        | (Adds 'diagram' type to hms_knowledge) |
+| 024       | Fix Active Users View     | active_users (joins profiles)          |
 
 **Total Migrations:** 24 (comprehensive schema versioning)
 
 ### **Current Database**
+
 - **Schema:** hms_knowledge, conversations, messages, user_profiles, raptor_clusters, rag_evals, knowledge_graph, retrieval_feedback, semantic_cache
 - **Latest Migration:** 024_fix_active_users_view.sql
 - **Total Entries:** ~300 Q&A pairs (scales to 1M+ with Pinecone)
 - **Vector Dimension:** 1536 (OpenAI text-embedding-3-large)
 
-
 ### **Performance Metrics (Updated)**
+
 - **Chat Response Time:** 2-5 seconds (typical)
 - **Top-1 Accuracy:** 98% (improved from 85%)
 - **Recall on Ambiguous Queries:** 68% (improved from 45%)
@@ -2774,11 +2919,13 @@ All advanced RAG techniques now implemented:
 - **Semantic Cache Hit Rate:** 40-45%
 
 ### **New API Endpoints**
+
 - 3 public endpoints (chat, diagram, users)
 - 12+ admin endpoints (including new RAPTOR, graph, feedback, conversations)
 - All endpoints documented in "API Endpoints & Usage" section
 
 ### **Known Limitations**
+
 1. **TypeScript Linting:** 45+ `any` type violations (code works, type safety needs improvement)
 2. **Knowledge Base Scale:** Current max ~100K entries; Pinecone needed for larger scale
 3. **Streaming Timeout:** Netlify free tier: 10s timeout (Pro: 26s) — upgrade recommended
@@ -2786,12 +2933,14 @@ All advanced RAG techniques now implemented:
 5. **LLM Hallucination:** Mitigated by confidence thresholds & RAG evaluation metrics
 
 ### **Security Status**
+
 - ✅ Supabase Auth configured (email-based login, now open domain)
 - ✅ Admin dashboard protected
 - ✅ Row-level security (RLS) enabled on conversations/messages/profiles
 - ⚠️ API keys in .env file (should use GitHub Secrets for production)
 
 ### **Deployment Ready** ✅
+
 - ✅ All 21 migrations tested
 - ✅ All endpoints verified
 - ✅ Admin dashboard fully functional
@@ -2819,7 +2968,12 @@ All advanced RAG techniques now implemented:
 ## 🔧 Admin CLI Commands
 
 ### **Knowledge Base Management**
+
 ```bash
+# Embed all files (QA + RAG docs)
+#Option *: Using the npm shortcut (Recommended)
+npm run embed:all
+
 # Seed Q&A from JSON file
 npx tsx scripts/seed-supabase.ts
 
@@ -2840,6 +2994,7 @@ npx tsx scripts/migrate-embeddings.ts
 ```
 
 ### **Database Management**
+
 ```bash
 # Apply all migrations (via Supabase dashboard or CLI)
 supabase migration list
@@ -2857,8 +3012,10 @@ supabase db dump --data-only > backup.sql
 ## 🆘 Immediate Fixes Needed
 
 ### **1. TypeScript Type Safety (Priority: MEDIUM)**
+
 **Issue:** 45+ ESLint violations with `any` type
 **Affected Files:**
+
 - `src/lib/rag-engine.ts` - Core RAG logic
 - `src/lib/reranker.ts` - Ranking algorithm
 - `src/lib/knowledge-graph.ts` - Entity extraction
@@ -2866,14 +3023,17 @@ supabase db dump --data-only > backup.sql
 - `src/components/Admin.tsx` - Admin dashboard
 
 **Fix:**
+
 ```bash
 npm run lint -- --fix
 # Manually update remaining `any` types with proper types
 ```
 
 ### **2. Security: API Keys Exposure (Priority: HIGH)**
+
 **Issue:** .env file contains live credentials (exposed in git)
 **Fix:**
+
 ```bash
 # Add to .gitignore (already there, but verify)
 echo ".env.local" >> .gitignore
@@ -2888,8 +3048,10 @@ git commit -m "Remove env file"
 ```
 
 ### **3. Netlify Timeout Risk (Priority: LOW)**
+
 **Issue:** Free tier has 10s limit; chat may timeout
 **Solution:**
+
 - Upgrade to Netlify Pro ($20/mo) for 26s timeout
 - Or: Optimize RAG pipeline to keep latency < 10s
 
@@ -2902,7 +3064,7 @@ git commit -m "Remove env file"
 Edit `/admin` dashboard → Settings tab:
 
 ```
-HYDE (Hypothetical Document Embeddings): 
+HYDE (Hypothetical Document Embeddings):
   ├─ Enabled: true (generates fake answers for better recall)
   ├─ Cost: +300-500ms per query
   └─ Benefit: 40-60% better accuracy
@@ -2932,6 +3094,7 @@ Knowledge Graph:
 Current architecture (pgvector + ivfflat) handles up to 100K entries efficiently.
 
 **For larger scale (1M+ entries):**
+
 ```bash
 # Option 1: Upgrade to Pinecone
 # → $0.25/100K vectors/month
@@ -2949,6 +3112,7 @@ Current architecture (pgvector + ivfflat) handles up to 100K entries efficiently
 ## 📞 Support & Troubleshooting
 
 ### **Can't Connect to Supabase?**
+
 ```bash
 # Check credentials
 echo $NEXT_PUBLIC_SUPABASE_URL
@@ -2963,6 +3127,7 @@ curl -H "Authorization: Bearer $NEXT_PUBLIC_SUPABASE_ANON_KEY" \
 ```
 
 ### **Knowledge Base Empty After Seeding?**
+
 ```bash
 # Check if vectors were created
 curl "$NEXT_PUBLIC_SUPABASE_URL/rest/v1/hms_knowledge?select=id,question,embedding" \
@@ -2976,6 +3141,7 @@ npx tsx scripts/seed-pdfs.ts data/pdf/ --verbose
 ```
 
 ### **Chat Response Too Slow?**
+
 ```bash
 # Disable HYDE (saves 2-3 seconds)
 # → /admin → Settings → Disable HYDE
@@ -2989,6 +3155,7 @@ SELECT * FROM pg_indexes WHERE tablename = 'hms_knowledge';
 ```
 
 ### **Admin Dashboard Not Loading?**
+
 ```bash
 # Check admin password
 echo $NEXT_PUBLIC_ADMIN_PASSWORD
@@ -3024,13 +3191,13 @@ cat middleware.ts | grep admin
 
 ## 📄 File References
 
-| Document | Purpose | Audience |
-|----------|---------|----------|
-| **README.md** (this file) | Getting started + overview | Everyone |
-| **TECHNICAL_ARCHITECTURE.md** | Deep technical dive | Engineers |
-| **MIGRATION_GUIDE.md** | Ollama → OpenAI migration | DevOps |
-| **DEPLOYMENT.md** | Netlify/Vercel setup | DevOps |
-| **LICENSE** | Open source license | Legal |
+| Document                      | Purpose                    | Audience  |
+| ----------------------------- | -------------------------- | --------- |
+| **README.md** (this file)     | Getting started + overview | Everyone  |
+| **TECHNICAL_ARCHITECTURE.md** | Deep technical dive        | Engineers |
+| **MIGRATION_GUIDE.md**        | Ollama → OpenAI migration  | DevOps    |
+| **DEPLOYMENT.md**             | Netlify/Vercel setup       | DevOps    |
+| **LICENSE**                   | Open source license        | Legal     |
 
 ---
 
@@ -3044,4 +3211,3 @@ This documentation covers everything you need to understand, set up, and extend 
 - **📊 Data Scientist:** Check "Database Schema" and "Performance Metrics"
 
 **Questions?** Open a GitHub issue or email support. Happy coding! 🚀
-

@@ -1,32 +1,19 @@
 'use client';
 
-import React, { useRef, useEffect, useState, useCallback, useMemo, type ComponentPropsWithoutRef, type JSX as ReactJSX } from 'react';
-import dynamic from 'next/dynamic';
+import React, { useRef, useEffect, useState, useCallback, useMemo } from 'react';
 import type { AuthChangeEvent, Session } from '@supabase/supabase-js';
-
-import remarkGfm from 'remark-gfm';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
-    faSignal, faRobot, faPaperPlane,
-    faCopy, faCheck, faChevronDown, faSpinner, faDiagramProject,
-    faThumbsUp, faThumbsDown, faSignOutAlt, faBolt,
-    faPlus, faTrash, faTimes, faComment, faBookmark, faLock,
+    faCheck, faChevronDown, faComment, faBookmark,
+    faRobot, faSignOutAlt, faSpinner, faTimes, faSignal,
 } from '@fortawesome/free-solid-svg-icons';
 import LanguageSelector from '../components/LanguageSelector';
-import DiagramCard from '../components/DiagramCard';
+import MessageBubble from '@/components/Chat/MessageBubble';
+import ConversationSidebar, { type ConversationSidebarConversation } from '@/components/Chat/ConversationSidebar';
+import ChatInputBar from '@/components/Chat/ChatInputBar';
 import { signOut, isAdminEmail, getSupabaseAuth, sanitizeAuthSession } from '@/lib/auth';
-import { consumeFetchSse } from '@/lib/fetchSse';
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
-import { oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism';
-
-
-interface Conversation {
-    id: string;
-    title: string;
-    createdAt: string;
-    updatedAt: string;
-    messageCount: number;
-}
+import { useChatStream, type ChatMessage } from '@/hooks/useChatStream';
+import { useAudioRecorder } from '@/hooks/useAudioRecorder';
 
 interface ConversationHistoryError {
     conversationId: string;
@@ -56,26 +43,7 @@ type HistoryMessageApiShape = {
     created_at?: string;
 };
 
-type ChatMessage = {
-    id: string;
-    role: 'user' | 'assistant';
-    content: string;
-    createdAt?: Date;
-};
-
-type MarkdownElementProps<Tag extends keyof ReactJSX.IntrinsicElements> = ComponentPropsWithoutRef<Tag> & {
-    node?: unknown;
-};
-
-function stripMarkdownNode<Tag extends keyof ReactJSX.IntrinsicElements>({
-    node,
-    ...props
-}: MarkdownElementProps<Tag>) {
-    void node;
-    return props;
-}
-
-function normalizeConversation(conversation: ConversationApiShape): Conversation {
+function normalizeConversation(conversation: ConversationApiShape): ConversationSidebarConversation {
     return {
         id: String(conversation.id),
         title: typeof conversation.title === 'string' && conversation.title.trim()
@@ -107,7 +75,7 @@ function normalizeHistoryMessages(payload: HistoryMessagesPayload | HistoryMessa
 }
 
 function createMessageId(prefix: 'user' | 'assistant'): string {
-    return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    return `${prefix}-${crypto.randomUUID()}`;
 }
 
 function groupConversationsByDate(conversations: Conversation[]): [string, Conversation[]][] {
@@ -178,32 +146,15 @@ function parseMessageContent(content: string): {
 }
 
 function getCuratedSuggestions(): string[] {
-    const STATIC_SUGGESTIONS = [
-        "What does HMS stand for in the context of industrial control panels?",
-        "What is the primary function of an HMS panel in a process control system?",
-        "What communication protocols are most commonly supported by HMS panels?",
-        "What safety checks must be performed before installing an HMS panel?",
-        "What is Modbus RTU and how is it typically used with HMS panels?",
-        "What is the maximum number of nodes on a PROFIBUS DP network?",
+    const staticSuggestions = [
+        'What does HMS stand for in the context of industrial control panels?',
+        'What is the primary function of an HMS panel in a process control system?',
+        'What communication protocols are most commonly supported by HMS panels?',
+        'What safety checks must be performed before installing an HMS panel?',
+        'What is Modbus RTU and how is it typically used with HMS panels?',
+        'What is the maximum number of nodes on a PROFIBUS DP network?',
     ];
-    return [...STATIC_SUGGESTIONS].sort(() => 0.5 - Math.random()).slice(0, 4);
-}
-
-function formatRelativeTime(value: Date | string): string {
-    const date = value instanceof Date ? value : new Date(value);
-    if (Number.isNaN(date.getTime())) return '';
-
-    const diffMs = Date.now() - date.getTime();
-    const diffMins = Math.floor(diffMs / 60000);
-    const diffHours = Math.floor(diffMs / 3600000);
-    const diffDays = Math.floor(diffMs / 86400000);
-
-    if (diffMins < 1) return 'Just now';
-    if (diffMins < 60) return `${diffMins}m ago`;
-    if (diffHours < 24) return `${diffHours}h ago`;
-    if (diffDays === 1) return 'Yesterday';
-    if (diffDays < 7) return `${diffDays}d ago`;
-    return date.toLocaleDateString();
+    return [...staticSuggestions].sort(() => 0.5 - Math.random()).slice(0, 4);
 }
 
 const TEXT_MAP = {
@@ -212,21 +163,18 @@ const TEXT_MAP = {
         intro: 'I am SAI, your HMS support assistant. Ask me anything — troubleshooting, configuration, or installation.',
         placeholder: 'Ask anything...',
         footer: 'HMS Panel Expert · AI Powered · Diagrams supported',
-        thinking: 'Analyzing and generating response...',
     },
     bn: {
         welcome: 'HMS প্যানেল ট্রাবলশুটিং সম্পর্কে জিজ্ঞাসা করুন',
-        intro: 'আমি SAI, আপনার HMS সাপোর্ট অ্যাসিস্ট্যান্ট। ট্রাবলশুটিং, কনফিগারেশন, বা ইন্সটলেশন সম্পর্কে জিজ্ঞাসা করুন।',
+        intro: 'আমি SAI, আপনার HMS সাপোর্ট অ্যাসিস্ট্যান্ট। ট্রাবলশুটিং, কনফিগারেশন, বা ইনস্টলেশন সম্পর্কে জিজ্ঞাসা করুন।',
         placeholder: 'যে কোনো প্রশ্ন করুন...',
         footer: 'HMS প্যানেল বিশেষজ্ঞ · AI দ্বারা চালিত · ডায়াগ্রাম সমর্থিত',
-        thinking: 'বিশ্লেষণ ও উত্তর তৈরি হচ্ছে…',
     },
     hi: {
         welcome: 'HMS पैनल ट्रबलशूटिंग के बारे में पूछें',
         intro: 'मैं SAI हूँ, आपका HMS सपोर्ट असिस्टेंट। ट्रबलशूटिंग, कॉन्फ़िगरेशन या इंस्टॉलेशन के बारे में पूछें।',
         placeholder: 'कुछ भी पूछें...',
         footer: 'HMS पैनल विशेषज्ञ · AI संचालित · डायग्राम समर्थित',
-        thinking: 'विश्लेषण और उत्तर तैयार किया जा रहा है...',
     },
 };
 
@@ -555,33 +503,111 @@ const MessageBubble = React.memo(function MessageBubble({
 export default function Chat() {
     const [isSessionLoading, setIsSessionLoading] = useState(true);
     const [isAuthenticated, setIsAuthenticated] = useState(false);
-    // ─── Auth State ───────────────────────────────────────────
     const [userId, setUserId] = useState<string | null>(null);
     const [userName, setUserName] = useState('');
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const chatContainerRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLInputElement>(null);
-    const chatAbortControllerRef = useRef<AbortController | null>(null);
     const historyAbortControllerRef = useRef<AbortController | null>(null);
     const historyRequestIdRef = useRef(0);
     const scrollBehaviorRef = useRef<ScrollBehavior>('smooth');
     const sidebarRefreshTimeoutRef = useRef<number | null>(null);
 
-    // ─── Phase 1: Streaming Refs & State ──────────────────────
-    const [streamingDisplay, setStreamingDisplay] = useState('');
-    const streamingContentRef = useRef('');
-    const pendingDeltaRef = useRef('');
-    const rafIdRef = useRef<number | null>(null);
-    const scrollThrottleRef = useRef<number | null>(null);
-    const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
+    const [conversations, setConversations] = useState<ConversationSidebarConversation[]>([]);
+    const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
+    const [sidebarOpen, setSidebarOpen] = useState(false);
+    const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+    const [loadingConversationId, setLoadingConversationId] = useState<string | null>(null);
+    const [historyError, setHistoryError] = useState<ConversationHistoryError | null>(null);
+    const [language, setLanguage] = useState<'en' | 'bn' | 'hi'>('en');
+    const [input, setInput] = useState('');
+    const [suggestedQuestions, setSuggestedQuestions] = useState<string[]>([]);
+    const [requestStartTime, setRequestStartTime] = useState<number | null>(null);
+    const [responseTimes, setResponseTimes] = useState<Map<string, number>>(new Map());
+    const [messageTimestamps, setMessageTimestamps] = useState<Map<string, Date>>(new Map());
+    const [copiedId, setCopiedId] = useState<string | null>(null);
+    const [showScrollBtn, setShowScrollBtn] = useState(false);
+    const [feedbackSubmitted, setFeedbackSubmitted] = useState<Set<string>>(new Set());
+    const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+    const [editInput, setEditInput] = useState('');
+    const [showSaveModal, setShowSaveModal] = useState(false);
+    const [saveSessionName, setSaveSessionName] = useState('');
+    const [isSavingSession, setIsSavingSession] = useState(false);
+    const [sessionSaved, setSessionSaved] = useState(false);
+    const [guestQuestionCount, setGuestQuestionCount] = useState(0);
+    const [showGuestGate, setShowGuestGate] = useState(false);
 
-    const scrollToBottomThrottled = useCallback(() => {
-        if (scrollThrottleRef.current) return;
-        scrollThrottleRef.current = window.setTimeout(() => {
-            messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-            scrollThrottleRef.current = null;
-        }, 100);
-    }, []);
+    const audioRecorder = useAudioRecorder({
+        language,
+        onTranscription: (text) => {
+            setInput(text);
+            requestAnimationFrame(() => inputRef.current?.focus());
+        },
+        onError: (message) => {
+            window.alert(message);
+        },
+    });
+
+    const refreshConversations = useCallback(async () => {
+        if (!isAuthenticated) {
+            setConversations([]);
+            return;
+        }
+
+        try {
+            const response = await fetch('/api/conversations', { credentials: 'include' });
+            if (!response.ok) {
+                if (response.status === 401) {
+                    setConversations([]);
+                }
+                return;
+            }
+
+            const data = await response.json();
+            const items = (Array.isArray(data) ? data : data?.conversations ?? [])
+                .map(normalizeConversation)
+                .sort((left: ConversationSidebarConversation, right: ConversationSidebarConversation) => (
+                    new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime()
+                ));
+
+            setConversations(items);
+        } catch {
+            // non-critical
+        }
+    }, [isAuthenticated]);
+
+    const scheduleConversationRefresh = useCallback(() => {
+        void refreshConversations();
+
+        if (sidebarRefreshTimeoutRef.current !== null) {
+            window.clearTimeout(sidebarRefreshTimeoutRef.current);
+        }
+
+        sidebarRefreshTimeoutRef.current = window.setTimeout(() => {
+            void refreshConversations();
+        }, 1200);
+    }, [refreshConversations]);
+
+    const {
+        sendMessage,
+        stop,
+        isLoading,
+        streamingMessageId,
+        streamingDisplay,
+        messages,
+        setMessages,
+    } = useChatStream({
+        activeConversationId,
+        language,
+        userId,
+        onConversationIdChange: setActiveConversationId,
+        onBeforeSend: () => {
+            setHistoryError(null);
+            setInput('');
+        },
+        onAfterSend: scheduleConversationRefresh,
+        scrollToBottom: () => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }),
+    });
 
     useEffect(() => {
         let isMounted = true;
@@ -615,279 +641,19 @@ export default function Chat() {
 
         return () => {
             isMounted = false;
-            chatAbortControllerRef.current?.abort();
             subscription.unsubscribe();
             historyAbortControllerRef.current?.abort();
             if (sidebarRefreshTimeoutRef.current !== null) {
                 window.clearTimeout(sidebarRefreshTimeoutRef.current);
             }
-            if (scrollThrottleRef.current !== null) {
-                window.clearTimeout(scrollThrottleRef.current);
-            }
-            if (rafIdRef.current !== null) {
-                cancelAnimationFrame(rafIdRef.current);
-            }
         };
     }, []);
-
-
-    const handleSignOut = async () => {
-        await signOut();
-        window.location.href = '/login';
-    };
-
-    // ─── Conversation State ────────────────────────────────────
-    const [conversations, setConversations] = useState<Conversation[]>([]);
-    const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
-    const [sidebarOpen, setSidebarOpen] = useState(false);
-    const [isLoadingHistory, setIsLoadingHistory] = useState(false);
-    const [loadingConversationId, setLoadingConversationId] = useState<string | null>(null);
-    const [historyError, setHistoryError] = useState<ConversationHistoryError | null>(null);
 
     useEffect(() => {
         if (typeof window !== 'undefined' && isAuthenticated && window.innerWidth >= 1024) {
             setSidebarOpen(true);
         }
     }, [isAuthenticated]);
-
-
-    // ─── Chat State ───────────────────────────────────────────
-    const [language, setLanguage] = useState<'en' | 'bn' | 'hi'>('en');
-    const refreshConversations = useCallback(async () => {
-        if (!isAuthenticated) {
-            setConversations([]);
-            return;
-        }
-
-        try {
-            const res = await fetch('/api/conversations', { credentials: 'include' });
-            if (!res.ok) {
-                if (res.status === 401) {
-                    setConversations([]);
-                }
-                return;
-            }
-
-            const data = await res.json();
-            const items = (Array.isArray(data) ? data : data?.conversations ?? [])
-                .map(normalizeConversation)
-                .sort((a: Conversation, b: Conversation) => (
-                    new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
-                ));
-
-            setConversations(items);
-        } catch { /* non-critical */ }
-    }, [isAuthenticated]);
-
-    const [messages, setMessages] = useState<ChatMessage[]>([]);
-    const [input, setInput] = useState('');
-    const [isLoading, setIsLoading] = useState(false);
-
-    const scheduleConversationRefresh = useCallback(() => {
-        void refreshConversations();
-
-        if (sidebarRefreshTimeoutRef.current !== null) {
-            window.clearTimeout(sidebarRefreshTimeoutRef.current);
-        }
-
-        sidebarRefreshTimeoutRef.current = window.setTimeout(() => {
-            void refreshConversations();
-        }, 1200);
-    }, [refreshConversations]);
-
-    const stop = useCallback(() => {
-        chatAbortControllerRef.current?.abort();
-        chatAbortControllerRef.current = null;
-        
-        // If we have partial content, save it as a completed message
-        if (streamingContentRef.current.trim()) {
-            const assistantMessageId = streamingMessageId || createMessageId('assistant');
-            setMessages((current) => [
-                ...current,
-                {
-                    id: assistantMessageId,
-                    role: 'assistant',
-                    content: streamingContentRef.current,
-                    createdAt: new Date(),
-                }
-            ]);
-        }
-        
-        setStreamingMessageId(null);
-        setStreamingDisplay('');
-        streamingContentRef.current = '';
-        setIsLoading(false);
-    }, [streamingMessageId]);
-
-    const handleInputChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
-        setInput(event.target.value);
-    }, []);
-
-    const sendMessage = useCallback(async (question: string) => {
-        const trimmedQuestion = question.trim();
-        if (!trimmedQuestion || isLoading) {
-            return;
-        }
-
-        const controller = new AbortController();
-        chatAbortControllerRef.current?.abort();
-        chatAbortControllerRef.current = controller;
-
-        const userMessage: ChatMessage = {
-            id: createMessageId('user'),
-            role: 'user',
-            content: trimmedQuestion,
-            createdAt: new Date(),
-        };
-        const assistantMessageId = createMessageId('assistant');
-        const requestMessages = [...messages, userMessage];
-
-        setHistoryError(null);
-        setInput('');
-        setIsLoading(true);
-        setStreamingMessageId(assistantMessageId);
-        setStreamingDisplay('');
-        streamingContentRef.current = '';
-        pendingDeltaRef.current = '';
-        if (rafIdRef.current) {
-            cancelAnimationFrame(rafIdRef.current);
-            rafIdRef.current = null;
-        }
-        
-        setMessages(requestMessages);
-
-        try {
-            const response = await fetch('/api/chat', {
-                method: 'POST',
-                credentials: 'include',
-                headers: {
-                    Accept: 'text/event-stream',
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    messages: requestMessages.map(({ role, content }) => ({ role, content })),
-                    userId,
-                    language,
-                    conversationId: activeConversationId,
-                }),
-                signal: controller.signal,
-            });
-
-            const conversationId = response.headers.get('x-conversation-id');
-            if (conversationId) {
-                setActiveConversationId(conversationId);
-            }
-            setHistoryError(null);
-
-            if (!response.ok) {
-                let errorMessage = 'Failed to process chat request.';
-
-                try {
-                    const payload = await response.json() as { error?: string };
-                    if (payload?.error) {
-                        errorMessage = payload.error;
-                    }
-                } catch {
-                    const fallbackText = await response.text().catch(() => '');
-                    if (fallbackText.trim()) {
-                        errorMessage = fallbackText.trim();
-                    }
-                }
-
-                throw new Error(errorMessage);
-            }
-
-            await consumeFetchSse(response, async ({ event, data: rawEnvelope }) => {
-                const payload = (rawEnvelope && typeof rawEnvelope === 'object' && 'data' in rawEnvelope)
-                    ? (rawEnvelope as { data: unknown }).data
-                    : rawEnvelope;
-
-                if (event === 'delta' && payload && typeof payload === 'object' && 'text' in payload && typeof payload.text === 'string') {
-                    const deltaText = payload.text;
-                    
-                    // Phase 1A: Delta batching with requestAnimationFrame
-                    pendingDeltaRef.current += deltaText;
-                    streamingContentRef.current += deltaText;
-                    
-                    if (!rafIdRef.current) {
-                        rafIdRef.current = requestAnimationFrame(() => {
-                            setStreamingDisplay(streamingContentRef.current);
-                            rafIdRef.current = null;
-                            pendingDeltaRef.current = '';
-                            scrollToBottomThrottled();
-                        });
-                    }
-                    return;
-                }
-
-                if (event === 'done' && payload && typeof payload === 'object' && 'content' in payload && typeof payload.content === 'string') {
-                    const finalContent = payload.content;
-                    
-                    if (rafIdRef.current) {
-                        cancelAnimationFrame(rafIdRef.current);
-                        rafIdRef.current = null;
-                    }
-                    
-                    setStreamingMessageId(null);
-                    setStreamingDisplay('');
-                    streamingContentRef.current = '';
-                    
-                    setMessages((current) => [
-                        ...current,
-                        {
-                            id: assistantMessageId,
-                            role: 'assistant',
-                            content: finalContent,
-                            createdAt: new Date(),
-                        }
-                    ]);
-                    return;
-                }
-
-                if (event === 'error') {
-                    if (payload && typeof payload === 'object' && 'message' in payload && typeof payload.message === 'string') {
-                        throw new Error(payload.message);
-                    }
-
-                    throw new Error('Failed to process chat request.');
-                }
-            });
-
-            scheduleConversationRefresh();
-        } catch (error) {
-            if (controller.signal.aborted) {
-                return;
-            }
-
-            console.error('Chat request failed:', error);
-            const fallbackMessage = error instanceof Error
-                ? error.message
-                : 'Failed to process chat request.';
-            
-            setStreamingMessageId(null);
-            const currentContent = streamingContentRef.current;
-            setStreamingDisplay('');
-            streamingContentRef.current = '';
-
-            setMessages((current) => [
-                ...current,
-                {
-                    id: assistantMessageId,
-                    role: 'assistant',
-                    content: currentContent || fallbackMessage,
-                    createdAt: new Date(),
-                }
-            ]);
-        } finally {
-            if (chatAbortControllerRef.current === controller) {
-                chatAbortControllerRef.current = null;
-            }
-            if (!controller.signal.aborted) {
-                setStreamingMessageId((current) => current === assistantMessageId ? null : current);
-            }
-            setIsLoading(false);
-        }
-    }, [activeConversationId, isLoading, language, messages, scheduleConversationRefresh, userId, scrollToBottomThrottled]);
 
     useEffect(() => {
         if (!isAuthenticated) {
@@ -898,6 +664,110 @@ export default function Chat() {
 
         void refreshConversations();
     }, [isAuthenticated, refreshConversations]);
+
+    useEffect(() => {
+        if (!isAuthenticated) {
+            const stored = localStorage.getItem('guest_question_count');
+            const count = stored ? parseInt(stored, 10) : 0;
+            setGuestQuestionCount(count);
+            if (count >= 3) {
+                setShowGuestGate(true);
+            }
+        } else {
+            setShowGuestGate(false);
+        }
+    }, [isAuthenticated]);
+
+    useEffect(() => {
+        setSuggestedQuestions(getCuratedSuggestions());
+        const interval = setInterval(() => setSuggestedQuestions(getCuratedSuggestions()), 30000);
+        return () => clearInterval(interval);
+    }, []);
+
+    useEffect(() => {
+        if (scrollBehaviorRef.current === 'smooth') {
+            messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        } else {
+            messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
+        }
+        scrollBehaviorRef.current = 'smooth';
+    }, [messages]);
+
+    useEffect(() => {
+        if (isLoading && !requestStartTime) {
+            setRequestStartTime(performance.now());
+        }
+        if (!isLoading && requestStartTime) {
+            const duration = (performance.now() - requestStartTime) / 1000;
+            const lastBotMessage = [...messages].reverse().find((message) => message.role === 'assistant');
+            if (lastBotMessage) {
+                setResponseTimes((prev) => new Map(prev).set(lastBotMessage.id, duration));
+            }
+            setRequestStartTime(null);
+        }
+    }, [isLoading, messages, requestStartTime]);
+
+    useEffect(() => {
+        setMessageTimestamps((prev) => {
+            let next = prev;
+
+            for (const message of messages) {
+                if (next.has(message.id)) {
+                    continue;
+                }
+
+                if (next === prev) {
+                    next = new Map(prev);
+                }
+
+                next.set(
+                    message.id,
+                    message.createdAt instanceof Date ? message.createdAt : new Date(),
+                );
+            }
+
+            return next;
+        });
+    }, [messages]);
+
+    useEffect(() => {
+        if (!isLoading && !isLoadingHistory && !isSessionLoading) {
+            inputRef.current?.focus();
+        }
+    }, [isLoading, isLoadingHistory, isSessionLoading, activeConversationId]);
+
+    const handleSignOut = async () => {
+        await signOut();
+        window.location.href = '/login';
+    };
+
+    const incrementGuestCount = useCallback(() => {
+        const newCount = guestQuestionCount + 1;
+        setGuestQuestionCount(newCount);
+        localStorage.setItem('guest_question_count', String(newCount));
+        if (newCount >= 3) {
+            setShowGuestGate(true);
+        }
+    }, [guestQuestionCount]);
+
+    const handleInputChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+        setInput(event.target.value);
+    }, []);
+
+    const handleSubmit = (event?: React.FormEvent<HTMLFormElement>) => {
+        event?.preventDefault();
+
+        if (!isAuthenticated && guestQuestionCount >= 3) {
+            setShowGuestGate(true);
+            return;
+        }
+        if (!isAuthenticated && input.trim()) {
+            incrementGuestCount();
+        }
+        scrollBehaviorRef.current = 'smooth';
+        setHistoryError(null);
+        void sendMessage(input);
+    };
 
     const handleSelectConversation = useCallback(async (conversationId: string) => {
         if (activeConversationId === conversationId) return;
@@ -922,19 +792,18 @@ export default function Chat() {
         setMessageTimestamps(new Map());
 
         try {
-            const res = await fetch(`/api/conversations/${conversationId}/messages`, {
+            const response = await fetch(`/api/conversations/${conversationId}/messages`, {
                 credentials: 'include',
                 signal: controller.signal,
             });
 
-            if (!res.ok) {
-                if (res.status === 403) throw new Error('You do not have access to this conversation.');
-                if (res.status === 404) throw new Error('Conversation not found.');
+            if (!response.ok) {
+                if (response.status === 403) throw new Error('You do not have access to this conversation.');
+                if (response.status === 404) throw new Error('Conversation not found.');
                 throw new Error('Failed to load conversation history. Please try again.');
             }
 
-            const payload = await res.json();
-
+            const payload = await response.json();
             if (historyRequestIdRef.current !== requestId) return;
 
             setMessages(normalizeHistoryMessages(payload));
@@ -946,12 +815,9 @@ export default function Chat() {
 
             requestAnimationFrame(() => inputRef.current?.focus());
         } catch (error) {
-            if (controller.signal.aborted) return;
+            if (controller.signal.aborted || historyRequestIdRef.current !== requestId) return;
 
             console.error('Failed to load conversation:', error);
-
-            if (historyRequestIdRef.current !== requestId) return;
-
             setActiveConversationId(null);
             setHistoryError({
                 conversationId,
@@ -1002,16 +868,16 @@ export default function Chat() {
         if (!confirmed) return;
 
         try {
-            const res = await fetch(`/api/conversations/${conversationId}`, {
+            const response = await fetch(`/api/conversations/${conversationId}`, {
                 method: 'DELETE',
                 credentials: 'include',
             });
 
-            if (!res.ok) {
+            if (!response.ok) {
                 throw new Error('Delete failed');
             }
 
-            setConversations(prev => prev.filter(c => c.id !== conversationId));
+            setConversations((prev) => prev.filter((conversation) => conversation.id !== conversationId));
 
             if (activeConversationId === conversationId) {
                 handleNewConversation();
@@ -1026,48 +892,19 @@ export default function Chat() {
         }
     }, [activeConversationId, handleNewConversation, historyError?.conversationId]);
 
-    const [showSaveModal, setShowSaveModal] = useState(false);
-    const [saveSessionName, setSaveSessionName] = useState('');
-    const [isSavingSession, setIsSavingSession] = useState(false);
-    const [sessionSaved, setSessionSaved] = useState(false);
-
-    const GUEST_QUESTION_LIMIT = 3;
-    const [guestQuestionCount, setGuestQuestionCount] = useState(0);
-    const [showGuestGate, setShowGuestGate] = useState(false);
-
-    useEffect(() => {
-        if (!isAuthenticated) {
-            const stored = localStorage.getItem('guest_question_count');
-            const count = stored ? parseInt(stored, 10) : 0;
-            setGuestQuestionCount(count);
-            if (count >= GUEST_QUESTION_LIMIT) setShowGuestGate(true);
-        } else {
-            setShowGuestGate(false);
-        }
-    }, [isAuthenticated]);
-
-    const incrementGuestCount = useCallback(() => {
-        const newCount = guestQuestionCount + 1;
-        setGuestQuestionCount(newCount);
-        localStorage.setItem('guest_question_count', String(newCount));
-        if (newCount >= GUEST_QUESTION_LIMIT) {
-            setShowGuestGate(true);
-        }
-    }, [guestQuestionCount]);
-
     const handleSaveSession = useCallback(async () => {
         if (!activeConversationId || !saveSessionName.trim() || isSavingSession) return;
 
         setIsSavingSession(true);
         try {
-            const res = await fetch(`/api/conversations/${activeConversationId}`, {
+            const response = await fetch(`/api/conversations/${activeConversationId}`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 credentials: 'include',
                 body: JSON.stringify({ title: saveSessionName.trim() }),
             });
 
-            if (!res.ok) throw new Error('Save failed');
+            if (!response.ok) throw new Error('Save failed');
 
             setSessionSaved(true);
             setShowSaveModal(false);
@@ -1083,48 +920,20 @@ export default function Chat() {
         }
     }, [activeConversationId, saveSessionName, isSavingSession, refreshConversations]);
 
-    const handleSubmit = (e?: { preventDefault?: () => void }) => {
-        e?.preventDefault?.();
-
-        if (!isAuthenticated && guestQuestionCount >= GUEST_QUESTION_LIMIT) {
-            setShowGuestGate(true);
-            return;
-        }
-        if (!isAuthenticated && input.trim()) {
-            incrementGuestCount();
-        }
-        scrollBehaviorRef.current = 'smooth';
-        setHistoryError(null);
-        void sendMessage(input);
-    };
-    const [suggestedQuestions, setSuggestedQuestions] = useState<string[]>([]);
-    const [requestStartTime, setRequestStartTime] = useState<number | null>(null);
-    const [responseTimes, setResponseTimes] = useState<Map<string, number>>(new Map());
-    const [messageTimestamps, setMessageTimestamps] = useState<Map<string, Date>>(new Map());
-    const [copiedId, setCopiedId] = useState<string | null>(null);
-    const [showScrollBtn, setShowScrollBtn] = useState(false);
-    const [feedbackSubmitted, setFeedbackSubmitted] = useState<Set<string>>(new Set());
-
-    // ─── Phase 2: Interaction Handlers ────────────────────────
-    const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
-    const [editInput, setEditInput] = useState('');
-
     const handleRegenerate = useCallback(() => {
-        // Find last user message
-        const lastUserMsg = [...messages].reverse().find(m => m.role === 'user');
-        if (!lastUserMsg) return;
+        const lastUserMessage = [...messages].reverse().find((message) => message.role === 'user');
+        if (!lastUserMessage) return;
 
-        // Remove the last assistant message (if any) that followed this user message
-        setMessages(current => {
-            const lastMsg = current[current.length - 1];
-            if (lastMsg?.role === 'assistant') {
+        setMessages((current) => {
+            const lastMessage = current[current.length - 1];
+            if (lastMessage?.role === 'assistant') {
                 return current.slice(0, -1);
             }
             return current;
         });
 
-        void sendMessage(lastUserMsg.content);
-    }, [messages, sendMessage]);
+        void sendMessage(lastUserMessage.content);
+    }, [messages, sendMessage, setMessages]);
 
     const handleEdit = useCallback((id: string, content: string) => {
         setEditingMessageId(id);
@@ -1139,97 +948,50 @@ export default function Chat() {
     const handleSaveEdit = useCallback(async () => {
         if (!editingMessageId || !editInput.trim()) return;
 
-        const id = editingMessageId;
-        const newContent = editInput.trim();
+        const index = messages.findIndex((message) => message.id === editingMessageId);
+        if (index === -1) return;
 
         setEditingMessageId(null);
         setEditInput('');
-
-        // Find index of editing message
-        const index = messages.findIndex(m => m.id === id);
-        if (index === -1) return;
-
-        // Truncate history up to this message, replace it, then send
-        const newHistory = messages.slice(0, index);
-        setMessages(newHistory);
-        void sendMessage(newContent);
-    }, [editingMessageId, editInput, messages, sendMessage]);
+        setMessages(messages.slice(0, index));
+        void sendMessage(editInput.trim());
+    }, [editingMessageId, editInput, messages, sendMessage, setMessages]);
 
     const handleFeedback = useCallback(async (messageId: string, rating: number, isRelevant: boolean) => {
         if (feedbackSubmitted.has(messageId)) return;
 
-        const msgIndex = messages.findIndex(m => m.id === messageId);
+        const msgIndex = messages.findIndex((message) => message.id === messageId);
+        const targetMessage = msgIndex >= 0 ? messages[msgIndex] : null;
+        const knowledgeId = targetMessage?.knowledgeId?.trim();
         const queryText = msgIndex > 0 ? messages[msgIndex - 1].content : '';
 
+        if (!knowledgeId || !queryText.trim()) {
+            return;
+        }
+
         try {
-            await fetch('/api/admin/feedback', {
+            const response = await fetch('/api/admin/feedback', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     queryText,
-                    resultId: messageId,
+                    resultId: knowledgeId,
                     rating,
                     isRelevant,
-                    feedbackText: ''
-                })
+                    feedbackText: '',
+                }),
             });
-            setFeedbackSubmitted(prev => new Set(prev).add(messageId));
+
+            if (!response.ok) {
+                const payload = await response.json().catch(() => null) as { error?: string } | null;
+                throw new Error(payload?.error || 'Failed to submit feedback');
+            }
+
+            setFeedbackSubmitted((prev) => new Set(prev).add(messageId));
         } catch (error) {
             console.error('Failed to submit feedback', error);
         }
     }, [feedbackSubmitted, messages]);
-
-    useEffect(() => {
-        setSuggestedQuestions(getCuratedSuggestions());
-        const interval = setInterval(() => setSuggestedQuestions(getCuratedSuggestions()), 30000);
-        return () => clearInterval(interval);
-    }, []);
-
-    useEffect(() => {
-        if (scrollBehaviorRef.current === 'smooth') {
-            scrollToBottomThrottled();
-        } else {
-            messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
-        }
-        scrollBehaviorRef.current = 'smooth';
-    }, [messages, scrollToBottomThrottled]);
-
-    useEffect(() => {
-        if (isLoading && !requestStartTime) setRequestStartTime(performance.now());
-        if (!isLoading && requestStartTime) {
-            const duration = (performance.now() - requestStartTime) / 1000;
-            const lastBotMsg = [...messages].reverse().find(m => m.role === 'assistant');
-            if (lastBotMsg) setResponseTimes(prev => new Map(prev).set(lastBotMsg.id, duration));
-            setRequestStartTime(null);
-        }
-    }, [isLoading, messages, requestStartTime]);
-
-    useEffect(() => {
-        setMessageTimestamps(prev => {
-            let next = prev;
-
-            for (const message of messages) {
-                if (next.has(message.id)) continue;
-
-                if (next === prev) {
-                    next = new Map(prev);
-                }
-
-                next.set(
-                    message.id,
-                    message.createdAt instanceof Date ? message.createdAt : new Date()
-                );
-            }
-
-            return next;
-        });
-    }, [messages]);
-
-    useEffect(() => {
-        if (!isLoading && !isLoadingHistory && !isSessionLoading) {
-            inputRef.current?.focus();
-        }
-    }, [isLoading, isLoadingHistory, isSessionLoading, activeConversationId]);
 
     const handleScroll = useCallback(() => {
         const container = chatContainerRef.current;
@@ -1247,18 +1009,20 @@ export default function Chat() {
             await navigator.clipboard.writeText(text);
             setCopiedId(id);
             setTimeout(() => setCopiedId(null), 2000);
-        } catch { /* noop */ }
+        } catch {
+            // noop
+        }
     }, []);
 
-    const handleKeyDown = (e: React.KeyboardEvent) => {
-        if (e.key === 'Enter' && e.ctrlKey && input.trim() && !isLoading && !isLoadingHistory) {
-            e.preventDefault();
-            handleSubmit({ preventDefault: () => undefined });
+    const handleKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+        if (event.key === 'Enter' && event.ctrlKey && input.trim() && !isLoading && !isLoadingHistory) {
+            event.preventDefault();
+            handleSubmit();
         }
     };
 
     const handleSuggestionClick = (question: string) => {
-        if (!isAuthenticated && guestQuestionCount >= GUEST_QUESTION_LIMIT) {
+        if (!isAuthenticated && guestQuestionCount >= 3) {
             setShowGuestGate(true);
             return;
         }
@@ -1285,7 +1049,7 @@ export default function Chat() {
         );
     }
 
-    const groupedConversations = groupConversationsByDate(conversations);
+    const guestQuestionsLeft = Math.max(0, 3 - guestQuestionCount);
 
     return (
         <div className="flex h-[100dvh]">
@@ -1301,8 +1065,8 @@ export default function Chat() {
                         title="Open History Sidebar" aria-label="Open History Sidebar"
                     >
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-                            <line x1="9" y1="3" x2="9" y2="21"></line>
+                            <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                            <line x1="9" y1="3" x2="9" y2="21" />
                         </svg>
                     </button>
                 </div>
@@ -1428,28 +1192,32 @@ export default function Chat() {
                         </div>
                     </div>
                 </aside>
+                <ConversationSidebar
+                    isOpen={sidebarOpen}
+                    conversations={conversations}
+                    activeConversationId={activeConversationId}
+                    loadingConversationId={loadingConversationId}
+                    userName={userName}
+                    onClose={() => setSidebarOpen(false)}
+                    onNew={handleNewConversation}
+                    onSelect={(conversationId) => void handleSelectConversation(conversationId)}
+                    onDelete={(conversationId) => void handleDeleteConversation(conversationId)}
+                />
             )}
 
             <div className="flex flex-col flex-1 min-w-0 transition-all duration-300">
-                <header className="sticky top-0 z-20 skeuo-metal flex-shrink-0">
-                    <div className="max-w-3xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between gap-2">
+                <header className="sticky top-0 z-20 backdrop-blur-sm bg-[#E8E0D4]/85 border-b border-[#D6CFC4]">
+                    <div className="max-w-5xl mx-auto px-3 sm:px-4 lg:px-6 h-16 flex items-center justify-between gap-3">
                         <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
-
                             <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl skeuo-leather flex items-center justify-center shadow-md flex-shrink-0">
                                 <FontAwesomeIcon icon={faSignal} className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[#CA8A04]" />
                             </div>
                             <div className="min-w-0">
-                                <h1 className="text-base sm:text-lg font-semibold tracking-tight text-[#1C1917] leading-tight truncate">
-                                    <span className="hidden sm:inline">SAI Tech Support </span>
-                                    <span className="sm:hidden">SAI </span>
-                                    <span className="text-[#CA8A04]">AI</span>
-                                </h1>
-                                <p className="text-[10px] sm:text-[11px] text-[#78716C] font-medium truncate">
-                                    {isAuthenticated ? `Hi, ${userName}` : 'Guest session'}
-                                </p>
+                                <h1 className="text-sm sm:text-base font-semibold text-[#1C1917] truncate">SAI Tech Support</h1>
+                                <p className="text-[10px] sm:text-xs text-[#78716C] truncate">Technical support, troubleshooting, and diagrams</p>
                             </div>
                         </div>
-                        <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
+                        <div className="flex items-center gap-2">
                             <LanguageSelector language={language} setLanguage={setLanguage} />
                             {isAuthenticated ? (
                                 <button onClick={handleSignOut} className="skeuo-raised flex items-center gap-1.5 text-xs text-[#44403C] px-2.5 py-1.5 sm:px-3 sm:py-2 transition-all hover:bg-red-50 hover:text-red-700 flex-shrink-0" title="Sign Out" aria-label="Sign Out">
@@ -1457,20 +1225,18 @@ export default function Chat() {
                                     <span className="hidden sm:inline">Sign Out</span>
                                 </button>
                             ) : (
-                                <button onClick={() => window.location.href = '/login'} className="skeuo-brass flex items-center gap-1.5 text-xs px-3 py-1.5 sm:px-4 sm:py-2 flex-shrink-0">
+                                <button onClick={() => { window.location.href = '/login'; }} className="skeuo-brass flex items-center gap-1.5 text-xs px-3 py-1.5 sm:px-4 sm:py-2 flex-shrink-0">
                                     <span>Sign In</span>
                                 </button>
                             )}
                         </div>
                     </div>
                 </header>
-
                 <main ref={chatContainerRef} onScroll={handleScroll} className="flex-1 overflow-y-auto px-3 py-4 sm:px-6 sm:py-6">
                     <div className="max-w-3xl mx-auto space-y-4 sm:space-y-5">
-
                         {isLoadingHistory ? (
                             <div className="flex flex-col gap-4 p-4">
-                                {[0, 1, 2, 3].map(index => (
+                                {[0, 1, 2, 3].map((index) => (
                                     <div key={index} className={`flex ${index % 2 === 0 ? 'justify-start' : 'justify-end'}`}>
                                         <div className={`h-16 rounded-2xl animate-pulse bg-[#d6cfc4] ${index % 2 === 0 ? 'w-2/3' : 'w-1/2'}`} />
                                     </div>
@@ -1485,16 +1251,10 @@ export default function Chat() {
                                     <h2 className="text-xl font-semibold text-[#1C1917] mb-2">Unable to load conversation</h2>
                                     <p className="text-[#78716C] text-sm leading-relaxed">{historyError.message}</p>
                                     <div className="mt-5 flex items-center justify-center gap-3">
-                                        <button
-                                            onClick={handleRetryHistoryLoad}
-                                            className="skeuo-raised px-4 py-2 text-xs font-semibold text-[#44403C]"
-                                        >
+                                        <button onClick={handleRetryHistoryLoad} className="skeuo-raised px-4 py-2 text-xs font-semibold text-[#44403C]">
                                             Retry
                                         </button>
-                                        <button
-                                            onClick={handleNewConversation}
-                                            className="px-4 py-2 text-xs font-semibold text-[#78716C] hover:text-[#1C1917]"
-                                        >
+                                        <button onClick={handleNewConversation} className="px-4 py-2 text-xs font-semibold text-[#78716C] hover:text-[#1C1917]">
                                             Start fresh
                                         </button>
                                     </div>
@@ -1519,27 +1279,23 @@ export default function Chat() {
                                         </div>
                                     </div>
                                     <h2 className="text-xl sm:text-2xl lg:text-3xl font-semibold mb-2 sm:mb-3 text-[#1C1917]">
-                                        {TEXT_MAP[language as keyof typeof TEXT_MAP].welcome}
+                                        {TEXT_MAP[language].welcome}
                                     </h2>
                                     <p className="text-[#78716C] max-w-md mx-auto leading-relaxed text-sm">
-                                        {TEXT_MAP[language as keyof typeof TEXT_MAP].intro}
+                                        {TEXT_MAP[language].intro}
                                     </p>
 
                                     <div className="mt-6 sm:mt-8 grid gap-2.5 sm:gap-3 sm:grid-cols-2 text-sm text-left">
-                                        {welcomeSuggestions.map((question, i) => {
-                                            return (
-                                                <button key={`${i}-${question.slice(0, 20)}`}
-                                                    onClick={() => handleSuggestionClick(question)}
-                                                    className={`bg-[#FAF7F2] hover:bg-[#F0EBE3] border border-[#D6CFC4] rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.05)] group p-3 sm:p-4 text-left flex items-start gap-2.5 text-xs sm:text-sm transition-all text-[#44403C]`}>
-                                                    <span className="mt-0.5 flex-shrink-0 text-sm opacity-60">
-                                                        →
-                                                    </span>
-                                                    <span className={`flex-1 leading-snug`}>
-                                                        {question}
-                                                    </span>
-                                                </button>
-                                            );
-                                        })}
+                                        {welcomeSuggestions.map((question, index) => (
+                                            <button
+                                                key={`${index}-${question.slice(0, 20)}`}
+                                                onClick={() => handleSuggestionClick(question)}
+                                                className="bg-[#FAF7F2] hover:bg-[#F0EBE3] border border-[#D6CFC4] rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.05)] group p-3 sm:p-4 text-left flex items-start gap-2.5 text-xs sm:text-sm transition-all text-[#44403C]"
+                                            >
+                                                <span className="mt-0.5 flex-shrink-0 text-sm opacity-60">-&gt;</span>
+                                                <span className="flex-1 leading-snug">{question}</span>
+                                            </button>
+                                        ))}
                                     </div>
 
                                     <div className="mt-5 sm:mt-6 flex flex-wrap justify-center gap-1.5 sm:gap-2">
@@ -1553,12 +1309,12 @@ export default function Chat() {
                             </div>
                         ) : (
                             <>
-                                {messages.map((m, index) => {
-                                    const isLastAssistant = m.role === 'assistant' && index === messages.length - 1;
+                                {messages.map((message, index) => {
+                                    const isLastAssistant = message.role === 'assistant' && index === messages.length - 1;
                                     return (
                                         <MessageBubble
-                                            key={m.id}
-                                            message={m}
+                                            key={message.id}
+                                            message={message}
                                             language={language}
                                             streamingMessageId={null}
                                             responseTimes={responseTimes}
@@ -1570,7 +1326,7 @@ export default function Chat() {
                                             isLastAssistant={isLastAssistant}
                                             onRegenerate={handleRegenerate}
                                             onEdit={handleEdit}
-                                            isEditing={editingMessageId === m.id}
+                                            isEditing={editingMessageId === message.id}
                                             editInput={editInput}
                                             setEditInput={setEditInput}
                                             onSaveEdit={handleSaveEdit}
@@ -1585,7 +1341,7 @@ export default function Chat() {
                                             id: streamingMessageId,
                                             role: 'assistant',
                                             content: streamingDisplay,
-                                            createdAt: new Date()
+                                            createdAt: new Date(),
                                         }}
                                         language={language}
                                         streamingMessageId={streamingMessageId}
@@ -1600,7 +1356,6 @@ export default function Chat() {
                             </>
                         )}
 
-
                         <div ref={messagesEndRef} className="h-4 flex-shrink-0" />
                     </div>
                 </main>
@@ -1609,13 +1364,13 @@ export default function Chat() {
                     <button onClick={scrollToBottom}
                         className="fixed bottom-28 sm:bottom-32 right-4 sm:right-6 z-30 skeuo-raised w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center rounded-full shadow-lg animate-fade-up cursor-pointer"
                         title="Scroll to bottom" aria-label="Scroll to bottom">
+                    <button onClick={scrollToBottom} className="fixed bottom-28 sm:bottom-32 right-4 sm:right-6 z-30 skeuo-raised w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center rounded-full shadow-lg animate-fade-up cursor-pointer" title="Scroll to bottom">
                         <FontAwesomeIcon icon={faChevronDown} className="w-3.5 h-3.5 text-[#44403C]" />
                     </button>
                 )}
 
                 <div className="flex-shrink-0 bg-gradient-to-t from-[#E8E0D4] via-[#E8E0D4]/95 to-transparent pt-3 sm:pt-4 pb-[env(safe-area-inset-bottom,12px)] sm:pb-5 px-3 sm:px-4 z-20">
                     <div className="max-w-3xl mx-auto">
-
                         {isAuthenticated && activeConversationId && messages.length > 0 && !sessionSaved && (
                             <div className="mb-2">
                                 {showSaveModal ? (
@@ -1623,26 +1378,22 @@ export default function Chat() {
                                         <input
                                             type="text"
                                             value={saveSessionName}
-                                            onChange={(e) => setSaveSessionName(e.target.value)}
+                                            onChange={(event) => setSaveSessionName(event.target.value)}
                                             placeholder="Enter session name..."
                                             className="flex-1 px-3 py-1.5 text-sm rounded-lg border border-[#D6CFC4] bg-[#FAF7F2] text-[#1C1917] focus:outline-none focus:border-[#CA8A04] transition-colors"
                                             autoFocus
-                                            onKeyDown={(e) => {
-                                                if (e.key === 'Enter' && saveSessionName.trim()) {
-                                                    e.preventDefault();
+                                            onKeyDown={(event) => {
+                                                if (event.key === 'Enter' && saveSessionName.trim()) {
+                                                    event.preventDefault();
                                                     void handleSaveSession();
                                                 }
-                                                if (e.key === 'Escape') {
+                                                if (event.key === 'Escape') {
                                                     setShowSaveModal(false);
                                                     setSaveSessionName('');
                                                 }
                                             }}
                                         />
-                                        <button
-                                            onClick={() => void handleSaveSession()}
-                                            disabled={!saveSessionName.trim() || isSavingSession}
-                                            className="skeuo-brass px-3 py-1.5 text-xs rounded-lg disabled:opacity-40 flex items-center gap-1.5"
-                                        >
+                                        <button onClick={() => void handleSaveSession()} disabled={!saveSessionName.trim() || isSavingSession} className="skeuo-brass px-3 py-1.5 text-xs rounded-lg disabled:opacity-40 flex items-center gap-1.5">
                                             {isSavingSession ? (
                                                 <FontAwesomeIcon icon={faSpinner} className="w-3 h-3 animate-spin" />
                                             ) : (
@@ -1650,18 +1401,12 @@ export default function Chat() {
                                             )}
                                             Save
                                         </button>
-                                        <button
-                                            onClick={() => { setShowSaveModal(false); setSaveSessionName(''); }}
-                                            className="p-1.5 rounded-lg text-[#78716C] hover:text-[#1C1917] hover:bg-black/5 transition-colors"
-                                        >
+                                        <button onClick={() => { setShowSaveModal(false); setSaveSessionName(''); }} className="p-1.5 rounded-lg text-[#78716C] hover:text-[#1C1917] hover:bg-black/5 transition-colors">
                                             <FontAwesomeIcon icon={faTimes} className="w-3 h-3" />
                                         </button>
                                     </div>
                                 ) : (
-                                    <button
-                                        onClick={() => setShowSaveModal(true)}
-                                        className="w-full flex items-center justify-center gap-2 py-1.5 text-xs text-[#78716C] hover:text-[#CA8A04] rounded-lg hover:bg-[#CA8A04]/5 transition-all duration-200"
-                                    >
+                                    <button onClick={() => setShowSaveModal(true)} className="w-full flex items-center justify-center gap-2 py-1.5 text-xs text-[#78716C] hover:text-[#CA8A04] rounded-lg hover:bg-[#CA8A04]/5 transition-all duration-200">
                                         <FontAwesomeIcon icon={faBookmark} className="w-3 h-3" />
                                         Save this session
                                     </button>
@@ -1676,59 +1421,28 @@ export default function Chat() {
                             </div>
                         )}
 
-                        {showGuestGate && !isAuthenticated ? (
-                            <div className="skeuo-card rounded-2xl p-5 text-center animate-fade-up">
-                                <div className="w-10 h-10 mx-auto rounded-xl bg-[#CA8A04]/10 flex items-center justify-center mb-3">
-                                    <FontAwesomeIcon icon={faLock} className="w-4 h-4 text-[#CA8A04]" />
-                                </div>
-                                <h3 className="text-sm font-semibold text-[#1C1917] mb-1">
-                                    Free questions used up
-                                </h3>
-                                <p className="text-xs text-[#78716C] mb-4 leading-relaxed">
-                                    Sign in to continue chatting with unlimited access,<br />
-                                    save your sessions, and access full history.
-                                </p>
-                                <button
-                                    onClick={() => window.location.href = '/login'}
-                                    className="skeuo-brass px-5 py-2 text-sm font-semibold rounded-xl"
-                                >
-                                    Sign In to Continue
-                                </button>
-                            </div>
-                        ) : (
-                            <>
-                                <form onSubmit={handleSubmit} className="relative flex items-center">
-                                    <label htmlFor="chat-input" className="sr-only">Ask a question</label>
-                                    <input ref={inputRef}
-                                        id="chat-input"
-                                        className="skeuo-input w-full p-3 sm:p-4 pl-4 sm:pl-5 pr-12 sm:pr-14 text-sm sm:text-[15px]"
-                                        value={input}
-                                        placeholder={TEXT_MAP[language as keyof typeof TEXT_MAP].placeholder}
-                                        onChange={handleInputChange}
-                                        onKeyDown={handleKeyDown}
-                                        disabled={isLoading || isLoadingHistory}
-                                        autoComplete="off"
-                                    />
-                                    <button type="submit" disabled={isLoading || isLoadingHistory || !input.trim()}
-                                        className="absolute right-1.5 sm:right-2 p-2 sm:p-2.5 skeuo-brass rounded-lg sm:rounded-xl disabled:opacity-30">
-                                        {isLoading || isLoadingHistory
-                                            ? <FontAwesomeIcon icon={faSpinner} className="w-3.5 h-3.5 sm:w-4 sm:h-4 animate-spin" />
-                                            : <FontAwesomeIcon icon={faPaperPlane} className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                                        }
-                                    </button>
-                                </form>
-                                <div className="flex items-center justify-between mt-2">
-                                    <p className="text-[10px] sm:text-[11px] text-[#A8A29E]">
-                                        {TEXT_MAP[language as keyof typeof TEXT_MAP].footer} <span className="hidden sm:inline">· Ctrl+Enter to send</span>
-                                    </p>
-                                    {!isAuthenticated && (
-                                        <span className="text-[10px] text-[#A8A29E]">
-                                            {GUEST_QUESTION_LIMIT - guestQuestionCount} free {GUEST_QUESTION_LIMIT - guestQuestionCount === 1 ? 'question' : 'questions'} left
-                                        </span>
-                                    )}
-                                </div>
-                            </>
-                        )}
+                        <ChatInputBar
+                            isAuthenticated={isAuthenticated}
+                            showGuestGate={showGuestGate}
+                            onSignIn={() => { window.location.href = '/login'; }}
+                            input={input}
+                            inputRef={inputRef}
+                            onInputChange={handleInputChange}
+                            onKeyDown={handleKeyDown}
+                            onSubmit={handleSubmit}
+                            placeholder={TEXT_MAP[language].placeholder}
+                            footerText={TEXT_MAP[language].footer}
+                            isLoading={isLoading}
+                            isLoadingHistory={isLoadingHistory}
+                            guestQuestionsLeft={guestQuestionsLeft}
+                            onStop={stop}
+                            isStreaming={isLoading && !!streamingMessageId}
+                            recordingState={audioRecorder.state}
+                            recordingDuration={audioRecorder.durationSeconds}
+                            onStartRecording={() => void audioRecorder.startRecording()}
+                            onStopRecording={audioRecorder.stopRecording}
+                            onCancelRecording={audioRecorder.cancelRecording}
+                        />
                     </div>
                 </div>
             </div>
