@@ -115,13 +115,13 @@ export async function recordFeedback(
         });
 
         if (error) {
-            console.warn('[feedback-reranker] Record failed:', error.message);
+            throw new Error(error.message);
         }
 
         // Invalidate cache so next request picks up the change
         feedbackCache = null;
     } catch (err) {
-        console.warn('[feedback-reranker] Error:', (err as Error).message);
+        throw err instanceof Error ? err : new Error('Failed to record feedback');
     }
 }
 

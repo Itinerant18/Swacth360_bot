@@ -11,24 +11,78 @@ import { getSupabase } from '@/lib/supabase';
 import { recordFeedback } from '@/lib/feedback-reranker';
 import { requireAdmin } from '@/lib/admin-auth';
 
-export async function POST(request: NextRequest) {
-    const auth = await requireAdmin();
-    if (!auth.authorized) return auth.response!;
+type FeedbackBody = {
+    queryText?: unknown;
+    resultId?: unknown;
+    rating?: unknown;
+    isRelevant?: unknown;
+    feedbackText?: unknown;
+};
 
+type KnowledgeLookupRow = {
+    id: string;
+    question: string | null;
+    category: string | null;
+    source_name: string | null;
+};
+
+type FeedbackRow = {
+    id: string;
+    query_text: string;
+    result_id: string;
+    rating: number;
+    is_relevant: boolean | null;
+    feedback_text?: string | null;
+    created_at: string;
+};
+
+function getFeedbackErrorMessage(error: unknown): string {
+    const message = error instanceof Error ? error.message : 'Failed to submit feedback';
+    const normalized = message.toLowerCase();
+
+    if (normalized.includes('foreign key') || normalized.includes('violates')) {
+        return 'Feedback must reference a valid knowledge base entry.';
+    }
+
+    if (normalized.includes('invalid input syntax') || normalized.includes('invalid id')) {
+        return 'Invalid feedback result ID.';
+    }
+
+    return message;
+}
+
+function getFeedbackErrorStatus(error: unknown): number {
+    const message = error instanceof Error ? error.message.toLowerCase() : '';
+
+    if (
+        message.includes('foreign key')
+        || message.includes('violates')
+        || message.includes('invalid input syntax')
+        || message.includes('invalid id')
+    ) {
+        return 400;
+    }
+
+    return 500;
+}
+
+export async function POST(request: NextRequest) {
     try {
-        const body = await request.json();
-        const { queryText, resultId, rating, isRelevant, feedbackText } = body;
+        const body = await request.json() as FeedbackBody;
+        const queryText = typeof body.queryText === 'string' ? body.queryText.trim() : '';
+        const resultId = typeof body.resultId === 'string' ? body.resultId.trim() : '';
+        const rating = typeof body.rating === 'number' ? body.rating : Number(body.rating);
+        const isRelevant = typeof body.isRelevant === 'boolean' ? body.isRelevant : null;
+        const feedbackText = typeof body.feedbackText === 'string' ? body.feedbackText.trim() : '';
         console.info('[admin.feedback.post] request', { resultId, rating });
 
-        // Validate required fields
-        if (!queryText || !resultId || rating === undefined) {
+        if (!queryText || !resultId || !Number.isFinite(rating)) {
             return NextResponse.json(
                 { error: 'Missing required fields: queryText, resultId, rating' },
                 { status: 400 }
             );
         }
 
-        // Validate rating range
         if (rating < 1 || rating > 5) {
             return NextResponse.json(
                 { error: 'Rating must be between 1 and 5' },
@@ -36,13 +90,27 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        // Submit feedback to knowledge graph
-        await submitFeedback(queryText, resultId, rating, isRelevant ?? null, feedbackText);
+        const supabase = getSupabase();
+        const { count, error: knowledgeLookupError } = await supabase
+            .from('hms_knowledge')
+            .select('id', { count: 'exact', head: true })
+            .eq('id', resultId);
 
-        // Update feedback-driven reranking scores
-        // Rating 1-2 = negative, 4-5 = positive, 3 = neutral
+        if (knowledgeLookupError) {
+            throw knowledgeLookupError;
+        }
+
+        if ((count ?? 0) === 0) {
+            return NextResponse.json(
+                { error: 'Feedback must reference a valid knowledge base entry.' },
+                { status: 404 },
+            );
+        }
+
+        await submitFeedback(queryText, resultId, rating, isRelevant, feedbackText || undefined);
+
         if (rating !== 3) {
-            void recordFeedback(resultId, rating >= 4, queryText);
+            await recordFeedback(resultId, rating >= 4, queryText);
         }
 
         return NextResponse.json({
@@ -52,8 +120,8 @@ export async function POST(request: NextRequest) {
     } catch (error) {
         console.error('[admin.feedback.post] error', error);
         return NextResponse.json(
-            { error: 'Failed to submit feedback' },
-            { status: 500 }
+            { error: getFeedbackErrorMessage(error) },
+            { status: getFeedbackErrorStatus(error) }
         );
     }
 }
@@ -84,8 +152,33 @@ export async function GET(request: NextRequest) {
             );
         }
 
+        const feedbackRows = (data ?? []) as FeedbackRow[];
+        const knowledgeIds = [...new Set(feedbackRows.map((item) => item.result_id).filter(Boolean))];
+        let knowledgeById: Record<string, KnowledgeLookupRow> = {};
+
+        if (knowledgeIds.length > 0) {
+            const { data: knowledgeRows, error: knowledgeError } = await supabase
+                .from('hms_knowledge')
+                .select('id, question, category, source_name')
+                .in('id', knowledgeIds);
+
+            if (knowledgeError) {
+                return NextResponse.json(
+                    { error: knowledgeError.message },
+                    { status: 500 }
+                );
+            }
+
+            knowledgeById = Object.fromEntries(
+                ((knowledgeRows ?? []) as KnowledgeLookupRow[]).map((row) => [row.id, row]),
+            );
+        }
+
         return NextResponse.json({
-            feedback: data ?? [],
+            feedback: feedbackRows.map((item) => ({
+                ...item,
+                knowledge: knowledgeById[item.result_id] ?? null,
+            })),
             total: count ?? 0,
             limit,
             offset,

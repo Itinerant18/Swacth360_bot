@@ -297,7 +297,7 @@ export async function logicalRoute(query: string): Promise<{
         }
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        console.warn(`âš ï¸  Relational handler failed (${pattern.label}): ${message}`);
+        console.warn(`Warning: Relational handler failed (${pattern.label}): ${message}`);
       }
     }
   }

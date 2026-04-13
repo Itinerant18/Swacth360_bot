@@ -14,14 +14,22 @@ import {
 } from '@fortawesome/free-solid-svg-icons';
 import { adminFetch } from '@/lib/adminFetch';
 
+type FeedbackKnowledgeItem = {
+    id: string;
+    question: string | null;
+    category: string | null;
+    source_name: string | null;
+};
+
 type FeedbackItem = {
     id: string;
     query_text: string;
     result_id: string;
     rating: number;
-    is_relevant: boolean;
-    feedback_text?: string;
+    is_relevant: boolean | null;
+    feedback_text?: string | null;
     created_at: string;
+    knowledge?: FeedbackKnowledgeItem | null;
 };
 
 export default function FeedbackTab() {
@@ -195,6 +203,16 @@ export default function FeedbackTab() {
                                                     }`}
                                             />
                                         ))}
+                                    </div>
+                                </div>
+                                <div className="rounded-lg bg-[#F0EBE3] border border-[#D6CFC4] px-3 py-2 mb-2">
+                                    <p className="text-xs font-medium text-[#44403C] truncate">
+                                        {item.knowledge?.question?.trim() || 'Knowledge base entry unavailable'}
+                                    </p>
+                                    <div className="mt-1 flex flex-wrap gap-2 text-[11px] text-[#78716C]">
+                                        <span>KB ID: {item.knowledge?.id || item.result_id}</span>
+                                        {item.knowledge?.category && <span>Category: {item.knowledge.category}</span>}
+                                        {item.knowledge?.source_name && <span>Source: {item.knowledge.source_name}</span>}
                                     </div>
                                 </div>
                                 <div className="flex items-center justify-between text-xs">

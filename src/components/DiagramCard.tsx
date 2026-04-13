@@ -1,19 +1,19 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import dynamic from 'next/dynamic';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { 
-    faExpand, faCompress, faCopy, faCheck, 
-    faBook, faWandSparkles, faTimes, faChevronRight 
+    faExpand, faCopy, faCheck, 
+    faBook, faWandSparkles, faTimes, faChevronRight, faDownload
 } from '@fortawesome/free-solid-svg-icons';
 
 const MermaidBlock = dynamic(() => import('./MermaidBlock'), {
     ssr: false,
     loading: () => (
-        <div className="bg-[#161b22] border border-[#30363d] rounded-lg p-5 text-center text-[#8b949e] text-xs my-2.5">
+        <div className="bg-[#F0EBE3] border border-[#D6CFC4] rounded-lg p-5 text-center text-[#78716C] text-xs my-2.5">
             Loading diagram renderer…
         </div>
     ),
@@ -29,9 +29,9 @@ interface DiagramCardProps {
 }
 
 const LABELS = {
-    en: { copy: 'Copy', copied: 'Copied!', fromManual: 'Official Reference', aiGenerated: 'AI Generated', expand: 'Expand' },
-    bn: { copy: 'কপি', copied: 'হয়েছে!', fromManual: 'অফিসিয়াল রেফারেন্স', aiGenerated: 'AI তৈরি', expand: 'বড় করুন' },
-    hi: { copy: 'कॉपी', copied: 'हो गया!', fromManual: 'आधिकारिक संदर्भ', aiGenerated: 'AI जनित', expand: 'विस्तार करें' },
+    en: { copy: 'Copy', copied: 'Copied!', fromManual: 'Official Reference', aiGenerated: 'AI Generated', expand: 'Expand', download: 'Download' },
+    bn: { copy: 'কপি', copied: 'হয়েছে!', fromManual: 'অফিসিয়াল রেফারেন্স', aiGenerated: 'AI তৈরি', expand: 'বড় করুন', download: 'ডাউনলোড' },
+    hi: { copy: 'कॉपी', copied: 'हो गया!', fromManual: 'आधिकारिक संदर्भ', aiGenerated: 'AI जनित', expand: 'विस्तার करें', download: 'डाउनलोड' },
 };
 
 const TYPE_ICONS: Record<string, string> = {
@@ -58,6 +58,27 @@ export default function DiagramCard({
     const [isExpanded, setIsExpanded] = useState(false);
     const lbl = LABELS[language as keyof typeof LABELS] || LABELS.en;
     const icon = TYPE_ICONS[diagramType] || '📐';
+    const diagramRef = useRef<HTMLDivElement>(null);
+
+    const handleDownload = useCallback(() => {
+        const container = diagramRef.current;
+        if (!container) return;
+
+        const svgElement = container.querySelector('svg');
+        if (!svgElement) return;
+
+        const svgData = new XMLSerializer().serializeToString(svgElement);
+        const blob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `${title.replace(/[^a-zA-Z0-9]/g, '_')}_diagram.svg`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+    }, [title]);
 
     useEffect(() => {
         if (isExpanded) {
@@ -66,6 +87,19 @@ export default function DiagramCard({
             document.body.style.overflow = 'unset';
         }
         return () => { document.body.style.overflow = 'unset'; };
+    }, [isExpanded]);
+
+    useEffect(() => {
+        if (!isExpanded) return;
+
+        const handleKeyDown = (event: KeyboardEvent) => {
+            if (event.key === 'Escape') {
+                setIsExpanded(false);
+            }
+        };
+
+        document.addEventListener('keydown', handleKeyDown);
+        return () => document.removeEventListener('keydown', handleKeyDown);
     }, [isExpanded]);
 
     const handleCopy = async () => {
@@ -102,7 +136,7 @@ export default function DiagramCard({
                     return (
                         <pre
                             {...rest}
-                            className="bg-[#161b22] border border-[#30363d] rounded-lg p-3.5 sm:p-4 overflow-x-auto my-2.5 font-mono text-[13px] leading-relaxed text-[#e6edf3]"
+                            className="bg-[#F0EBE3] border border-[#D6CFC4] rounded-lg p-3.5 sm:p-4 overflow-x-auto my-2.5 font-mono text-[13px] leading-relaxed text-[#1C1917]"
                         >
                             {children}
                         </pre>
@@ -112,14 +146,14 @@ export default function DiagramCard({
                     const isBlock = !!(className && className.startsWith('language-'));
                     if (isBlock) {
                         return (
-                            <code className="font-mono text-[13px] leading-relaxed color-[#e6edf3] whitespace-pre block">
+                            <code className="font-mono text-[13px] leading-relaxed text-[#1C1917] whitespace-pre block">
                                 {children}
                             </code>
                         );
                     }
                     return (
                         <code
-                            className="font-mono text-xs bg-[#30363d] color-[#79c0ff] px-1.5 py-0.5 rounded border border-[#21262d]"
+                            className="font-mono text-xs bg-[#E8E0D4] text-[#0D9488] px-1.5 py-0.5 rounded border border-[#D6CFC4]"
                             {...rest}
                         >
                             {children}
@@ -136,67 +170,67 @@ export default function DiagramCard({
                     );
                 },
                 thead({ children }: React.HTMLAttributes<HTMLTableSectionElement>) {
-                    return <thead className="bg-[#161b22]">{children}</thead>;
+                    return <thead className="bg-[#F0EBE3]">{children}</thead>;
                 },
                 th({ children }: React.ThHTMLAttributes<HTMLTableCellElement>) {
                     return (
-                        <th className="p-2 sm:p-3 text-left text-[#8b949e] font-semibold text-[11px] tracking-wider uppercase border-b-2 border-[#30363d] whitespace-nowrap">
+                        <th className="p-2 sm:p-3 text-left text-[#78716C] font-semibold text-[11px] tracking-wider uppercase border-b-2 border-[#D6CFC4] whitespace-nowrap">
                             {children}
                         </th>
                     );
                 },
                 td({ children }: React.TdHTMLAttributes<HTMLTableCellElement>) {
                     return (
-                        <td className="p-2 sm:p-3 text-[#e6edf3] border-b border-[#21262d] align-top">
+                        <td className="p-2 sm:p-3 text-[#1C1917] border-b border-[#D6CFC4] align-top">
                             {children}
                         </td>
                     );
                 },
                 tr({ children }: React.HTMLAttributes<HTMLTableRowElement>) {
                     return (
-                        <tr className="hover:bg-[#161b22] transition-colors">
+                        <tr className="hover:bg-[#F0EBE3] transition-colors">
                             {children}
                         </tr>
                     );
                 },
                 h1({ children }: React.HTMLAttributes<HTMLHeadingElement>) {
                     return (
-                        <h1 className="text-[#e6edf3] text-lg font-bold mb-3.5 pb-2 border-b border-[#21262d]">
+                        <h1 className="text-[#1C1917] text-lg font-bold mb-3.5 pb-2 border-b border-[#D6CFC4]">
                             {children}
                         </h1>
                     );
                 },
                 h2({ children }: React.HTMLAttributes<HTMLHeadingElement>) {
                     return (
-                        <h2 className="text-[#58a6ff] text-base font-bold mt-4.5 mb-2.5 pb-1.5 border-b border-[#21262d]">
+                        <h2 className="text-[#0D9488] text-base font-bold mt-4.5 mb-2.5 pb-1.5 border-b border-[#D6CFC4]">
                             {children}
                         </h2>
                     );
                 },
                 h3({ children }: React.HTMLAttributes<HTMLHeadingElement>) {
                     return (
-                        <h3 className="text-[#79c0ff] text-sm font-semibold mt-3.5 mb-2">
+                        <h3 className="text-[#0D9488] text-sm font-semibold mt-3.5 mb-2">
                             {children}
                         </h3>
                     );
                 },
                 p({ children }: React.HTMLAttributes<HTMLParagraphElement>) {
                     return (
-                        <p className="text-[#c9d1d9] text-[13px] leading-relaxed my-2">
+                        <p className="text-[#44403C] text-[13px] leading-relaxed my-2">
                             {children}
                         </p>
                     );
                 },
                 ul({ children }: React.HTMLAttributes<HTMLUListElement>) {
                     return (
-                        <ul className="text-[#c9d1d9] text-[13px] pl-5 my-2 leading-relaxed list-disc">
+                        <ul className="text-[#44403C] text-[13px] pl-5 my-2 leading-relaxed list-disc">
                             {children}
                         </ul>
                     );
                 },
                 ol({ children }: React.OlHTMLAttributes<HTMLOListElement>) {
                     return (
-                        <ol className="text-[#c9d1d9] text-[13px] pl-5 my-2 leading-relaxed list-decimal">
+                        <ol className="text-[#44403C] text-[13px] pl-5 my-2 leading-relaxed list-decimal">
                             {children}
                         </ol>
                     );
@@ -205,15 +239,27 @@ export default function DiagramCard({
                     return <li className="my-1">{children}</li>;
                 },
                 strong({ children }: React.HTMLAttributes<HTMLElement>) {
-                    return <strong className="text-[#e6edf3] font-semibold">{children}</strong>;
+                    return <strong className="text-[#1C1917] font-semibold">{children}</strong>;
                 },
                 em({ children }: React.HTMLAttributes<HTMLElement>) {
-                    return <em className="text-[#a5d6ff] italic">{children}</em>;
+                    return <em className="text-[#0D9488] italic">{children}</em>;
+                },
+                a({ href, children }: React.AnchorHTMLAttributes<HTMLAnchorElement>) {
+                    return (
+                        <a
+                            href={href ?? '#'}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-[#0D9488] hover:text-[#0A7A6E] underline decoration-[#0D9488]/30 hover:decoration-[#0D9488] transition-colors"
+                        >
+                            {children}
+                        </a>
+                    );
                 },
                 blockquote({ children }: React.BlockquoteHTMLAttributes<HTMLQuoteElement>) {
                     return (
-                        <blockquote className="border-l-4 border-[#1f6feb] bg-[#1f6feb]/5 mt-3.5 p-3 rounded-r-lg">
-                            <div className="text-[#8b949e] text-xs leading-relaxed">
+                        <blockquote className="border-l-4 border-[#0D9488] bg-[#0D9488]/5 mt-3.5 p-3 rounded-r-lg">
+                            <div className="text-[#78716C] text-xs leading-relaxed">
                                 {children}
                             </div>
                         </blockquote>
@@ -221,7 +267,7 @@ export default function DiagramCard({
                 },
                 hr() {
                     return (
-                        <hr className="border-none border-t border-[#21262d] my-4" />
+                        <hr className="border-none border-t border-[#D6CFC4] my-4" />
                     );
                 },
             }}
@@ -233,14 +279,14 @@ export default function DiagramCard({
     return (
         <>
             <div
-                className="bg-[#0d1117] border border-[#21262d] rounded-xl mt-3 overflow-hidden font-sans w-full shadow-lg group/diagram"
+                className="bg-[#FAF7F2] border border-[#D6CFC4] rounded-xl mt-3 overflow-hidden font-sans w-full shadow-lg group/diagram"
                 aria-label={`Diagram Card: ${title}`}
             >
                 {/* ── Header ──────────────────────────────────────── */}
-                <div className="flex items-center justify-between p-3 sm:p-4 bg-[#161b22] border-b border-[#21262d] flex-wrap gap-2.5">
+                <div className="flex items-center justify-between p-3 sm:p-4 bg-[#F0EBE3] border-b border-[#D6CFC4] flex-wrap gap-2.5">
                     <div className="flex items-center gap-3 min-w-0">
                         <span className="text-base flex-shrink-0">{icon}</span>
-                        <h4 className="text-[#e6edf3] text-[13px] font-semibold truncate leading-tight">
+                        <h4 className="text-[#1C1917] text-[13px] font-semibold truncate leading-tight">
                             {title}
                         </h4>
                         <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider ${
@@ -255,8 +301,17 @@ export default function DiagramCard({
 
                     <div className="flex items-center gap-1.5 sm:gap-2 ml-auto">
                         <button
+                            onClick={handleDownload}
+                            className="p-1.5 sm:px-2.5 sm:py-1.5 rounded-md bg-[#E8E0D4] text-[#78716C] hover:text-[#1C1917] hover:bg-[#D6CFC4] border border-[#D6CFC4] text-[11px] font-medium transition-all flex items-center gap-1.5"
+                            title={lbl.download}
+                        >
+                            <FontAwesomeIcon icon={faDownload} className="text-[10px]" />
+                            <span className="hidden sm:inline">{lbl.download}</span>
+                        </button>
+
+                        <button
                             onClick={() => setIsExpanded(true)}
-                            className="p-1.5 sm:px-2.5 sm:py-1.5 rounded-md bg-[#21262d] text-[#8b949e] hover:text-white hover:bg-[#30363d] border border-[#30363d] text-[11px] font-medium transition-all flex items-center gap-1.5"
+                            className="p-1.5 sm:px-2.5 sm:py-1.5 rounded-md bg-[#E8E0D4] text-[#78716C] hover:text-[#1C1917] hover:bg-[#D6CFC4] border border-[#D6CFC4] text-[11px] font-medium transition-all flex items-center gap-1.5"
                             title={lbl.expand}
                         >
                             <FontAwesomeIcon icon={faExpand} className="text-[10px]" />
@@ -268,7 +323,7 @@ export default function DiagramCard({
                             className={`p-1.5 sm:px-2.5 sm:py-1.5 rounded-md border text-[11px] font-medium transition-all flex items-center gap-1.5 ${
                                 copied 
                                     ? 'bg-emerald-600/20 text-emerald-400 border-emerald-500/30' 
-                                    : 'bg-[#21262d] text-[#8b949e] border-[#30363d] hover:text-white hover:bg-[#30363d]'
+                                    : 'bg-[#E8E0D4] text-[#78716C] border-[#D6CFC4] hover:text-[#1C1917] hover:bg-[#D6CFC4]'
                             }`}
                         >
                             <FontAwesomeIcon icon={copied ? faCheck : faCopy} className="text-[10px]" />
@@ -278,7 +333,7 @@ export default function DiagramCard({
                 </div>
 
                 {/* ── Body ────────────────────────────────────────── */}
-                <div className="p-4 sm:p-6 overflow-x-auto scrollbar-thin scrollbar-thumb-[#30363d] scrollbar-track-transparent max-h-[500px] relative overflow-y-auto">
+                <div ref={diagramRef} className="p-4 sm:p-6 overflow-x-auto scrollbar-thin scrollbar-thumb-[#D6CFC4] scrollbar-track-transparent max-h-[500px] relative overflow-y-auto">
                     {renderMarkdown()}
                 </div>
             </div>
@@ -286,22 +341,22 @@ export default function DiagramCard({
             {/* ── Fullscreen Modal ─────────────────────────────── */}
             {isExpanded && (
                 <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 sm:p-8 animate-in fade-in duration-200">
-                    <div className="absolute inset-0 bg-[#010409]/95 backdrop-blur-sm" onClick={() => setIsExpanded(false)} />
+                    <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setIsExpanded(false)} />
                     
-                    <div className="relative w-full max-w-6xl h-full max-h-[90vh] bg-[#0d1117] border border-[#30363d] rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
+                    <div className="relative w-full max-w-6xl h-full max-h-[90vh] bg-[#FAF7F2] border border-[#D6CFC4] rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
                         {/* Modal Header */}
-                        <div className="flex items-center justify-between p-4 sm:px-6 bg-[#161b22] border-b border-[#30363d] flex-shrink-0">
+                        <div className="flex items-center justify-between p-4 sm:px-6 bg-[#F0EBE3] border-b border-[#D6CFC4] flex-shrink-0">
                             <div className="flex items-center gap-3">
                                 <span className="text-xl">{icon}</span>
                                 <div>
-                                    <h3 className="text-[#e6edf3] text-sm sm:text-base font-bold leading-tight">
+                                    <h3 className="text-[#1C1917] text-sm sm:text-base font-bold leading-tight">
                                         {title}
                                     </h3>
                                     <div className="flex items-center gap-2 mt-1">
-                                        <span className="text-[10px] text-[#8b949e] uppercase tracking-wider font-semibold">
+                                        <span className="text-[10px] text-[#78716C] uppercase tracking-wider font-semibold">
                                             {diagramType} Diagram
                                         </span>
-                                        <FontAwesomeIcon icon={faChevronRight} className="text-[8px] text-[#30363d]" />
+                                        <FontAwesomeIcon icon={faChevronRight} className="text-[8px] text-[#D6CFC4]" />
                                         <span className={`text-[10px] font-bold uppercase tracking-wider ${hasKBContext ? 'text-blue-400' : 'text-emerald-400'}`}>
                                             {hasKBContext ? lbl.fromManual : lbl.aiGenerated}
                                         </span>
@@ -311,11 +366,20 @@ export default function DiagramCard({
                             
                             <div className="flex items-center gap-2">
                                 <button
+                                    onClick={handleDownload}
+                                    className="p-2 sm:px-4 sm:py-2 rounded-lg bg-[#E8E0D4] text-[#1C1917] border border-[#D6CFC4] hover:bg-[#D6CFC4] text-xs font-semibold flex items-center gap-2"
+                                    title={lbl.download}
+                                >
+                                    <FontAwesomeIcon icon={faDownload} />
+                                    <span className="hidden sm:inline">{lbl.download}</span>
+                                </button>
+                                
+                                <button
                                     onClick={handleCopy}
                                     className={`p-2 sm:px-4 sm:py-2 rounded-lg border text-xs font-semibold transition-all flex items-center gap-2 ${
                                         copied 
                                             ? 'bg-emerald-600/20 text-emerald-400 border-emerald-500/30' 
-                                            : 'bg-[#21262d] text-[#e6edf3] border-[#30363d] hover:bg-[#30363d]'
+                                            : 'bg-[#E8E0D4] text-[#1C1917] border-[#D6CFC4] hover:bg-[#D6CFC4]'
                                     }`}
                                 >
                                     <FontAwesomeIcon icon={copied ? faCheck : faCopy} />
@@ -324,7 +388,7 @@ export default function DiagramCard({
                                 
                                 <button
                                     onClick={() => setIsExpanded(false)}
-                                    className="p-2 sm:p-2.5 rounded-lg bg-[#21262d] text-[#8b949e] hover:text-white hover:bg-red-500/20 hover:border-red-500/30 border border-[#30363d] transition-all"
+                                    className="p-2 sm:p-2.5 rounded-lg bg-[#E8E0D4] text-[#78716C] hover:text-[#1C1917] hover:bg-red-500/20 hover:border-red-500/30 border border-[#D6CFC4] transition-all"
                                     title="Close"
                                 >
                                     <FontAwesomeIcon icon={faTimes} className="text-base" />
@@ -333,7 +397,7 @@ export default function DiagramCard({
                         </div>
 
                         {/* Modal Body */}
-                        <div className="flex-1 overflow-auto p-6 sm:p-10 scrollbar-thin scrollbar-thumb-[#30363d] scrollbar-track-transparent">
+                        <div className="flex-1 overflow-auto p-6 sm:p-10 scrollbar-thin scrollbar-thumb-[#D6CFC4] scrollbar-track-transparent">
                             <div className="max-w-4xl mx-auto">
                                 {renderMarkdown()}
                             </div>

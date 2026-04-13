@@ -3,12 +3,12 @@
  *
  * Supabase Auth helper - Email + Password flow.
  * Open registration (any valid email).
- * Admin email: aniket.karmakar@seple.in
  */
 
 import { createBrowserClient } from '@supabase/ssr';
+import { isAdminEmail } from '@/lib/admin-emails';
 
-export const ADMIN_EMAIL = 'aniket.karmakar@seple.in';
+export { isAdminEmail } from '@/lib/admin-emails';
 
 let _supabaseAuth: ReturnType<typeof createBrowserClient> | null = null;
 
@@ -55,11 +55,6 @@ export async function sanitizeAuthSession(): Promise<void> {
             await clearLocalSession();
         }
     }
-}
-
-// Admin check
-export function isAdminEmail(email: string): boolean {
-    return email.trim().toLowerCase() === ADMIN_EMAIL.toLowerCase();
 }
 
 // Friendly error mapper

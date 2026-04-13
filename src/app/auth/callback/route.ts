@@ -5,15 +5,14 @@
  * After user confirms their email, they are redirected here.
  * We exchange the token and redirect appropriately.
  *
- * Admin email (aniket.karmakar@seple.in) is routed to /admin after login —
+ * Admin users are routed to /admin after login —
  * but that routing happens on the login page after signInWithPassword, not here.
  * The callback just confirms the email and sends them back to /login.
  */
 
 import { NextResponse, type NextRequest } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
-
-const ADMIN_EMAIL = 'aniket.karmakar@seple.in';
+import { isAdminEmail } from '@/lib/admin-emails';
 
 export async function GET(request: NextRequest) {
     const { searchParams, origin } = new URL(request.url);
@@ -74,7 +73,7 @@ export async function GET(request: NextRequest) {
     }
 
     // ── Email confirmed → redirect appropriately ─────────────────────────────
-    const isAdmin = userEmail.toLowerCase() === ADMIN_EMAIL.toLowerCase();
+    const isAdmin = isAdminEmail(userEmail, process.env.ALLOWED_ADMIN_EMAILS ?? '');
 
     // For normal signUp confirmation: sign them out so they have to log in with password
     if (type === 'signup' || type === 'email') {

@@ -117,8 +117,8 @@ export async function raptorSearch(
 
     } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        console.warn(`âš ï¸  RAPTOR search failed: ${message}`);
-        return []; // graceful degradation â€” falls back to regular vector search
+        console.warn(`Warning: RAPTOR search failed: ${message}`);
+        return []; // graceful degradation - falls back to regular vector search
     }
 }
 
@@ -187,4 +187,17 @@ export function mergeWithRaptorHits(
             candidateMap.set(hit.id, hit);
         }
     }
+}
+
+export async function retrieveRaptorContexts(params: {
+    queryEmbedding: number[];
+    analysis: QueryAnalysis;
+    topK?: number;
+    threshold?: number;
+}): Promise<RankedMatch[]> {
+    const { queryEmbedding, analysis, topK, threshold } = params;
+    return raptorSearch(queryEmbedding, analysis, {
+        topK,
+        threshold,
+    });
 }
