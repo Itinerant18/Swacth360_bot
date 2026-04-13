@@ -107,7 +107,7 @@ function normalizeHistoryMessages(payload: HistoryMessagesPayload | HistoryMessa
 }
 
 function createMessageId(prefix: 'user' | 'assistant'): string {
-    return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    return `${prefix}-${crypto.randomUUID()}`;
 }
 
 function groupConversationsByDate(conversations: Conversation[]): [string, Conversation[]][] {

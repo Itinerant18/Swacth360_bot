@@ -590,7 +590,7 @@ export async function POST(req: Request) {
     const requestStart = performance.now();
     const stageTimer = createStageTimer();
     const requestEmbeddingCache = createEmbeddingStore();
-    const requestId = `req_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const requestId = `req_${crypto.randomUUID()}`;
     const metricsSnapshot: Partial<PipelineMetric> = {
         requestId,
         cacheHit: false,
