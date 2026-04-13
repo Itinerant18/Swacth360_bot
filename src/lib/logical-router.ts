@@ -57,8 +57,7 @@ interface RelationalPattern {
 
 // ─── Relational Query Handlers ────────────────────────────────────────────────
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-async function handleKBStats(__query: string): Promise<RelationalResult | null> {
+async function handleKBStats(): Promise<RelationalResult | null> {
   const supabase = getSupabase();
   const { data, error } = await supabase
     .from('kb_health')
@@ -78,8 +77,7 @@ async function handleKBStats(__query: string): Promise<RelationalResult | null> 
   };
 }
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-async function handleSourceList(__query: string): Promise<RelationalResult | null> {
+async function handleSourceList(): Promise<RelationalResult | null> {
   const supabase = getSupabase();
   const { data, error } = await supabase
     .from('kb_sources')
@@ -100,8 +98,7 @@ async function handleSourceList(__query: string): Promise<RelationalResult | nul
   };
 }
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-async function handleUnknownQuestions(__query: string): Promise<RelationalResult | null> {
+async function handleUnknownQuestions(): Promise<RelationalResult | null> {
   const supabase = getSupabase();
   const { data, error } = await supabase
     .from('unknown_questions')
@@ -123,8 +120,7 @@ async function handleUnknownQuestions(__query: string): Promise<RelationalResult
   };
 }
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-async function handleIngestionHistory(__query: string): Promise<RelationalResult | null> {
+async function handleIngestionHistory(): Promise<RelationalResult | null> {
   const supabase = getSupabase();
   const { data, error } = await supabase
     .from('ingestion_log')
@@ -145,8 +141,7 @@ async function handleIngestionHistory(__query: string): Promise<RelationalResult
   };
 }
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-async function handleQueryAnalytics(__query: string): Promise<RelationalResult | null> {
+async function handleQueryAnalytics(): Promise<RelationalResult | null> {
   const supabase = getSupabase();
   const { data, error } = await supabase
     .from('answer_mode_summary')
@@ -178,8 +173,7 @@ async function handleQueryAnalytics(__query: string): Promise<RelationalResult |
   };
 }
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-async function handleEntityCoverage(__query: string): Promise<RelationalResult | null> {
+async function handleEntityCoverage(): Promise<RelationalResult | null> {
   const supabase = getSupabase();
   const { data, error } = await supabase
     .from('kb_entity_coverage')
