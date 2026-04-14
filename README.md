@@ -17,7 +17,7 @@
 [![Netlify](https://img.shields.io/badge/Deployed_on-Netlify-00C7B7?logo=netlify)](https://dexter-hms-bot.netlify.app)
 [![License: Private](https://img.shields.io/badge/License-Private-red)](https://github.com/Itinerant18/Swacth360_bot)
 
-**Live:** [dexter-hms-bot.netlify.app](https://sai.seple.in) &nbsp;|&nbsp; **Org:** Security Engineers Pvt. Ltd. (SEPLe) &nbsp;|&nbsp; **Domain:** Industrial IoT / HMS
+**Live:** [sai.seple.in](https://sai.seple.in) &nbsp;|&nbsp; **Org:** Security Engineers Pvt. Ltd. (SEPLe) &nbsp;|&nbsp; **Domain:** Industrial IoT / HMS
 
 </div>
 
