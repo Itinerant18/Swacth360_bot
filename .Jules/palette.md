@@ -1,0 +1,3 @@
+## 2024-04-18 - Missing ARIA Labels on Icon-Only Buttons
+**Learning:** While many icon-only buttons in the application had `title` attributes for visual tooltips, they frequently lacked `aria-label` attributes. This pattern was observed across several core components (`ConversationSidebar`, `MessageBubble`, `MermaidBlock`). A `title` alone is insufficient for robust screen reader accessibility across different browsers and AT combinations.
+**Action:** Always ensure that icon-only interactive elements (like `<button>`) have an explicit `aria-label` that provides a clear, action-oriented description of the button's purpose, even if a `title` attribute is present for sighted users.
