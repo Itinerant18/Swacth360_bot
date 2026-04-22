@@ -303,7 +303,7 @@ export default function DiagramCard({
                         <button
                             onClick={handleDownload}
                             className="p-1.5 sm:px-2.5 sm:py-1.5 rounded-md bg-[#E8E0D4] text-[#78716C] hover:text-[#1C1917] hover:bg-[#D6CFC4] border border-[#D6CFC4] text-[11px] font-medium transition-all flex items-center gap-1.5"
-                            title={lbl.download}
+                            title={lbl.download} aria-label={lbl.download}
                         >
                             <FontAwesomeIcon icon={faDownload} className="text-[10px]" />
                             <span className="hidden sm:inline">{lbl.download}</span>
@@ -312,7 +312,7 @@ export default function DiagramCard({
                         <button
                             onClick={() => setIsExpanded(true)}
                             className="p-1.5 sm:px-2.5 sm:py-1.5 rounded-md bg-[#E8E0D4] text-[#78716C] hover:text-[#1C1917] hover:bg-[#D6CFC4] border border-[#D6CFC4] text-[11px] font-medium transition-all flex items-center gap-1.5"
-                            title={lbl.expand}
+                            title={lbl.expand} aria-label={lbl.expand}
                         >
                             <FontAwesomeIcon icon={faExpand} className="text-[10px]" />
                             <span className="hidden sm:inline">{lbl.expand}</span>
@@ -368,7 +368,7 @@ export default function DiagramCard({
                                 <button
                                     onClick={handleDownload}
                                     className="p-2 sm:px-4 sm:py-2 rounded-lg bg-[#E8E0D4] text-[#1C1917] border border-[#D6CFC4] hover:bg-[#D6CFC4] text-xs font-semibold flex items-center gap-2"
-                                    title={lbl.download}
+                                    title={lbl.download} aria-label={lbl.download}
                                 >
                                     <FontAwesomeIcon icon={faDownload} />
                                     <span className="hidden sm:inline">{lbl.download}</span>
@@ -389,7 +389,7 @@ export default function DiagramCard({
                                 <button
                                     onClick={() => setIsExpanded(false)}
                                     className="p-2 sm:p-2.5 rounded-lg bg-[#E8E0D4] text-[#78716C] hover:text-[#1C1917] hover:bg-red-500/20 hover:border-red-500/30 border border-[#D6CFC4] transition-all"
-                                    title="Close"
+                                    title="Close" aria-label="Close"
                                 >
                                     <FontAwesomeIcon icon={faTimes} className="text-base" />
                                 </button>
