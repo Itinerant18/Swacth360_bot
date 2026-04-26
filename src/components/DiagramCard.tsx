@@ -390,6 +390,7 @@ export default function DiagramCard({
                                     onClick={() => setIsExpanded(false)}
                                     className="p-2 sm:p-2.5 rounded-lg bg-[#E8E0D4] text-[#78716C] hover:text-[#1C1917] hover:bg-red-500/20 hover:border-red-500/30 border border-[#D6CFC4] transition-all"
                                     title="Close"
+                                    aria-label="Close"
                                 >
                                     <FontAwesomeIcon icon={faTimes} className="text-base" />
                                 </button>
