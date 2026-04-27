@@ -9,8 +9,9 @@ export interface ConversationMemory {
     similarity: number;
 }
 
-const MEMORY_SIMILARITY_THRESHOLD = 0.22;
-const TOPIC_SHIFT_THRESHOLD = 0.2;
+const MEMORY_SIMILARITY_THRESHOLD = 0.18;
+const TOPIC_SHIFT_THRESHOLD = 0.12;
+const TECHNICAL_ENTITY_PATTERN = /\b(?:[Ee]\d{3,4}|TB\d+[+-]?|RS-?485|Modbus(?:\s+RTU)?|PROFIBUS(?:\s+DP)?|Anybus|HMS-\d+|ABC-\d+|X-gateway)\b/gi;
 
 function normalizeForMemory(text: string): string {
     return text
@@ -38,8 +39,18 @@ function lexicalSimilarity(a: string, b: string): number {
     return overlap / Math.max(left.size, right.size);
 }
 
+function extractTechnicalEntities(text: string): string[] {
+    return [...text.matchAll(TECHNICAL_ENTITY_PATTERN)].map((match) => match[0].toLowerCase());
+}
+
 export function isTopicShift(current: string, previous: string): boolean {
-    return lexicalSimilarity(current, previous) < TOPIC_SHIFT_THRESHOLD;
+    if (lexicalSimilarity(current, previous) >= TOPIC_SHIFT_THRESHOLD) {
+        return false;
+    }
+
+    const currentEntities = extractTechnicalEntities(current);
+    const previousEntities = extractTechnicalEntities(previous);
+    return !currentEntities.some((entity) => previousEntities.includes(entity));
 }
 
 export function buildConversationMemory(

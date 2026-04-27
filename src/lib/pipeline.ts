@@ -19,7 +19,7 @@ import { generateHydeEmbedding, shouldGenerateHyde } from './hydeGenerator';
 import { createEmbeddingStore, runMultiVectorSearch } from './vectorSearch';
 import { retrieveRaptorContexts } from './raptor-retrieval';
 import { rankAndDeduplicateContext } from './contextRanker';
-import { answerModeFromConfidence, deriveAdaptiveTopK, isFastPathCandidate, scoreConfidence, shouldUseVerificationPass } from './confidence';
+import { answerModeFromConfidence, deriveAdaptiveTopK, hasTechnicalQueryTerms, isFastPathCandidate, scoreConfidence, shouldUseVerificationPass } from './confidence';
 import { hasInjectionSignals, sanitizeInput } from './sanitize';
 import { createStageTimer } from './pipelineMetrics';
 import { checkSemanticCache } from './semanticCache';
@@ -376,6 +376,7 @@ async function runRetrievalStages(params: {
 
     const hydeEnabled = shouldGenerateHyde({
         enabled: retrieveOptions.useHYDE,
+        query,
         queryType: analysis.type,
         complexity: analysis.complexity,
         preliminaryConfidence: preliminaryConfidence.score,
@@ -545,6 +546,7 @@ export async function runPipeline(input: PipelineInput): Promise<PipelineResult>
         settings,
         clientIp,
         conversationHistory,
+        requestId,
         searchMode = 'default',
     } = input;
 
@@ -727,6 +729,8 @@ export async function runPipeline(input: PipelineInput): Promise<PipelineResult>
         const semanticFastPath = checkSemanticCache({
             query: retrievalQuestion,
             queryEmbedding: cachedQueryEmbedding,
+            language,
+            requestId,
         });
 
         if (semanticFastPath.hit) {
@@ -805,7 +809,7 @@ export async function runPipeline(input: PipelineInput): Promise<PipelineResult>
     const routedRetrievalConfig = selectRoute(baseAnalysis, langName, notFoundMsg);
     logRoute(baseAnalysis, routedRetrievalConfig);
 
-    const isSimple = baseAnalysis.complexity === 'simple';
+    const isSimple = baseAnalysis.complexity === 'simple' && !hasTechnicalQueryTerms(retrievalQuestion);
     if (!isSimple) {
         llmCallCount += 1;
     }
@@ -994,7 +998,7 @@ export async function runPipeline(input: PipelineInput): Promise<PipelineResult>
         };
 
         return {
-            answer: `DIAGRAM_RESPONSE:${JSON.stringify(storedDiagramPayload)}`,
+            answer: `[[DIAGRAM_JSON_START]]${JSON.stringify(storedDiagramPayload)}[[DIAGRAM_JSON_END]]`,
             answerMode: 'diagram_stored',
             confidence,
             isDiagram: true,

@@ -349,7 +349,9 @@ export default function AdminAnalyticsDashboard() {
         return () => {
             stream.removeEventListener('metrics', handleMetrics as EventListener);
             stream.removeEventListener('open', handleOpen as EventListener);
-            stream.close();
+            if (stream.readyState !== EventSource.CLOSED) {
+                stream.close();
+            }
         };
     }, []);
 

@@ -20,6 +20,7 @@ interface SemanticCacheEntry {
     confidence: number;
     answerMode: string;
     language: string;
+    requestId: string | null;
     hitCount: number;
     createdAt: number;
     expiresAt: number;
@@ -29,6 +30,8 @@ const CACHE_TTL_MS = parseInt(process.env.SEMANTIC_RESPONSE_CACHE_TTL_MS || '900
 const CACHE_THRESHOLD = parseFloat(process.env.SEMANTIC_RESPONSE_CACHE_THRESHOLD || '0.92');
 const CACHE_MAX_ENTRIES = parseInt(process.env.SEMANTIC_RESPONSE_CACHE_MAX_ENTRIES || '250', 10);
 const CACHE_MIN_CONFIDENCE = parseFloat(process.env.SEMANTIC_RESPONSE_CACHE_MIN_CONFIDENCE || '0.74');
+const CACHE_ENABLED = process.env.ENABLE_LOCAL_SEMANTIC_CACHE === 'true'
+    || (process.env.NODE_ENV !== 'production' && process.env.ENABLE_LOCAL_SEMANTIC_CACHE !== 'false');
 
 const entries: SemanticCacheEntry[] = [];
 
@@ -75,8 +78,14 @@ export function checkSemanticCache(params: {
     query: string;
     queryEmbedding: number[];
     threshold?: number;
+    language?: string;
+    requestId?: string;
 }): SemanticCacheResult {
-    const { query, queryEmbedding, threshold = CACHE_THRESHOLD } = params;
+    if (!CACHE_ENABLED) {
+        return { hit: false };
+    }
+
+    const { query, queryEmbedding, threshold = CACHE_THRESHOLD, language = 'en', requestId } = params;
     purgeExpiredEntries();
 
     const normalizedQuery = normalizeQuery(query);
@@ -84,6 +93,14 @@ export function checkSemanticCache(params: {
     let bestSimilarity = 0;
 
     for (const entry of entries) {
+        if (entry.language !== language) {
+            continue;
+        }
+
+        if (entry.requestId && requestId && entry.requestId !== requestId) {
+            continue;
+        }
+
         const similarity = normalizedQuery === entry.normalizedQuery
             ? 1
             : cosineSimilarity(queryEmbedding, entry.queryEmbedding);
@@ -118,7 +135,12 @@ export function storeSemanticCache(params: {
     language: string;
     confidence: number;
     ttlMs?: number;
+    requestId?: string;
 }): void {
+    if (!CACHE_ENABLED) {
+        return;
+    }
+
     const {
         query,
         queryEmbedding,
@@ -127,13 +149,22 @@ export function storeSemanticCache(params: {
         language,
         confidence,
         ttlMs = CACHE_TTL_MS,
+        requestId,
     } = params;
 
-    if (answerMode === 'general' || answerMode === 'rag_partial') {
+    if (answerMode === 'general') {
         return;
     }
 
-    if (confidence < CACHE_MIN_CONFIDENCE || answer.trim().length < 24) {
+    if (answerMode === 'rag_partial' && confidence < 0.55) {
+        return;
+    }
+
+    const minConfidence = answerMode === 'rag_partial'
+        ? CACHE_MIN_CONFIDENCE * 0.85
+        : CACHE_MIN_CONFIDENCE;
+
+    if (confidence < minConfidence || answer.trim().length < 24) {
         return;
     }
 
@@ -141,8 +172,12 @@ export function storeSemanticCache(params: {
     const normalizedQuery = normalizeQuery(query);
     const now = Date.now();
     const existingIndex = entries.findIndex((entry) =>
-        entry.normalizedQuery === normalizedQuery
-        || cosineSimilarity(entry.queryEmbedding, queryEmbedding) >= 0.98
+        entry.language === language
+        && entry.requestId === (requestId || null)
+        && (
+            entry.normalizedQuery === normalizedQuery
+            || cosineSimilarity(entry.queryEmbedding, queryEmbedding) >= 0.98
+        )
     );
 
     const nextEntry: SemanticCacheEntry = {
@@ -152,6 +187,7 @@ export function storeSemanticCache(params: {
         confidence,
         answerMode,
         language,
+        requestId: requestId || null,
         hitCount: existingIndex >= 0 ? entries[existingIndex].hitCount : 0,
         createdAt: existingIndex >= 0 ? entries[existingIndex].createdAt : now,
         expiresAt: now + ttlMs,

@@ -126,6 +126,23 @@ function extractNumericFacts(text: string): Set<string> {
     return new Set(matches.map((match) => normalize(match)));
 }
 
+function normalizeFact(fact: string): string {
+    return fact.replace(/\s+/g, '').toLowerCase();
+}
+
+function fuzzyFactMatch(left: string, right: string): boolean {
+    const normalizedLeft = normalizeFact(left);
+    const normalizedRight = normalizeFact(right);
+
+    if (normalizedLeft === normalizedRight) {
+        return true;
+    }
+
+    const leftNumber = normalizedLeft.match(/^(\d+(?:\.\d+)?)/)?.[1];
+    const rightNumber = normalizedRight.match(/^(\d+(?:\.\d+)?)/)?.[1];
+    return Boolean(leftNumber && rightNumber && leftNumber === rightNumber);
+}
+
 function contradictsExisting(candidate: RankedMatch, accepted: RankedMatch[]): boolean {
     const candidateQuestion = normalize(candidate.question).slice(0, 80);
     const candidateFacts = extractNumericFacts(candidate.answer);
@@ -145,8 +162,20 @@ function contradictsExisting(candidate: RankedMatch, accepted: RankedMatch[]): b
             return false;
         }
 
-        const shared = [...candidateFacts].filter((fact) => existingFacts.has(fact));
-        return shared.length === 0;
+        const shared = [...candidateFacts].filter((candidateFact) =>
+            [...existingFacts].some((existingFact) => fuzzyFactMatch(candidateFact, existingFact))
+        );
+
+        if (shared.length > 0) {
+            return false;
+        }
+
+        const uniqueFacts = new Set([
+            ...[...candidateFacts].map(normalizeFact),
+            ...[...existingFacts].map(normalizeFact),
+        ]);
+
+        return uniqueFacts.size > 2;
     });
 }
 

@@ -12,6 +12,7 @@ export interface HydeResult {
 
 export function shouldGenerateHyde(params: {
     enabled: boolean;
+    query?: string;
     queryType: string;
     complexity: 'simple' | 'medium' | 'complex';
     preliminaryConfidence?: number;
@@ -27,9 +28,17 @@ export function shouldGenerateHyde(params: {
         elapsedMs = 0,
         maxLatencyMs = 650,
         hasEntities = false,
-    } = params;
+} = params;
 
-    if (!enabled || complexity === 'simple' || queryType === 'visual') {
+    const hasTechnicalQueryTerms = params.query
+        ? /\b(?:[Ee]\d{3,4}|TB\d+[+-]?|RS-?485|Modbus(?:\s+RTU)?|PROFIBUS(?:\s+DP)?|Anybus|HMS-\d+|ABC-\d+|X-gateway|LED|relay|terminal|sensor|actuator|wiring|pinout)\b/i.test(params.query)
+        : false;
+
+    if (!enabled || queryType === 'visual') {
+        return false;
+    }
+
+    if (complexity === 'simple' && !hasTechnicalQueryTerms) {
         return false;
     }
 
@@ -41,7 +50,7 @@ export function shouldGenerateHyde(params: {
         return false;
     }
 
-    return complexity === 'complex' || !hasEntities || (preliminaryConfidence ?? 0) < 0.58;
+    return hasTechnicalQueryTerms || complexity === 'complex' || !hasEntities || (preliminaryConfidence ?? 0) < 0.58;
 }
 
 export async function generateHydeEmbedding(params: {

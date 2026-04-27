@@ -44,6 +44,21 @@ function parseMessageContent(content: string): {
     diagram?: DiagramResponse;
     text: string;
 } {
+    const startMarker = '[[DIAGRAM_JSON_START]]';
+    const endMarker = '[[DIAGRAM_JSON_END]]';
+    const startIndex = content.indexOf(startMarker);
+    const endIndex = startIndex >= 0 ? content.indexOf(endMarker, startIndex + startMarker.length) : -1;
+
+    if (startIndex >= 0 && endIndex > startIndex) {
+        try {
+            const json = content.slice(startIndex + startMarker.length, endIndex);
+            const diagram = JSON.parse(json) as DiagramResponse;
+            return { isDiagram: true, diagram, text: content.slice(0, startIndex).trim() || diagram.title || '' };
+        } catch {
+            return { isDiagram: false, text: content };
+        }
+    }
+
     if (content.startsWith('DIAGRAM_RESPONSE:')) {
         try {
             const json = content.slice('DIAGRAM_RESPONSE:'.length);

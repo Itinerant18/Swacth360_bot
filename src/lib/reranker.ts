@@ -296,41 +296,24 @@ export function rerankMatches(params: {
 export function buildContextWindow(matches: RankedMatch[], maxTokens = 1200): string {
     let tokenCount = 0;
     const blocks: string[] = [];
-    const groups = new Map<string, RankedMatch[]>();
 
-    for (const match of matches) {
+    const sorted = [...matches].sort((left, right) => right.finalScore - left.finalScore);
+
+    for (const match of sorted) {
         const source = match.source_name || match.source || 'Knowledge Base';
-        const existing = groups.get(source) || [];
-        existing.push(match);
-        groups.set(source, existing);
-    }
+        const snippet = (match.relevantPassage || match.answer)
+            .replace(/\s+/g, ' ')
+            .trim()
+            .slice(0, 420);
+        const entry = `[Document] ${source}\n[Section] ${match.question}\n${snippet}`;
+        const entryTokens = entry.split(/\s+/).filter(Boolean).length;
 
-    for (const [source, sourceMatches] of groups.entries()) {
-        const lines: string[] = [`[Document] ${source}`];
-
-        for (const match of sourceMatches) {
-            const snippet = (match.relevantPassage || match.answer)
-                .replace(/\s+/g, ' ')
-                .trim()
-                .slice(0, 500);
-            const entry = `[Section] ${match.question}\n${snippet}`;
-            const entryTokens = entry.split(/\s+/).filter(Boolean).length;
-
-            if (tokenCount + entryTokens > maxTokens) {
-                break;
-            }
-
-            lines.push(entry);
-            tokenCount += entryTokens;
-        }
-
-        if (lines.length > 1) {
-            blocks.push(lines.join('\n'));
-        }
-
-        if (tokenCount >= maxTokens) {
+        if (tokenCount + entryTokens > maxTokens) {
             break;
         }
+
+        blocks.push(entry);
+        tokenCount += entryTokens;
     }
 
     return blocks.join('\n\n');

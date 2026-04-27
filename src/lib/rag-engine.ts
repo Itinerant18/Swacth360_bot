@@ -651,8 +651,19 @@ async function enhancedRetrieve(
 
     console.log(`\n🚀 Enhanced RAG — Hybrid Search Mode`);
 
-    if (options.useHYDE) {
-        console.log(`  HYDE: skipped (not implemented in hybrid search path)`);
+    let hydeText: string | null = null;
+    if (options.useHYDE && queryAnalysis.type !== 'visual') {
+        const hydeResult = await Promise.race([
+            generateHYDE(query, queryAnalysis, llm).then((text) => ({ text })),
+            new Promise<{ text: null }>((resolve) =>
+                setTimeout(() => resolve({ text: null }), RETRIEVAL_CONFIG.HYDE_TIMEOUT_MS)
+            ),
+        ]);
+        hydeText = hydeResult.text;
+        queryAnalysis.hydeAnswer = hydeText || undefined;
+        console.log(`  HYDE: ${hydeText ? `"${hydeText.slice(0, 80)}..."` : 'skipped (timeout/disabled)'}`);
+    } else {
+        console.log(`  HYDE: skipped (disabled or visual query)`);
     }
 
     // Extract entities for graph boost
@@ -674,7 +685,7 @@ async function enhancedRetrieve(
     }
 
     // Perform hybrid search
-    const hybridResults = await hybridSearch(searchQuery, {
+    const baseHybridResults = await hybridSearch(searchQuery, {
         ...strategy,
         alpha,
         topK: topK * 2, // Get more for reranking
@@ -684,7 +695,32 @@ async function enhancedRetrieve(
         queryEntities: entityNames,
     });
 
-    console.log(`  Hybrid search: ${hybridResults.length} candidates`);
+    let hydeHybridResults: typeof baseHybridResults = [];
+    if (hydeText) {
+        hydeHybridResults = await hybridSearch(hydeText, {
+            ...strategy,
+            alpha,
+            topK: Math.max(Math.ceil(topK * 1.5), topK),
+            minSimilarity: similarityThreshold * 0.8,
+            useReranker,
+            useGraphBoost,
+            queryEntities: entityNames,
+        });
+    }
+
+    const hybridResultMap = new Map<string, typeof baseHybridResults[number]>();
+    for (const result of [...baseHybridResults, ...hydeHybridResults]) {
+        const existing = hybridResultMap.get(result.id);
+        if (!existing || result.hybridScore > existing.hybridScore) {
+            hybridResultMap.set(result.id, result);
+        }
+    }
+    const hybridResults = [...hybridResultMap.values()];
+
+    console.log(`  Hybrid search: ${baseHybridResults.length} candidates`);
+    if (hydeText) {
+        console.log(`  HYDE hybrid search: ${hydeHybridResults.length} candidates, ${hybridResults.length} merged`);
+    }
 
     // Convert to RankedMatch format
     const scoredCandidates = hybridResults.map(result => {
@@ -746,8 +782,8 @@ async function enhancedRetrieve(
         confidence: calibratedConfidence,
         contextString,
         retrievalStats: {
-            queryVectorHits: hybridResults.length,
-            hydeVectorHits: 0,
+            queryVectorHits: baseHybridResults.length,
+            hydeVectorHits: hydeHybridResults.length,
             expandedVectorHits: 0,
             totalCandidates: hybridResults.length,
             afterRerank: reranked.length,

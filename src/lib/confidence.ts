@@ -31,12 +31,20 @@ export function answerModeFromConfidence(score: number): 'rag_high' | 'rag_mediu
     return 'general';
 }
 
+export const TECHNICAL_QUERY_PATTERN = /\b(?:[Ee]\d{3,4}|TB\d+[+-]?|RS-?485|Modbus(?:\s+RTU)?|PROFIBUS(?:\s+DP)?|Anybus|HMS-\d+|ABC-\d+|X-gateway|LED|relay|terminal|sensor|actuator|wiring|pinout)\b/i;
+
+export function hasTechnicalQueryTerms(query: string): boolean {
+    return TECHNICAL_QUERY_PATTERN.test(query);
+}
+
 export function isFastPathCandidate(params: {
     query: string;
     complexity: 'simple' | 'medium' | 'complex';
 }): boolean {
     const wordCount = params.query.trim().split(/\s+/).filter(Boolean).length;
-    return params.complexity === 'simple' && wordCount <= 8;
+    return params.complexity === 'simple'
+        && wordCount <= 8
+        && !hasTechnicalQueryTerms(params.query);
 }
 
 export function deriveAdaptiveTopK(params: RetrievalDecisionParams): number {
@@ -87,6 +95,23 @@ function extractNumericFacts(text: string): Set<string> {
     return new Set(matches.map((match) => normalize(match)));
 }
 
+function normalizeFact(fact: string): string {
+    return fact.replace(/\s+/g, '').toLowerCase();
+}
+
+function fuzzyFactMatch(left: string, right: string): boolean {
+    const normalizedLeft = normalizeFact(left);
+    const normalizedRight = normalizeFact(right);
+
+    if (normalizedLeft === normalizedRight) {
+        return true;
+    }
+
+    const leftNumber = normalizedLeft.match(/^(\d+(?:\.\d+)?)/)?.[1];
+    const rightNumber = normalizedRight.match(/^(\d+(?:\.\d+)?)/)?.[1];
+    return Boolean(leftNumber && rightNumber && leftNumber === rightNumber);
+}
+
 function consistencyScore(matches: RankedMatch[]): number {
     if (matches.length <= 1) {
         return 1;
@@ -103,7 +128,9 @@ function consistencyScore(matches: RankedMatch[]): number {
         const sameTopic = normalize(current.question).slice(0, 60) === normalize(next.question).slice(0, 60);
 
         if (sameTopic && currentFacts.size > 0 && nextFacts.size > 0) {
-            const sharedFacts = [...currentFacts].filter((fact) => nextFacts.has(fact));
+            const sharedFacts = [...currentFacts].filter((currentFact) =>
+                [...nextFacts].some((nextFact) => fuzzyFactMatch(currentFact, nextFact))
+            );
             if (sharedFacts.length === 0) {
                 score -= 0.25;
             }

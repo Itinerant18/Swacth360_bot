@@ -29,10 +29,10 @@ function sentenceCase(input: string): string {
 }
 
 function trimPoliteFillers(input: string): string {
-    return input
-        .replace(/^\s*(please\s+)?(can you|could you|would you)\s+/i, '')
-        .replace(/^\s*please\s+/i, '')
-        .trim();
+    let result = input.trim();
+    result = result.replace(/^(please\s+)+/i, '');
+    result = result.replace(/^(can you|could you|would you|i want to|i need to)\s+/i, '');
+    return result.trim();
 }
 
 export function normalizeUserQuery(input: string): string {

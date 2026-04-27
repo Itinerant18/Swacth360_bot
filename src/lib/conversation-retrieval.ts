@@ -24,7 +24,10 @@ const FOLLOW_UP_INDICATORS = [
     /\b(what about|how about|and|also|more|another|other)\b/i,
     /^(why|how|when|where|can|does|is|are|do)\b/i,
 ];
-const TOPIC_SHIFT_THRESHOLD = 0.2;
+const TOPIC_SHIFT_THRESHOLD = 0.12;
+const REWRITE_TIMEOUT_MS = 5000;
+const MAX_REWRITE_ATTEMPTS = 2;
+const TECHNICAL_ENTITY_PATTERN = /\b(?:[Ee]\d{3,4}|TB\d+[+-]?|RS-?485|Modbus(?:\s+RTU)?|PROFIBUS(?:\s+DP)?|Anybus|HMS-\d+|ABC-\d+|X-gateway)\b/gi;
 
 export interface ConversationMessage {
     role: 'user' | 'assistant';
@@ -58,7 +61,13 @@ function computeSimilarity(left: string, right: string): number {
 }
 
 function isTopicShift(current: string, previous: string): boolean {
-    return computeSimilarity(current, previous) < TOPIC_SHIFT_THRESHOLD;
+    if (computeSimilarity(current, previous) >= TOPIC_SHIFT_THRESHOLD) {
+        return false;
+    }
+
+    const currentEntities = [...current.matchAll(TECHNICAL_ENTITY_PATTERN)].map((match) => match[0].toLowerCase());
+    const previousEntities = [...previous.matchAll(TECHNICAL_ENTITY_PATTERN)].map((match) => match[0].toLowerCase());
+    return !currentEntities.some((entity) => previousEntities.includes(entity));
 }
 
 /**
@@ -122,23 +131,28 @@ Rules:
 
     Rewritten query:`;
 
-    try {
-        const result = await Promise.race([
-            llm.invoke(prompt),
-            new Promise<never>((_, reject) =>
-                setTimeout(() => reject(new Error('Rewrite timeout')), 3000)
-            ),
-        ]);
-        const rewritten = String(result.content).trim();
+    for (let attempt = 0; attempt < MAX_REWRITE_ATTEMPTS; attempt++) {
+        try {
+            const result = await Promise.race([
+                llm.invoke(prompt),
+                new Promise<never>((_, reject) =>
+                    setTimeout(() => reject(new Error('Rewrite timeout')), REWRITE_TIMEOUT_MS)
+                ),
+            ]);
+            const rewritten = String(result.content).trim();
 
-        // Sanity check — don't use rewrites that are too long or empty
-        if (!rewritten || rewritten.length > 200 || rewritten.length < 3) {
-            return { rewritten: query, wasRewritten: false };
+            // Sanity check - don't use rewrites that are too long or empty
+            if (!rewritten || rewritten.length > 200 || rewritten.length < 3) {
+                return { rewritten: query, wasRewritten: false };
+            }
+
+            return { rewritten, wasRewritten: true };
+        } catch (err) {
+            if (attempt === MAX_REWRITE_ATTEMPTS - 1) {
+                console.error('[conversation rewrite error]', err);
+            }
         }
-
-        return { rewritten, wasRewritten: true };
-    } catch (err) {
-        console.error('[conversation rewrite error]', err);
-        return { rewritten: query, wasRewritten: false };
     }
+
+    return { rewritten: query, wasRewritten: false };
 }

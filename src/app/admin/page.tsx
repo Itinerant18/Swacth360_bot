@@ -637,8 +637,15 @@ export default function AdminDashboard() {
                     /* Review tab */
                     <div className="space-y-6">
                         {reviewError && (
-                            <div className="skeuo-card p-5 md:p-6 border-red-200 bg-red-50/40">
+                            <div className="skeuo-card p-5 md:p-6 border-red-200 bg-red-50/40 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                                 <p className="text-sm text-red-700">{reviewError}</p>
+                                <button
+                                    onClick={() => void fetchQuestions()}
+                                    className="skeuo-raised px-3 py-2 text-xs sm:text-sm text-[#44403C] flex items-center justify-center gap-2"
+                                >
+                                    <FontAwesomeIcon icon={faSpinner} className={`w-3 h-3 ${reviewLoading ? 'animate-spin' : ''}`} />
+                                    Retry
+                                </button>
                             </div>
                         )}
                         {!reviewLoading && questions.length === 0 ? (
@@ -648,7 +655,7 @@ export default function AdminDashboard() {
                                     {reviewError ? 'Review queue unavailable' : 'All caught up!'}
                                 </h2>
                                 <p className="text-[#78716C] text-sm">
-                                    {reviewError ? 'Retry after checking the Supabase connection.' : 'No pending questions to review.'}
+                                    {reviewError ? 'Review data could not be loaded.' : 'No pending questions to review.'}
                                 </p>
                             </div>
                         ) : questions.map((q) => (
@@ -722,8 +729,15 @@ export default function AdminDashboard() {
                     /* Users tab */
                     <div className="space-y-6">
                         {usersError && (
-                            <div className="skeuo-card p-5 md:p-6 border-red-200 bg-red-50/40">
+                            <div className="skeuo-card p-5 md:p-6 border-red-200 bg-red-50/40 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                                 <p className="text-sm text-red-700">{usersError}</p>
+                                <button
+                                    onClick={() => void fetchUsers()}
+                                    className="skeuo-raised px-3 py-2 text-xs sm:text-sm text-[#44403C] flex items-center justify-center gap-2"
+                                >
+                                    <FontAwesomeIcon icon={faSpinner} className={`w-3 h-3 ${usersLoading ? 'animate-spin' : ''}`} />
+                                    Retry
+                                </button>
                             </div>
                         )}
                         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">

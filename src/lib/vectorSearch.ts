@@ -16,6 +16,7 @@ export interface VectorSearchResult {
 }
 
 const MATCHES_PER_VECTOR = 6;
+const EMBEDDING_CACHE_LIMIT = 500;
 const embeddingCache = new Map<string, number[]>();
 export type EmbeddingStore = Map<string, number[]>;
 
@@ -25,6 +26,22 @@ export function createEmbeddingStore(): EmbeddingStore {
 
 function normalizeEmbeddingKey(text: string): string {
     return text.trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+function rememberEmbedding(key: string, vector: number[]): void {
+    if (embeddingCache.has(key)) {
+        embeddingCache.delete(key);
+    }
+
+    embeddingCache.set(key, vector);
+
+    while (embeddingCache.size > EMBEDDING_CACHE_LIMIT) {
+        const oldestKey = embeddingCache.keys().next().value;
+        if (!oldestKey) {
+            break;
+        }
+        embeddingCache.delete(oldestKey);
+    }
 }
 
 async function getEmbeddings(texts: string[], requestCache?: EmbeddingStore): Promise<number[][]> {
@@ -44,13 +61,13 @@ async function getEmbeddings(texts: string[], requestCache?: EmbeddingStore): Pr
     if (uniqueMissing.length === 1) {
         const source = originalByKey.get(uniqueMissing[0]) || uniqueMissing[0];
         const vector = await embedText(source);
-        embeddingCache.set(uniqueMissing[0], vector);
+        rememberEmbedding(uniqueMissing[0], vector);
         requestCache?.set(uniqueMissing[0], vector);
     } else if (uniqueMissing.length > 1) {
         const sources = uniqueMissing.map((key) => originalByKey.get(key) || key);
         const vectors = await embedTexts(sources);
         uniqueMissing.forEach((key, index) => {
-            embeddingCache.set(key, vectors[index]);
+            rememberEmbedding(key, vectors[index]);
             requestCache?.set(key, vectors[index]);
         });
     }

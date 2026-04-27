@@ -298,10 +298,15 @@ export async function storeCache(params: {
 }): Promise<void> {
     const { answer, answerMode, confidence = 0 } = params;
 
-    if (answerMode === 'general' || answerMode === 'rag_partial') return;
+    if (answerMode === 'general') return;
+    if (answerMode === 'rag_partial' && confidence < 0.55) return;
     if (answer.length < CACHE_CONFIG.MIN_ANSWER_LENGTH) return;
     if (answer.length > CACHE_CONFIG.MAX_ANSWER_LENGTH) return;
-    if (confidence < CACHE_CONFIG.MIN_CACHE_CONFIDENCE) return;
+
+    const minConfidence = answerMode === 'rag_partial'
+        ? CACHE_CONFIG.MIN_CACHE_CONFIDENCE * 0.85
+        : CACHE_CONFIG.MIN_CACHE_CONFIDENCE;
+    if (confidence < minConfidence) return;
 
     await Promise.allSettled([
         tier1Set(params.query, answer, normalizeLanguage(params.language)),

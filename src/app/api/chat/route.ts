@@ -489,7 +489,7 @@ export async function POST(req: Request) {
                         });
 
                         const payload = JSON.stringify({ __type: 'diagram', ...diagramData });
-                        return buildChatResponse(`DIAGRAM_RESPONSE:${payload}`, activeConversationId, requestId, rateLimitResult, {}, {
+                        return buildChatResponse(`[[DIAGRAM_JSON_START]]${payload}[[DIAGRAM_JSON_END]]`, activeConversationId, requestId, rateLimitResult, {}, {
                             answerMode: 'diagram',
                             confidence: diagramData.hasKBContext ? result.confidence : 0.3,
                             knowledgeId,
@@ -514,7 +514,7 @@ export async function POST(req: Request) {
                         generatedBy: 'fallback',
                         success: false,
                     });
-                    return buildChatResponse(`DIAGRAM_RESPONSE:${fallbackPayload}`, activeConversationId, requestId, rateLimitResult, {}, {
+                    return buildChatResponse(`[[DIAGRAM_JSON_START]]${fallbackPayload}[[DIAGRAM_JSON_END]]`, activeConversationId, requestId, rateLimitResult, {}, {
                         answerMode: 'diagram',
                         confidence: result.confidence,
                         knowledgeId,
@@ -668,6 +668,7 @@ export async function POST(req: Request) {
                     answerMode: result.answerMode,
                     language,
                     confidence: result.confidence,
+                    requestId,
                 });
             }
 
