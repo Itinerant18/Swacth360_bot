@@ -22,7 +22,9 @@
 
 # misc
 .DS_Store
+Thumbs.db
 *.pem
+supabase/.temp/
 
 # debug
 npm-debug.log*
@@ -46,8 +48,13 @@ yarn-error.log*
 data/
 .claude/
 .agent/
+.agents/
+.minimax/
+.planning/
+orchestrator/
 *.pdf
 system-prompts-and-models-of-ai-tools/
+.mcp.json
 
 # vercel
 .vercel
