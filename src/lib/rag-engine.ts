@@ -46,6 +46,7 @@ import { hybridSearch, selectSearchStrategy } from './hybrid-search';
 import { extractEntities } from './knowledge-graph';
 import { expandQueryWithLLM } from './query-expansion';
 import { mergeWithRaptorHits, raptorSearch } from './raptor-retrieval';
+import { calculateBM25Score } from './reranker';
 
 // ─── Types ────────────────────────────────────────────────────
 export type QueryType = 'factual' | 'procedural' | 'diagnostic' | 'visual' | 'comparative' | 'unknown';
@@ -271,50 +272,6 @@ function buildExpandedQuery(query: string, analysis: QueryAnalysis): string {
     }
 
     return expansions.join(' | ');
-}
-
-// ─── BM25-style Scoring ───────────────────────────────────────
-/**
- * BM25 is the gold-standard for keyword search (used by Elasticsearch).
- * We implement a simplified version: TF-IDF-like scoring with IDF approximation
- * using term length as a proxy for rarity (longer terms = rarer = higher IDF).
- */
-function bm25Score(query: string, document: string): number {
-    const queryTerms = query.toLowerCase()
-        .replace(/[^a-z0-9\s]/g, ' ')
-        .split(/\s+/)
-        .filter(w => w.length > 2);
-
-    const docLower = document.toLowerCase();
-    const docWords = docLower.split(/\s+/);
-    const docLength = docWords.length;
-    const avgDocLength = 150; // approximate avg chunk length
-
-    const k1 = 1.5; // term frequency saturation
-    const b = 0.75; // length normalization
-
-    let score = 0;
-    for (const term of queryTerms) {
-        // Term frequency in document
-        const tf = (docLower.match(new RegExp(term, 'g')) || []).length;
-        if (tf === 0) continue;
-
-        // IDF approximation: longer terms are rarer
-        const idf = Math.log(1 + term.length / 3);
-
-        // BM25 TF component
-        const tfNorm = (tf * (k1 + 1)) / (tf + k1 * (1 - b + b * (docLength / avgDocLength)));
-
-        score += idf * tfNorm;
-    }
-
-    // Bonus for exact phrase match
-    if (docLower.includes(query.toLowerCase().slice(0, 20))) {
-        score *= 1.3;
-    }
-
-    // Normalize to 0-1
-    return Math.min(score / (queryTerms.length * 2 + 1), 1.0);
 }
 
 // ─── Cross-Encoder Relevance Scoring ─────────────────────────
@@ -907,7 +864,7 @@ export async function retrieve(
     // Step 6: Score each candidate with cross-encoder + BM25
     const scoredCandidates = allCandidates.map(candidate => {
         const crossScore = crossEncoderScore(query, candidate);
-        const bm25 = bm25Score(query, `${candidate.question} ${candidate.answer}`);
+        const bm25 = calculateBM25Score(query, `${candidate.question} ${candidate.answer}`);
         const typeBoost = chunkTypeBoost(candidate.chunkType, preferredChunkType);
 
         const finalScore =

@@ -1,4 +1,5 @@
 import type { RankedMatch } from './rag-engine';
+import { calculateBM25Score } from './reranker';
 import type { PreferredChunkType } from './vectorSearch';
 
 export interface RankedContextResult {
@@ -14,24 +15,6 @@ function normalize(text: string): string {
         .replace(/[^a-z0-9\s]/g, ' ')
         .replace(/\s+/g, ' ')
         .trim();
-}
-
-function bm25LikeScore(query: string, document: string): number {
-    const queryTerms = normalize(query).split(' ').filter((term) => term.length > 2);
-    if (queryTerms.length === 0) {
-        return 0;
-    }
-
-    const doc = normalize(document);
-    let score = 0;
-    for (const term of queryTerms) {
-        const count = (doc.match(new RegExp(term, 'g')) || []).length;
-        if (count > 0) {
-            score += Math.log(1 + term.length / 3) * Math.min(count, 3);
-        }
-    }
-
-    return Math.min(score / (queryTerms.length * 2 + 1), 1);
 }
 
 function lexicalCoverage(query: string, candidate: RankedMatch): number {
@@ -194,7 +177,7 @@ export function rankAndDeduplicateContext(params: {
 
     const enriched = matches.map((match) => {
         const coverage = lexicalCoverage(query, match);
-        const bm25Score = bm25LikeScore(query, `${match.question} ${match.answer}`);
+        const bm25Score = calculateBM25Score(query, `${match.question} ${match.answer}`);
         const specificity = specificityScore(match.answer);
         const raptorBoost = match.raptorLevel ? Math.min(match.raptorLevel * 0.03, 0.08) : 0;
         const baseVector = Math.max(match.vectorSimilarity || 0, match.finalScore || 0);

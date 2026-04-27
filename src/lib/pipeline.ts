@@ -416,15 +416,11 @@ async function runRetrievalStages(params: {
         })
         : emptyVectorResult;
 
-    const combinedMatches = rerankMatches({
+    const combinedMatches = mergeHybridMatches({
         query,
-        matches: mergeHybridMatches({
-            query,
-            vectorMatches: [...preliminaryCandidates, ...hydeVectorResult.matches],
-            keywordMatches: [],
-            topK: Math.max(effectiveTopK * 3, 10),
-        }),
-        topK: Math.max(effectiveTopK * 2, 6),
+        vectorMatches: [...preliminaryCandidates, ...hydeVectorResult.matches],
+        keywordMatches: [],
+        topK: Math.max(effectiveTopK * 3, 10),
     });
 
     if (combinedMatches.length > 0) {

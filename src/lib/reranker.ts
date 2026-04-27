@@ -150,8 +150,13 @@ export function calculateBM25Score(
     document: string,
     avgDocLength: number = 100
 ): number {
-    const queryTerms = query.toLowerCase().split(/\s+/);
-    const docTerms = document.toLowerCase().split(/\s+/);
+    const queryTerms = normalizeText(query).split(' ').filter((term) => term.length > 2);
+    if (queryTerms.length === 0) {
+        return 0;
+    }
+
+    const normalizedDocument = normalizeText(document);
+    const docTerms = normalizedDocument.split(' ').filter(Boolean);
     const docLength = docTerms.length;
 
     let score = 0;
@@ -172,7 +177,11 @@ export function calculateBM25Score(
         }
     });
 
-    return score;
+    if (normalizedDocument.includes(normalizeText(query).slice(0, 20))) {
+        score *= 1.3;
+    }
+
+    return Math.min(score / (queryTerms.length * 2 + 1), 1);
 }
 
 /**
