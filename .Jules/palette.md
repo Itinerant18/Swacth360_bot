@@ -1,0 +1,3 @@
+## 2024-05-02 - Keyboard accessibility for hidden actions
+**Learning:** "Hidden on idle, show on hover" UI patterns (e.g., using `opacity-0 group-hover:opacity-100`) make actions completely invisible and undiscoverable for keyboard users unless explicitly managed. Screen readers might still find them in the DOM, but sighted keyboard users tab past them without ever seeing what the action does.
+**Action:** When implementing hover-revealed actions (like delete/edit buttons on list items), always pair the hover classes with `focus-visible:opacity-100` and `focus-visible:ring-2` to ensure the action is revealed when focused via keyboard navigation.
