@@ -1,0 +1,3 @@
+## 2025-02-28 - Hover-Revealed UI Actions Accessibility
+**Learning:** In this application, UI actions that are revealed only on hover (e.g., using `opacity-0 group-hover:opacity-100`) become invisible to keyboard-only users who navigate via Tab. The application's design system does not have default focus styles that override the `opacity-0`.
+**Action:** When implementing or modifying hover-revealed UI components, explicitly pair the hover classes with focus visibility utilities: `focus-visible:opacity-100 focus-visible:ring-2 focus-visible:outline-none`. This ensures the actions become visible and clearly outlined when focused via keyboard navigation.
