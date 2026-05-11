@@ -1,0 +1,3 @@
+## 2025-02-23 - Add keyboard focus to hover-revealed actions
+**Learning:** Hover-revealed UI patterns (e.g., using `opacity-0 group-hover:opacity-100`) become invisible and inaccessible to keyboard-only users who tab through the interface, since they cannot trigger the `group-hover` state.
+**Action:** Always pair `opacity-0 group-hover:opacity-100` classes with `focus-visible:opacity-100 focus-visible:ring-2 focus-visible:outline-none` to ensure the actions are visually revealed and clearly highlighted when focused via keyboard navigation.
