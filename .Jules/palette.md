@@ -1,0 +1,3 @@
+## 2024-05-27 - Hover-Revealed UI Actions Accessibility
+**Learning:** Using `opacity-0 group-hover:opacity-100` for hover-revealed UI actions (like the delete button in ConversationSidebar or the edit button in MessageBubble) hides the actions completely for keyboard-only users navigating via tab. This makes critical functionality undiscoverable and inaccessible without a mouse.
+**Action:** When implementing hover-revealed UI actions, always pair the hover classes with `focus-visible:opacity-100 focus-visible:ring-2 focus-visible:outline-none` to ensure the actions become visible and clearly outlined when focused via keyboard navigation. Additionally, ensure icon-only buttons include `aria-label` attributes.
