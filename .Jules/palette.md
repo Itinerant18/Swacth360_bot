@@ -1,0 +1,3 @@
+## 2024-05-28 - Keyboard Navigation for Hover-Revealed UI Actions
+**Learning:** Found a recurring accessibility issue where action buttons (like Delete and Edit) were visually hidden using `opacity-0` and only revealed on mouse hover (`group-hover:opacity-100`). While visually clean, this made the actions completely undiscoverable and unusable for keyboard-only users who navigate via the Tab key.
+**Action:** When implementing hover-revealed UI elements, always ensure they can still receive keyboard focus by combining the hover classes with `focus-visible:opacity-100 focus-visible:ring-2 focus-visible:outline-none`. This ensures they appear and have a clear focus ring when a user tabs to them, satisfying keyboard accessibility requirements.
