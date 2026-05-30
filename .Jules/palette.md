@@ -1,0 +1,3 @@
+## 2024-05-30 - Added ARIA Labels to MessageBubble Action Buttons
+**Learning:** Found multiple icon-only buttons in the MessageBubble component that were relying entirely on `title` attributes for accessibility. While `title` gives hover tooltips for mouse users, it is inconsistently supported by screen readers and insufficient for proper a11y.
+**Action:** Always add explicit `aria-label` attributes to icon-only buttons (like Regenerate, Thumbs Up, Thumbs Down, Copy, Edit) even if they already have `title` attributes, to ensure robust screen reader support. Pair icon-only buttons with clear `aria-labels`.
