@@ -163,8 +163,9 @@ export default function ConversationSidebar({
                                                             event.stopPropagation();
                                                             onDelete(conversation.id);
                                                         }}
-                                                        className={`rounded-md p-1 text-[#A8A29E] hover:text-red-600 hover:bg-red-50 transition-all ${isActive || isConversationLoading ? 'opacity-0 pointer-events-none' : 'opacity-0 group-hover:opacity-100'}`}
+                                                        className={`rounded-md p-1 text-[#A8A29E] hover:text-red-600 hover:bg-red-50 transition-all ${isActive || isConversationLoading ? 'opacity-0 pointer-events-none' : 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:outline-none'}`}
                                                         title="Delete"
+                                                        aria-label="Delete"
                                                     >
                                                         <FontAwesomeIcon icon={faTrash} className="w-3 h-3" />
                                                     </button>
