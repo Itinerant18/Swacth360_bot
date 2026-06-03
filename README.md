@@ -1106,7 +1106,7 @@ User-controllable RAG pipeline configuration:
 │       RAG Configuration Settings            │
 ├─────────────────────────────────────────────┤
 │                                             │
-│  ☑ Hybrid Search (Vector + BM25)            │
+│  ☑ Hybrid Search (Vector + BM25)           │
 │    └─ Alpha: ▓░░░░░░░░░░░░░░░░░░░░ 0.50     │
 │       (0 = BM25 only, 1 = Vector only)      │
 │                                             │
