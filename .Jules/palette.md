@@ -1,0 +1,3 @@
+## 2026-06-16 - Keyboard Accessibility for Hover-Revealed UI Actions
+**Learning:** Hover-revealed UI components (e.g., actions only visible via `group-hover:opacity-100`) become entirely inaccessible to keyboard users unless explicitly handled with focus states. In Next.js/Tailwind components like the chat interface, actions like 'Edit message' or 'Delete conversation' were hidden from keyboard users.
+**Action:** When implementing `group-hover:opacity-100` for micro-interactions, ALWAYS pair it with `focus-visible:opacity-100 focus-visible:ring-2 focus-visible:outline-none` so the actions are discoverable when tabbing, and ensure these icon-only buttons have an appropriate `aria-label`.
