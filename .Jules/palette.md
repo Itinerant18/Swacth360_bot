@@ -1,0 +1,3 @@
+## 2026-06-17 - Focus States for Hover-Revealed Actions
+**Learning:** Interactive elements revealed only on hover (e.g., `opacity-0 group-hover:opacity-100`) are completely inaccessible to keyboard-only users who navigate via Tab. The elements receive focus, but remain invisible, creating confusing 'ghost stops' in the tab order.
+**Action:** When implementing hover-revealed UI actions, always pair the hover classes with `focus-visible:opacity-100 focus-visible:ring-2 focus-visible:outline-none` to ensure the actions become visible when focused and have a clear focus ring, making them discoverable and accessible.
