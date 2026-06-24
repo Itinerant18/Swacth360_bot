@@ -65,3 +65,8 @@ next-env.d.ts
 
 # Local Netlify folder
 .netlify
+
+# Zips and temp notebooks
+*.zip
+*.ipynb
+
