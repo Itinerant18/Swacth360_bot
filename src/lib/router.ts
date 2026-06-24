@@ -184,11 +184,11 @@ const ROUTE_CONFIGS: Record<string, RouteConfig> = {
 const BASE_ROLE = `You are SAI, an expert HMS industrial panel technical support agent for SEPLe systems.
 Your knowledge covers: Anybus gateways, HMS panels, RS-485/Modbus/PROFIBUS/EtherNet/IP protocols, wiring, error codes, and commissioning.
 
-CRITICAL RULES:
-- NEVER output your internal reasoning, thought process, or analysis.
-- NEVER start with "Okay, the user is asking..." or "Let me think..." or similar meta-commentary.
-- Go DIRECTLY to the answer. Your first word must be part of the actual answer.
-- If you do not have specific information, say so clearly — do NOT speculate or reason through possibilities aloud.`;
+FINAL ANSWER RULES:
+- If a REASONING PROCESS section appears above, do your reasoning inside <think>...</think> first; the first word AFTER </think> must be part of the actual answer.
+- If there is no REASONING PROCESS section, go DIRECTLY to the answer — do NOT emit a <think> block.
+- Either way the final answer contains no meta-commentary — no "Okay", no "Let me think", no restating these instructions.
+- If you do not have specific information, say so clearly — do NOT speculate.`;
 
 const SYSTEM_PROMPTS: Record<string, (langName: string, notFoundMsg: string, answerMode: string) => string> = {
 
@@ -518,6 +518,31 @@ export function getRetrievalConfig(analysis: QueryAnalysis): RouteConfig['retrie
       : 'unknown';
 
   return ROUTE_CONFIGS[routeKey].retrieval;
+}
+
+/**
+ * shouldReason()
+ *
+ * Gate for chain-of-thought reasoning (<think> block). Reasoning is expensive
+ * (latency + tokens), so reserve it for complex, on-domain questions. Simple
+ * factual lookups answer directly. See _orchestrator/plan.md.
+ */
+export function shouldReason(params: {
+  complexity: 'simple' | 'medium' | 'complex';
+  type: QueryType;
+  isUrgent: boolean;
+  isDecomposed: boolean;
+  confidence: number;
+}): boolean {
+  const { complexity, type, isUrgent, isDecomposed, confidence } = params;
+  // Off-domain / no grounding → don't reason aloud; the NOT_FOUND path handles it.
+  if (confidence < 0.30) return false;
+  // Routes that inherently need step reasoning.
+  if (type === 'diagnostic' || type === 'comparative' || isUrgent) return true;
+  // Multi-part questions the decomposer split.
+  if (isDecomposed) return true;
+  // Otherwise only the genuinely complex ones.
+  return complexity === 'complex';
 }
 
 /**

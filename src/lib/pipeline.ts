@@ -2,12 +2,12 @@ import { ChatOpenAI } from '@langchain/openai';
 import { isDiagramRequest } from '@/app/api/diagram/route';
 import { logicalRoute, formatRelationalAnswer } from './logical-router';
 import { buildDecomposedPromptPrefix, decomposeQuery, mergeSubQueryResults, type SubQuery } from './query-decomposer';
-import { logRoute, selectRoute } from './router';
+import { logRoute, selectRoute, shouldReason } from './router';
 import { classifyQuery, type RAGResult, type RankedMatch } from './rag-engine';
 import type { RAGSettings } from './rag-settings';
 import { checkCache } from './cache';
 import { embedText } from './embeddings';
-import { getLLM, SYSTEM_PROMPT } from './llm';
+import { getLLM, SYSTEM_PROMPT, REASONING_INSTRUCTION } from './llm';
 import { isLikelyFollowUp, type ConversationMessage } from './conversation-retrieval';
 import { applyFeedbackBoost } from './feedback-reranker';
 import { buildCasualResponse, buildIntentStylePrompt, classifyIntent } from './intentClassifier';
@@ -80,6 +80,7 @@ export interface PipelineResult {
     formattedUserQuery?: string;
     verificationPrompt?: string;
     needsVerification?: boolean;
+    reasoningOn?: boolean;
     llmVariant?: 'simple' | 'complex';
     llmMaxTokens?: number;
     llmTemperature?: number;
@@ -489,6 +490,7 @@ function buildFinalSystemPrompt(params: {
     history: string;
     decomposedPrefix: string;
     finalAnswerStyle: string;
+    reasoningOn: boolean;
     fallbackNote?: string;
 }): string {
     const {
@@ -499,6 +501,7 @@ function buildFinalSystemPrompt(params: {
         history,
         decomposedPrefix,
         finalAnswerStyle,
+        reasoningOn,
         fallbackNote,
     } = params;
 
@@ -506,8 +509,14 @@ function buildFinalSystemPrompt(params: {
         `OUTPUT LANGUAGE: ${langName}`,
         `CRITICAL: You must write your entire response in ${langName}. Do not use English if the user asked in ${langName}.`,
         SYSTEM_PROMPT.trim(),
-        routedSystem.trim(),
     ];
+
+    // Reasoning (<think>) only for complex/domain queries — gated by shouldReason().
+    if (reasoningOn) {
+        sections.push(REASONING_INSTRUCTION.trim());
+    }
+
+    sections.push(routedSystem.trim());
 
     if (history.trim()) {
         sections.push(`RECENT CONVERSATION MEMORY:\n${history.trim()}`);
@@ -1087,6 +1096,14 @@ export async function runPipeline(input: PipelineInput): Promise<PipelineResult>
 
     const routedPrompt = selectRoute(baseAnalysis, langName, notFoundMsg, lastRagResult.answerMode);
     const historySection = sanitizeInput(processedQuery.memory.promptContext.trim());
+    const reasoningOn = shouldReason({
+        complexity: baseAnalysis.complexity,
+        type: baseAnalysis.type,
+        isUrgent: baseAnalysis.isUrgent,
+        isDecomposed: decomposed.isDecomposed,
+        confidence,
+    });
+    console.log(`Reasoning: ${reasoningOn ? 'on' : 'off'} (type=${baseAnalysis.type}, complexity=${baseAnalysis.complexity})`);
     const systemPrompt = buildFinalSystemPrompt({
         langName,
         routedSystem: routedPrompt.system,
@@ -1095,10 +1112,12 @@ export async function runPipeline(input: PipelineInput): Promise<PipelineResult>
         history: historySection,
         decomposedPrefix,
         finalAnswerStyle: buildIntentStylePrompt(intent),
+        reasoningOn,
         fallbackNote: fallbackMessage,
     });
 
-    const needsVerification = shouldUseVerificationPass({
+    // Reasoned answers always run the self-check pass — accuracy over streaming UX.
+    const needsVerification = reasoningOn || shouldUseVerificationPass({
         complexity: baseAnalysis.complexity,
         confidence,
         matchCount: matches.length,
@@ -1115,6 +1134,8 @@ ${contextString}
 Draft answer:
 {{DRAFT_ANSWER}}
 
+Remove or correct any claim not directly supported by the context above. Do NOT add facts that are absent from the context. If the context does not answer the question, say so plainly instead of guessing.
+
 Return only the improved answer in ${langName}.`;
 
     return {
@@ -1128,9 +1149,12 @@ Return only the improved answer in ${langName}.`;
         formattedUserQuery,
         verificationPrompt,
         needsVerification,
+        reasoningOn,
         llmVariant: isSimple ? 'simple' : 'complex',
-        llmMaxTokens: routedPrompt.route.maxTokens,
-        llmTemperature: routedPrompt.route.temperature,
+        // +600 headroom only when reasoning is on, so the <think> block doesn't eat the answer's token budget; simple queries keep the tight cap
+        llmMaxTokens: routedPrompt.route.maxTokens + (reasoningOn ? 600 : 0),
+        // reasoned routes run near-deterministic for accuracy; simple routes keep their route temp
+        llmTemperature: reasoningOn ? Math.min(routedPrompt.route.temperature, 0.02) : routedPrompt.route.temperature,
         dbAnswerMode,
         englishQuestion,
         retrievalQuestion,

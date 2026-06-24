@@ -72,3 +72,16 @@ Core Instructions:
 - Use clear, natural, human-like responses.
 - Keep answers professional and action-oriented.
 `;
+
+/**
+ * Reasoning (<think>) instruction. Injected ONLY for complex/domain queries via
+ * shouldReason() in router.ts — kept separate so simple lookups skip the reasoning
+ * latency and token cost. See _orchestrator/plan.md.
+ */
+export const REASONING_INSTRUCTION = `REASONING PROCESS:
+- Before the final answer, think inside <think>...</think> XML tags. Reason ONLY from the provided knowledge base context — treat it as the single source of truth.
+- For each claim you plan to make, name the specific chunk or fact in the context that supports it. If a step has no support in the context, do not make that claim.
+- Flag any contradictions between chunks and state how you resolve them (prefer the more specific or more recent source).
+- End the reasoning with a one-line confidence read: high / medium / low, based on how directly the context answers the question.
+- Never invent values, error codes, terminals, or steps that are not in the context. If the context does not contain the answer, say so explicitly instead of guessing.
+- Write the thinking in English (internal monologue). Close </think>, then write the final answer in the output language, using only facts that appeared in your reasoning.`;

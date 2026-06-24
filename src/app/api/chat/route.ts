@@ -629,9 +629,12 @@ export async function POST(req: Request) {
         });
 
         const finalizeAnswer = async (answer: string, llmCalls: number, stages: StageTimings) => {
+            // Strip the <think> reasoning block before evaluation so scores reflect only the final answer.
+            const thinkEnd = answer.indexOf('</think>');
+            const answerForEval = thinkEnd !== -1 ? answer.slice(thinkEnd + '</think>'.length).trim() : answer;
             void evaluateAndStore({
                 question: result.retrievalQuestion,
-                answer,
+                answer: answerForEval,
                 ragResult: result.ragResult!,
                 llm: simpleLlm,
                 latencyMs: performance.now() - requestStart,
@@ -828,21 +831,37 @@ export async function POST(req: Request) {
         if (result.needsVerification && result.verificationPrompt) {
             llmCallCount += 1;
             try {
+                // Extract thought block if present so verification only processes the final answer
+                const thinkEndIndex = cleanedAnswer.indexOf('</think>');
+                let thoughtBlock = '';
+                let answerToVerify = cleanedAnswer;
+
+                if (thinkEndIndex !== -1) {
+                    thoughtBlock = cleanedAnswer.slice(0, thinkEndIndex + '</think>'.length) + '\n\n';
+                    answerToVerify = cleanedAnswer.slice(thinkEndIndex + '</think>'.length).trim();
+                }
+
+                // Reasoned answers are checked by the complex model — verifying gpt-4o with gpt-4o-mini catches little.
+                const verifierLlm = result.reasoningOn
+                    ? getLLM('complex', { temperature: 0, maxTokens: result.llmMaxTokens })
+                    : simpleLlm;
+
                 const verificationResponse = await raceWithTimeout(
-                    simpleLlm.invoke([
+                    verifierLlm.invoke([
                         {
                             role: 'system',
-                            content: 'You revise support answers for clarity and accuracy. Remove unsupported claims and keep the structure concise.',
+                            content: 'You revise support answers for accuracy. Remove any claim not supported by the provided context, add nothing that is not in the context, and keep the structure concise.',
                         },
                         {
                             role: 'user',
-                            content: result.verificationPrompt.replace('{{DRAFT_ANSWER}}', cleanedAnswer),
+                            content: result.verificationPrompt.replace('{{DRAFT_ANSWER}}', answerToVerify),
                         },
                     ]),
                     12_000,
                 );
 
-                cleanedAnswer = (typeof verificationResponse.content === 'string' ? verificationResponse.content : JSON.stringify(verificationResponse.content)).trim();
+                const verifiedAnswer = (typeof verificationResponse.content === 'string' ? verificationResponse.content : JSON.stringify(verificationResponse.content)).trim();
+                cleanedAnswer = thoughtBlock + verifiedAnswer;
             } catch (verifyErr) {
                 console.warn('[verification pass] failed, using original answer:', (verifyErr as Error).message);
             }

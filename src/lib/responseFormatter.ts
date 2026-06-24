@@ -149,19 +149,39 @@ export function formatResponse(rawAnswer: string, options: FormatResponseOptions
         matches,
     } = options;
 
-    const normalized = normalizeText(rawAnswer);
+    let thoughtSection = '';
+    let processedAnswer = rawAnswer;
+
+    // Isolate <think>...</think> tags if they exist
+    const thinkStart = rawAnswer.indexOf('<think>');
+    const thinkEnd = rawAnswer.indexOf('</think>');
+    if (thinkStart >= 0) {
+        if (thinkEnd > thinkStart) {
+            thoughtSection = rawAnswer.slice(thinkStart, thinkEnd + '</think>'.length);
+            processedAnswer = rawAnswer.slice(0, thinkStart) + rawAnswer.slice(thinkEnd + '</think>'.length);
+        } else {
+            // Unclosed think tag (e.g. while streaming)
+            thoughtSection = rawAnswer.slice(thinkStart);
+            processedAnswer = rawAnswer.slice(0, thinkStart);
+        }
+    }
+
+    const normalized = normalizeText(processedAnswer);
     if (!normalized) {
-        return fallbackMessage || 'I could not generate a useful answer.';
+        const baseAnswer = fallbackMessage || 'I could not generate a useful answer.';
+        return thoughtSection ? `${thoughtSection}\n\n${baseAnswer}` : baseAnswer;
     }
 
     if (intent === 'casual') {
-        return cleanLead(normalized);
+        const formattedCasual = cleanLead(normalized);
+        return thoughtSection ? `${thoughtSection}\n\n${formattedCasual}` : formattedCasual;
     }
 
     if (hasStructuredSections(normalized)) {
-        return fallbackMessage && confidence < 0.38
+        const formattedStructured = fallbackMessage && confidence < 0.38
             ? appendFallbackNote(normalized, fallbackMessage)
             : normalized;
+        return thoughtSection ? `${thoughtSection}\n\n${formattedStructured}` : formattedStructured;
     }
 
     const paragraphs = splitParagraphs(normalized);
@@ -206,5 +226,6 @@ export function formatResponse(rawAnswer: string, options: FormatResponseOptions
         sections.push(`Notes\n${notes.map((note) => `- ${note}`).join('\n')}`);
     }
 
-    return sections.join('\n\n').trim();
+    const finalFormatted = sections.join('\n\n').trim();
+    return thoughtSection ? `${thoughtSection}\n\n${finalFormatted}` : finalFormatted;
 }

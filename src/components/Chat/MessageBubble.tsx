@@ -7,6 +7,7 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
     faSignal, faRobot, faCopy, faCheck, faDiagramProject,
     faThumbsUp, faThumbsDown, faBolt, faPaperPlane,
+    faLightbulb, faChevronDown,
 } from '@fortawesome/free-solid-svg-icons';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism';
@@ -37,6 +38,32 @@ interface DiagramResponse {
     diagramType: string;
     panelType: string;
     hasKBContext: boolean;
+}
+
+function parseThinkingAndResponse(content: string): {
+    thought: string;
+    answer: string;
+    isThinking: boolean;
+} {
+    const thinkStartTag = '<think>';
+    const thinkEndTag = '</think>';
+
+    const startIndex = content.indexOf(thinkStartTag);
+    if (startIndex === -1) {
+        return { thought: '', answer: content, isThinking: false };
+    }
+
+    const endIndex = content.indexOf(thinkEndTag, startIndex + thinkStartTag.length);
+    if (endIndex === -1) {
+        // Still thinking (closing tag not found yet)
+        const thought = content.slice(startIndex + thinkStartTag.length);
+        return { thought, answer: '', isThinking: true };
+    }
+
+    // Done thinking
+    const thought = content.slice(startIndex + thinkStartTag.length, endIndex);
+    const answer = content.slice(endIndex + thinkEndTag.length).trim();
+    return { thought, answer, isThinking: false };
 }
 
 function parseMessageContent(content: string): {
@@ -133,10 +160,26 @@ const MessageBubble = React.memo(function MessageBubble({
     onSaveEdit,
     onCancelEdit,
 }: MessageBubbleProps) {
-    const parsed = message.role === 'assistant' ? parseMessageContent(message.content) : null;
+    const { thought, answer: parsedAnswer, isThinking } = React.useMemo(() => {
+        if (message.role === 'assistant') {
+            return parseThinkingAndResponse(message.content);
+        }
+        return { thought: '', answer: message.content, isThinking: false };
+    }, [message.content, message.role]);
+
+    const parsed = message.role === 'assistant' ? parseMessageContent(parsedAnswer) : null;
     const isStreamingAssistant = message.role === 'assistant' && message.id === streamingMessageId;
     const showThinkingState = isStreamingAssistant && !message.content.trim();
     const canSubmitFeedback = Boolean(message.knowledgeId);
+
+    const [isThoughtExpanded, setIsThoughtExpanded] = React.useState(true);
+
+    // Keep accordion expanded while thinking is in progress
+    React.useEffect(() => {
+        if (isThinking) {
+            setIsThoughtExpanded(true);
+        }
+    }, [isThinking]);
 
     const getMessageTimeLabel = (msg: ChatMessage) => {
         const timestamp = msg.createdAt instanceof Date
@@ -172,6 +215,32 @@ const MessageBubble = React.memo(function MessageBubble({
                                 </span>
                             )}
                         </div>
+                        {/* Collapsible Thought Process Panel */}
+                        {thought.trim() && (
+                            <div className="mb-3 border border-[#D6CFC4]/65 rounded-xl overflow-hidden bg-[#F0EBE3]/20 shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
+                                <button
+                                    onClick={() => setIsThoughtExpanded(!isThoughtExpanded)}
+                                    className="w-full flex items-center justify-between px-3.5 py-2 bg-[#F0EBE3]/40 text-[#78716C] hover:bg-[#F0EBE3]/60 transition-colors text-xs font-medium cursor-pointer"
+                                >
+                                    <div className="flex items-center gap-2">
+                                        <FontAwesomeIcon icon={faLightbulb} className={`w-3.5 h-3.5 ${isThinking ? 'text-amber-500 animate-pulse' : 'text-[#78716C]'}`} />
+                                        <span>{isThinking ? 'Thinking...' : 'Thought Process'}</span>
+                                    </div>
+                                    <FontAwesomeIcon
+                                        icon={faChevronDown}
+                                        className={`w-3 h-3 transition-transform duration-200 ${isThoughtExpanded ? 'rotate-180' : ''}`}
+                                    />
+                                </button>
+                                {isThoughtExpanded && (
+                                    <div className="px-3.5 py-3 border-t border-[#D6CFC4]/45 text-xs text-[#78716C] font-mono leading-relaxed whitespace-pre-wrap max-h-[220px] overflow-y-auto bg-[#FAF7F2]/50">
+                                        {thought}
+                                        {isThinking && (
+                                            <span className="inline-block h-3 w-1.5 rounded-sm bg-[#78716C] animate-pulse ml-1 align-middle" />
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        )}
                         <DiagramCard
                             markdown={parsed.diagram.markdown}
                             title={parsed.diagram.title}
@@ -233,8 +302,8 @@ const MessageBubble = React.memo(function MessageBubble({
                                     </div>
                                 )}
                             </div>
-                            {message.content.trim() && (
-                                <button onClick={() => handleCopy(message.content, message.id)}
+                            {parsedAnswer.trim() && (
+                                <button onClick={() => handleCopy(parsedAnswer, message.id)}
                                     className="p-1 rounded text-[#A8A29E] hover:text-[#CA8A04] transition-colors cursor-pointer"
                                     title="Copy response">
                                     <FontAwesomeIcon icon={copiedId === message.id ? faCheck : faCopy}
@@ -243,6 +312,33 @@ const MessageBubble = React.memo(function MessageBubble({
                             )}
                         </div>
                         <div className="text-sm sm:text-[15px] leading-relaxed">
+                            {/* Collapsible Thought Process Panel */}
+                            {thought.trim() && (
+                                <div className="mb-3 border border-[#D6CFC4]/65 rounded-xl overflow-hidden bg-[#F0EBE3]/20 shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
+                                    <button
+                                        onClick={() => setIsThoughtExpanded(!isThoughtExpanded)}
+                                        className="w-full flex items-center justify-between px-3.5 py-2 bg-[#F0EBE3]/40 text-[#78716C] hover:bg-[#F0EBE3]/60 transition-colors text-xs font-medium cursor-pointer"
+                                    >
+                                        <div className="flex items-center gap-2">
+                                            <FontAwesomeIcon icon={faLightbulb} className={`w-3.5 h-3.5 ${isThinking ? 'text-amber-500 animate-pulse' : 'text-[#78716C]'}`} />
+                                            <span>{isThinking ? 'Thinking...' : 'Thought Process'}</span>
+                                        </div>
+                                        <FontAwesomeIcon
+                                            icon={faChevronDown}
+                                            className={`w-3 h-3 transition-transform duration-200 ${isThoughtExpanded ? 'rotate-180' : ''}`}
+                                        />
+                                    </button>
+                                    {isThoughtExpanded && (
+                                        <div className="px-3.5 py-3 border-t border-[#D6CFC4]/45 text-xs text-[#78716C] font-mono leading-relaxed whitespace-pre-wrap max-h-[220px] overflow-y-auto bg-[#FAF7F2]/50">
+                                            {thought}
+                                            {isThinking && (
+                                                <span className="inline-block h-3 w-1.5 rounded-sm bg-[#78716C] animate-pulse ml-1 align-middle" />
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
                             {showThinkingState ? (
                                 <div className="space-y-3">
                                     <div className="space-y-2.5">
@@ -350,7 +446,7 @@ const MessageBubble = React.memo(function MessageBubble({
                                             );
                                         },
                                     }}>
-                                        {isStreamingAssistant ? message.content + '██' : message.content}
+                                        {isStreamingAssistant ? parsedAnswer + '██' : parsedAnswer}
                                     </ReactMarkdown>
                                 </>
                             )}

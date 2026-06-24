@@ -70,3 +70,6 @@ next-env.d.ts
 *.zip
 *.ipynb
 
+
+# graphify generated knowledge-graph output
+graphify-out/
