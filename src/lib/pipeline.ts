@@ -964,15 +964,17 @@ export async function runPipeline(input: PipelineInput): Promise<PipelineResult>
 
     console.log(`[chat] Retrieval result: matches=${matches.length}, confidence=${confidence.toFixed(3)}, answerMode=${answerMode}, contextLen=${contextString?.length ?? 0}, topScore=${matches[0]?.finalScore?.toFixed(3) ?? 'N/A'}, stats=${JSON.stringify(retrievalStats)}`);
 
+    const rerankedMatches = isDiagram ? rerankDiagramMatches(matches, retrievalQuestion || englishQuestion) : matches;
+
     const retrievedChunks = buildChunkLabels(lastRagResult.matches);
-    const finalChunks = buildChunkLabels(matches);
+    const finalChunks = buildChunkLabels(rerankedMatches);
     const baseMetrics: Partial<PipelineMetrics> = {
         hydeUsed: retrievalDiagnostics.hydeUsed,
         queryExpansionUsed: retrievalDiagnostics.queryExpansionUsed,
-        matchCount: matches.length,
+        matchCount: rerankedMatches.length,
         llmCallCount,
     };
-    const topMatch = matches[0];
+    const topMatch = rerankedMatches[0];
 
     if (
         topMatch &&
@@ -980,7 +982,7 @@ export async function runPipeline(input: PipelineInput): Promise<PipelineResult>
         confidence >= 0.55 &&
         topMatch.answer?.length > 100
     ) {
-        console.log(`ðŸ“ Stored diagram found: "${topMatch.question}" (conf: ${confidence.toFixed(2)})`);
+        console.log(`Stored diagram found: "${topMatch.question}" (conf: ${confidence.toFixed(2)})`);
 
         const storedDiagramPayload = {
             __type: 'diagram' as const,
@@ -1010,7 +1012,7 @@ export async function runPipeline(input: PipelineInput): Promise<PipelineResult>
             intent: intentForLog,
             fallbackMessage,
             ragResult: lastRagResult,
-            matches,
+            matches: rerankedMatches,
             cachedQueryEmbedding,
             finalChunks,
             retrievedChunks,
@@ -1044,7 +1046,7 @@ export async function runPipeline(input: PipelineInput): Promise<PipelineResult>
             intent: intentForLog,
             fallbackMessage,
             ragResult: lastRagResult,
-            matches,
+            matches: rerankedMatches,
             cachedQueryEmbedding,
             finalChunks,
             retrievedChunks,
@@ -1053,8 +1055,8 @@ export async function runPipeline(input: PipelineInput): Promise<PipelineResult>
         };
     }
 
-    if (answerMode === 'general' && (!contextString || contextString.trim().length < 30) && matches.length === 0) {
-        console.log(`[chat] Hallucination gate triggered - answerMode=general, contextLength=${contextString?.length ?? 0}, matches=${matches.length}`);
+    if (answerMode === 'general' && (!contextString || contextString.trim().length < 30) && rerankedMatches.length === 0) {
+        console.log(`[chat] Hallucination gate triggered - answerMode=general, contextLength=${contextString?.length ?? 0}, matches=${rerankedMatches.length}`);
 
         return {
             answer: notFoundMsg,
@@ -1071,7 +1073,7 @@ export async function runPipeline(input: PipelineInput): Promise<PipelineResult>
             intent: intentForLog,
             fallbackMessage,
             ragResult: lastRagResult,
-            matches,
+            matches: rerankedMatches,
             cachedQueryEmbedding,
             finalChunks: [],
             retrievedChunks: [],
@@ -1137,11 +1139,80 @@ Return only the improved answer in ${langName}.`;
         intent: intentForLog,
         fallbackMessage,
         ragResult: lastRagResult,
-        matches,
+        matches: rerankedMatches,
         cachedQueryEmbedding,
         finalChunks,
         retrievedChunks,
         shouldLogUnknownQuestion: confidence < UNKNOWN_THRESHOLD,
         metrics: finalizeMetrics(baseMetrics),
     };
+}
+
+// Specificity-aware diagram re-ranker to boost generic diagrams for generic queries
+function rerankDiagramMatches(matches: RankedMatch[], query: string): RankedMatch[] {
+    if (!matches || matches.length === 0) return matches;
+    
+    const queryLower = (query || '').toLowerCase();
+    const queryWords = queryLower.split(/[^a-z0-9]+/i).filter(w => w.length > 1);
+    
+    const SPECIFIC_BRANDS = [
+        'dsc', 'texecom', 'hestia', 'cronos', 'jarvis', 'pinnacle', 
+        'dhwani', 'whisper', 'apollo', 'atum', 'mdc', 'seple', 
+        'sepl', 'b401b', 'c9104', 'series65', 'series-65', 'series_65'
+    ];
+    
+    const scoredMatches = matches.map((match) => {
+        if (match.chunkType !== 'diagram') return match;
+        
+        const titleLower = (match.question || '').toLowerCase();
+        const sourceLower = (match.source_name || match.source || '').toLowerCase();
+        
+        let scoreBoost = 0;
+        let specificityPenalty = 0;
+        
+        // 1. Phrase matching: Boost matches where query/title matches exactly
+        const cleanTitle = titleLower.replace(/diagram|wiring|connection|schematic/g, '').trim();
+        const cleanQuery = queryLower.replace(/diagram|wiring|connection|schematic/g, '').trim();
+        
+        if (cleanTitle && cleanQuery && (cleanTitle.includes(cleanQuery) || cleanQuery.includes(cleanTitle))) {
+            scoreBoost += 0.2;
+            
+            const cleanTitleWords = cleanTitle.split(/[^a-z0-9]+/i).filter(w => w.length > 1);
+            const cleanQueryWords = cleanQuery.split(/[^a-z0-9]+/i).filter(w => w.length > 1);
+            if (cleanTitleWords.length === cleanQueryWords.length) {
+                scoreBoost += 0.15; // exact match boost
+            }
+        }
+        
+        // 2. Specificity Penalty: If query doesn't mention brand, penalize specific brand diagrams
+        for (const brand of SPECIFIC_BRANDS) {
+            const hasBrandInTitle = titleLower.includes(brand) || sourceLower.includes(brand);
+            const hasBrandInQuery = queryLower.includes(brand);
+            
+            if (hasBrandInTitle && !hasBrandInQuery) {
+                specificityPenalty += 0.25;
+            }
+        }
+        
+        // 3. Keyword Match Ratio
+        let wordMatches = 0;
+        for (const word of queryWords) {
+            if (titleLower.includes(word) || sourceLower.includes(word)) {
+                wordMatches++;
+            }
+        }
+        if (queryWords.length > 0) {
+            scoreBoost += (wordMatches / queryWords.length) * 0.1;
+        }
+        
+        const newScore = match.finalScore + scoreBoost - specificityPenalty;
+        console.log(`[Rerank Diagram] "${match.question}" originalScore=${match.finalScore.toFixed(3)} newScore=${newScore.toFixed(3)} (boost=+${scoreBoost.toFixed(2)}, penalty=-${specificityPenalty.toFixed(2)})`);
+        
+        return {
+            ...match,
+            finalScore: newScore,
+        };
+    });
+    
+    return [...scoredMatches].sort((a, b) => b.finalScore - a.finalScore);
 }

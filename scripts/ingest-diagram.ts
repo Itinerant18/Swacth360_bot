@@ -184,6 +184,44 @@ function extractTitle(markdown: string, fallback: string): string {
     return match[1].replace(/[\u{1F300}-\u{1FFFF}]/gu, '').trim();
 }
 
+// Helper to generate semantic search aliases based on diagram title keywords
+function getAliasesForTitle(title: string): string[] {
+    const lower = title.toLowerCase();
+    const aliases: string[] = [];
+    
+    if (lower.includes('pir') || lower.includes('passive infrared') || lower.includes('motion')) {
+        aliases.push('pir sensor', 'passive infrared', 'motion detector', 'pir wiring', 'motion sensor');
+    }
+    if (lower.includes('magnetic') || lower.includes('contact') || lower.includes('switch') || lower.includes('mc-')) {
+        aliases.push('magnetic contact', 'magnetic sensor', 'contact switch', 'door sensor', 'window sensor');
+    }
+    if (lower.includes('panic') || lower.includes('emergency')) {
+        aliases.push('panic switch', 'panic button', 'emergency switch', 'panic alarm');
+    }
+    if (lower.includes('smoke') || lower.includes('optical') || lower.includes('detector') || lower.includes('fire') || lower.includes('alarm')) {
+        aliases.push('smoke detector', 'smoke sensor', 'fire alarm', 'optical sensor', 'heat detector');
+    }
+    if (lower.includes('panel') || lower.includes('hms') || lower.includes('motherboard') || lower.includes('main')) {
+        aliases.push('alarm system', 'control panel', 'hms panel', 'hms motherboard', 'main board');
+    }
+    if (lower.includes('rs-485') || lower.includes('rs485')) {
+        aliases.push('rs-485 wiring', 'rs485 communication', 'serial bus', 'daisy chain');
+    }
+    if (lower.includes('autodialer') || lower.includes('dialer') || lower.includes('whisper')) {
+        aliases.push('autodialer', 'telephone dialer', 'gsm dialer', 'whisper dialer');
+    }
+    
+    // Split title words to add individual components
+    const words = lower.split(/[^a-z0-9]+/i).filter(w => w.length > 2);
+    for (const w of words) {
+        if (!aliases.includes(w)) {
+            aliases.push(w);
+        }
+    }
+    
+    return aliases;
+}
+
 // ─── Build embedding text ─────────────────────────────────────
 function buildEmbeddingText(
     title: string,
@@ -200,6 +238,7 @@ function buildEmbeddingText(
     const entities = [...new Set([...terminals, ...protocols, ...voltages, ...products])].slice(0, 20);
     const category = TYPE_CATEGORY_MAP[diagramType] || 'Technical Diagram';
     const typeLabel = diagramType.charAt(0).toUpperCase() + diagramType.slice(1);
+    const aliases = getAliasesForTitle(title);
 
     // Use up to 1500 chars of markdown content for better retrieval
     const contentSlice = markdown.slice(0, 1500);
@@ -211,6 +250,7 @@ function buildEmbeddingText(
         `Content Type: Technical Diagram — ASCII/Markdown`,
         entities.length > 0 ? `Key Entities: ${entities.join(', ')}` : '',
         `Title: ${title}`,
+        aliases.length > 0 ? `Aliases: ${aliases.join(', ')}` : '',
         `Description: ${typeLabel} diagram showing ${category.toLowerCase()} details for ${title}`,
         `Full Diagram:\n${contentSlice}`,
     ].filter(Boolean).join('\n');
@@ -265,12 +305,12 @@ async function ingestDiagramFile(params: {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- standalone script, no generated DB types
     const { error } = await (supabase.from('hms_knowledge') as any).upsert([{
         id,
-        question: `${typeLabel} diagram for ${title}`,
+        question: `${title} ${typeLabel} diagram wiring connection schematic`,
         answer: markdown,
         category,
         subcategory: diagramType,
         product: 'HMS Panel',
-        tags: [diagramType, 'diagram', category.toLowerCase(), title.toLowerCase()],
+        tags: [diagramType, 'diagram', category.toLowerCase(), title.toLowerCase(), ...getAliasesForTitle(title)],
         content: embeddingText,
         embedding: vectorString,
         source: 'manual',

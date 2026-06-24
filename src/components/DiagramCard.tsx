@@ -40,6 +40,9 @@ const TYPE_ICONS: Record<string, string> = {
     alarm: '🚨', sensor: '📡', battery: '🔋',
 };
 
+// Regex to detect mermaid diagram starters — used for auto-detection when fences lack `mermaid` tag
+const MERMAID_STARTERS = /^(flowchart|graph|sequenceDiagram|classDiagram|stateDiagram|erDiagram|gantt|pie|journey|gitgraph|mindmap|timeline|quadrantChart|sankey|xychart|block-beta)\b/;
+
 function extractText(children: React.ReactNode): string {
     if (typeof children === 'string') return children;
     if (typeof children === 'number') return String(children);
@@ -49,6 +52,54 @@ function extractText(children: React.ReactNode): string {
         return extractText(props.children);
     }
     return '';
+}
+
+/**
+ * Pre-process markdown to ensure unfenced mermaid code gets wrapped in ```mermaid fences.
+ * Handles the case where mermaid code appears as plain text (no code fences at all)
+ * or inside plain ``` fences without the `mermaid` language identifier.
+ */
+function preprocessMermaidMarkdown(md: string): string {
+    // Step 1: Fix plain ``` fences that contain mermaid code → ```mermaid
+    let result = md.replace(/^```\s*\n((?:flowchart|graph|sequenceDiagram|classDiagram|stateDiagram|erDiagram|gantt|pie|journey|gitgraph|mindmap|timeline)\b)/gm, '```mermaid\n$1');
+
+    // Step 2: If there are no code fences at all, check if raw mermaid lines exist
+    if (!result.includes('```')) {
+        const lines = result.split('\n');
+        let mermaidStart = -1;
+        let mermaidEnd = -1;
+
+        for (let i = 0; i < lines.length; i++) {
+            const trimmed = lines[i].trim();
+            if (mermaidStart < 0 && MERMAID_STARTERS.test(trimmed)) {
+                mermaidStart = i;
+                mermaidEnd = i;
+            } else if (mermaidStart >= 0) {
+                // Continue collecting mermaid lines (edges, nodes, subgraphs, styles, blanks)
+                if (
+                    trimmed === '' ||
+                    /^(subgraph|end\b|-->|style\s|classDef\s|class\s|linkStyle\s|[A-Za-z_][\w]*\s*[\[("\{|]|[A-Za-z_][\w]*\s*(-->|---|-.->|==>))/.test(trimmed)
+                ) {
+                    mermaidEnd = i;
+                } else {
+                    break;
+                }
+            }
+        }
+
+        if (mermaidStart >= 0 && mermaidEnd >= mermaidStart) {
+            // Trim trailing blank lines within the mermaid range
+            while (mermaidEnd > mermaidStart && lines[mermaidEnd].trim() === '') {
+                mermaidEnd--;
+            }
+            const before = lines.slice(0, mermaidStart).join('\n');
+            const mermaidContent = lines.slice(mermaidStart, mermaidEnd + 1).join('\n');
+            const after = lines.slice(mermaidEnd + 1).join('\n');
+            result = `${before}\n\n\`\`\`mermaid\n${mermaidContent}\n\`\`\`\n\n${after}`;
+        }
+    }
+
+    return result;
 }
 
 export default function DiagramCard({
@@ -125,10 +176,19 @@ export default function DiagramCard({
                         };
                         const className = codeProps.className ?? '';
 
+                        // Explicit ```mermaid fence
                         if (className.includes('language-mermaid')) {
                             const mermaidCode = extractText(codeProps.children).trim();
                             if (mermaidCode) {
                                 return <MermaidBlock code={mermaidCode} />;
+                            }
+                        }
+
+                        // Auto-detect: plain ``` fence whose content starts with a mermaid keyword
+                        if (!className || className === 'language-undefined') {
+                            const rawCode = extractText(codeProps.children).trim();
+                            if (MERMAID_STARTERS.test(rawCode)) {
+                                return <MermaidBlock code={rawCode} />;
                             }
                         }
                     }
@@ -272,7 +332,7 @@ export default function DiagramCard({
                 },
             }}
         >
-            {markdown}
+            {preprocessMermaidMarkdown(markdown)}
         </ReactMarkdown>
     );
 

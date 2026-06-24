@@ -77,6 +77,14 @@ function cleanupMermaidElement(id: string) {
 function fixMermaidSyntax(code: string): string {
     let fixed = code;
 
+    // Fix 0: Decode HTML entities (common in KB-stored diagrams)
+    fixed = fixed
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&amp;/g, '&')
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'");
+
     // Fix 1: Strip backticks inside edge labels — `-->|`text`|` → `-->|"text"|`
     // LLMs often wrap edge label text in backticks which breaks the mermaid parser.
     fixed = fixed.replace(/(\|)`([^`|]+)`(\|)/g, '$1"$2"$3');
