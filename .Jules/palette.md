@@ -1,0 +1,3 @@
+## 2024-06-12 - Hover-revealed UI Elements and Keyboard Accessibility
+**Learning:** Hover-revealed actions (using `opacity-0 group-hover:opacity-100`) become invisible and inaccessible to keyboard users unless explicitly handled with focus states. This pattern was identified in sidebar and chat components.
+**Action:** Always pair hover-revealed classes with `focus-visible:opacity-100 focus-visible:ring-2 focus-visible:outline-none` to ensure keyboard discoverability.
