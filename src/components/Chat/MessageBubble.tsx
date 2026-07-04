@@ -252,13 +252,14 @@ const MessageBubble = React.memo(function MessageBubble({
                         <div className="mt-2 flex items-center justify-end">
                             <div className="flex items-center gap-1">
                                 {isLastAssistant && onRegenerate && (
-                                    <button onClick={onRegenerate} className="p-1.5 rounded hover:bg-[#E8E0D4] text-[#A8A29E] hover:text-[#CA8A04] transition-colors" title="Regenerate">
+                                    <button aria-label="Regenerate response" onClick={onRegenerate} className="p-1.5 rounded hover:bg-[#E8E0D4] text-[#A8A29E] hover:text-[#CA8A04] transition-colors" title="Regenerate">
                                         <FontAwesomeIcon icon={faSignal} className="w-3 h-3" />
                                     </button>
                                 )}
                                 {canSubmitFeedback && (
                                     <>
                                         <button
+                                            aria-label="Mark as helpful"
                                             onClick={() => handleFeedback(message.id, 5, true)}
                                             disabled={feedbackSubmitted.has(message.id)}
                                             className={`p-1.5 rounded transition-colors ${feedbackSubmitted.has(message.id) ? 'opacity-40 cursor-not-allowed text-[#A8A29E]' : 'hover:bg-[#E8E0D4] hover:text-[#0D9488] text-[#A8A29E]'}`}
@@ -267,6 +268,7 @@ const MessageBubble = React.memo(function MessageBubble({
                                             <FontAwesomeIcon icon={faThumbsUp} className="w-3 h-3" />
                                         </button>
                                         <button
+                                            aria-label="Mark as not helpful"
                                             onClick={() => handleFeedback(message.id, 1, false)}
                                             disabled={feedbackSubmitted.has(message.id)}
                                             className={`p-1.5 rounded transition-colors ${feedbackSubmitted.has(message.id) ? 'opacity-40 cursor-not-allowed text-[#A8A29E]' : 'hover:bg-[#E8E0D4] hover:text-red-600 text-[#A8A29E]'}`}
@@ -462,13 +464,14 @@ const MessageBubble = React.memo(function MessageBubble({
                                 {getMessageTimeLabel(message) && <span>{getMessageTimeLabel(message)}</span>}
                                 <div className="flex items-center gap-1 ml-auto">
                                     {isLastAssistant && onRegenerate && (
-                                        <button onClick={onRegenerate} className="p-1.5 rounded hover:bg-[#E8E0D4] hover:text-[#CA8A04] transition-colors" title="Regenerate">
+                                        <button aria-label="Regenerate response" onClick={onRegenerate} className="p-1.5 rounded hover:bg-[#E8E0D4] hover:text-[#CA8A04] transition-colors" title="Regenerate">
                                             <FontAwesomeIcon icon={faSignal} className="w-3 h-3" />
                                         </button>
                                     )}
                                     {canSubmitFeedback && (
                                         <>
                                             <button
+                                                aria-label="Mark as helpful"
                                                 onClick={() => handleFeedback(message.id, 5, true)}
                                                 disabled={feedbackSubmitted.has(message.id)}
                                                 className={`p-1.5 rounded transition-colors ${feedbackSubmitted.has(message.id) ? 'opacity-40 cursor-not-allowed' : 'hover:bg-[#E8E0D4] hover:text-[#0D9488]'}`}
@@ -477,6 +480,7 @@ const MessageBubble = React.memo(function MessageBubble({
                                                 <FontAwesomeIcon icon={faThumbsUp} className="w-3 h-3" />
                                             </button>
                                             <button
+                                                aria-label="Mark as not helpful"
                                                 onClick={() => handleFeedback(message.id, 1, false)}
                                                 disabled={feedbackSubmitted.has(message.id)}
                                                 className={`p-1.5 rounded transition-colors ${feedbackSubmitted.has(message.id) ? 'opacity-40 cursor-not-allowed' : 'hover:bg-[#E8E0D4] hover:text-red-600'}`}
@@ -521,8 +525,9 @@ const MessageBubble = React.memo(function MessageBubble({
                                     </ReactMarkdown>
                                     {!streamingMessageId && onEdit && (
                                         <button
+                                            aria-label="Edit message"
                                             onClick={() => onEdit(message.id, message.content)}
-                                            className="absolute -left-8 top-0 opacity-0 group-hover:opacity-100 p-1 rounded text-white/40 hover:text-white transition-all"
+                                            className="absolute -left-8 top-0 opacity-0 group-hover:opacity-100 p-1 rounded text-white/40 hover:text-white transition-all focus-visible:opacity-100 focus-visible:ring-2 focus-visible:outline-none"
                                             title="Edit message"
                                         >
                                             <FontAwesomeIcon icon={faPaperPlane} className="w-2.5 h-2.5 rotate-180" />
