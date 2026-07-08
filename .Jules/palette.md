@@ -1,0 +1,3 @@
+## 2024-06-07 - Hover-Revealed UI Keyboard Discoverability
+**Learning:** In the chat interface, there's a pattern of using `opacity-0 group-hover:opacity-100` to hide secondary actions (like delete conversation or edit message) until hovered. While visually clean, this completely breaks keyboard accessibility as these elements become invisible to tab navigation unless they are explicitly focused.
+**Action:** When implementing or modifying hover-revealed UI actions, always pair the hover classes with `focus-visible:opacity-100 focus-visible:ring-2 focus-visible:outline-none` to ensure the actions remain discoverable and accessible for keyboard users.
