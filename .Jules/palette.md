@@ -1,0 +1,3 @@
+## 2024-05-06 - Accessible Hover-Revealed Actions
+**Learning:** Hover-revealed actions (like an edit or delete button that appears only on `group-hover`) become completely invisible to keyboard-only users navigating via Tab unless explicitly styled for focus states. Simply having an `aria-label` or `title` is not enough if the user cannot visually confirm the element has focus or see its context.
+**Action:** Always pair `opacity-0 group-hover:opacity-100` utility patterns with `focus-visible:opacity-100 focus-visible:ring-2 focus-visible:outline-none` and ensure screen reader accessibility via descriptive ARIA labels to maintain discoverability.
