@@ -189,6 +189,7 @@ export default function ChatInputBar({
                         type="submit"
                         disabled={isDisabled || !input.trim()}
                         className="p-2 sm:p-2.5 skeuo-brass rounded-lg sm:rounded-xl disabled:opacity-30"
+                        aria-label="Send message"
                     >
                         {isLoading || isLoadingHistory
                             ? <FontAwesomeIcon icon={faSpinner} className="w-3.5 h-3.5 sm:w-4 sm:h-4 animate-spin" />
