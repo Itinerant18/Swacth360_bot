@@ -522,8 +522,9 @@ const MessageBubble = React.memo(function MessageBubble({
                                     {!streamingMessageId && onEdit && (
                                         <button
                                             onClick={() => onEdit(message.id, message.content)}
-                                            className="absolute -left-8 top-0 opacity-0 group-hover:opacity-100 p-1 rounded text-white/40 hover:text-white transition-all"
+                                            className="absolute -left-8 top-0 opacity-0 group-hover:opacity-100 p-1 rounded text-white/40 hover:text-white focus-visible:opacity-100 focus-visible:ring-2 focus-visible:outline-none transition-all"
                                             title="Edit message"
+                                            aria-label="Edit message"
                                         >
                                             <FontAwesomeIcon icon={faPaperPlane} className="w-2.5 h-2.5 rotate-180" />
                                         </button>
