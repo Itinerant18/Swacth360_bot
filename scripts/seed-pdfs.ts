@@ -52,12 +52,14 @@ const customFetch = (input: unknown, init?: unknown) =>
 // Constants
 // ═══════════════════════════════════════════════════════════════
 const PDF_DIR = path.join(process.cwd(), 'data', 'pdf');
-const CHUNK_SIZE = 800;
-const CHUNK_OVERLAP = 150;
+const CHUNK_SIZE = 1500;
+const CHUNK_OVERLAP = 300;
 const IMAGE_TEXT_THRESHOLD = 100; // PDFs with less text than this → image pipeline
 const BATCH_EMBED_SIZE = EMBEDDING_BATCH_SIZE;
 const DELAY_BETWEEN_PDFS = 500;  // ms
 const GPT_VISION_MODEL = 'gpt-4o';
+const GPT_ENRICHMENT_MODEL = 'gpt-4o-mini';
+const ENRICHMENT_BATCH_SIZE = 5;  // chunks per AI enrichment call
 
 const VALID_CATEGORIES = [
     'General Knowledge', 'Installation & Commissioning',
@@ -161,6 +163,90 @@ function buildEmbeddingText(
         `Question: ${question}`,
         `Answer: ${answer}`,
     ].join('\n');
+}
+
+// ═══════════════════════════════════════════════════════════════
+// GPT-4o-mini enrichment — generate real Q&A + category + keywords
+//
+// Takes a batch of raw text chunks and returns enriched metadata:
+// real questions, proper categories, and technical keywords.
+// ═══════════════════════════════════════════════════════════════
+interface EnrichedChunk {
+    question: string;
+    category: string;
+    keywords: string[];
+}
+
+async function enrichChunksWithAI(
+    chunks: Chunk[],
+    sourceName: string,
+    openaiClient: OpenAI,
+): Promise<EnrichedChunk[]> {
+    const results: EnrichedChunk[] = [];
+
+    for (let i = 0; i < chunks.length; i += ENRICHMENT_BATCH_SIZE) {
+        const batch = chunks.slice(i, i + ENRICHMENT_BATCH_SIZE);
+
+        const chunkDescriptions = batch.map((c, idx) =>
+            `--- CHUNK ${i + idx + 1} [Section: ${c.section}] ---\n${c.content.substring(0, 800)}`
+        ).join('\n\n');
+
+        const prompt = `You are analyzing technical documentation chunks from "${sourceName}" (HMS industrial control panels / Seple / SWATCH 360).
+
+For EACH chunk below, generate:
+1. A specific question a field engineer would ask that this chunk answers
+2. The best category from: ${VALID_CATEGORIES.join(' | ')}
+3. 3-5 technical keywords from the content (model numbers, protocols, components, specs)
+
+Respond with ONLY a valid JSON array, one object per chunk:
+[{"question":"...","category":"...","keywords":["kw1","kw2","kw3"]},...]
+
+${chunkDescriptions}`;
+
+        try {
+            const response = await openaiClient.chat.completions.create({
+                model: GPT_ENRICHMENT_MODEL,
+                messages: [{ role: 'user', content: prompt }],
+                max_tokens: 2048,
+                temperature: 0.1,
+            });
+
+            const text = response.choices[0]?.message?.content ?? '[]';
+            const cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+            const parsed = JSON.parse(cleaned);
+
+            if (Array.isArray(parsed)) {
+                for (let j = 0; j < batch.length; j++) {
+                    const entry = parsed[j];
+                    results.push({
+                        question: entry?.question || `What information is in ${sourceName}, section ${batch[j].section}?`,
+                        category: VALID_CATEGORIES.includes(entry?.category) ? entry.category : 'General Knowledge',
+                        keywords: Array.isArray(entry?.keywords) ? entry.keywords : [],
+                    });
+                }
+            } else {
+                // Fallback if response isn't an array
+                for (const chunk of batch) {
+                    results.push({
+                        question: `What information is in ${sourceName}, section ${chunk.section}?`,
+                        category: 'General Knowledge',
+                        keywords: [],
+                    });
+                }
+            }
+        } catch (err: unknown) {
+            console.error(`│    ⚠️  AI enrichment failed: ${(err as Error).message}. Using fallback.`);
+            for (const chunk of batch) {
+                results.push({
+                    question: `What information is in ${sourceName}, section ${chunk.section}?`,
+                    category: 'General Knowledge',
+                    keywords: chunk.section.toLowerCase().split(/\s+/).filter(w => w.length > 3),
+                });
+            }
+        }
+    }
+
+    return results;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -458,7 +544,12 @@ Options:
                 let pdfSuccess = 0;
                 let pdfErrors = 0;
 
-                // Process in batches for embedding efficiency
+                // ── Step 3a: Enrich chunks with GPT-4o-mini ────
+                console.log(`│    🧠 Enriching with GPT-4o-mini…`);
+                const enriched = await enrichChunksWithAI(chunks, sourceName, openaiVisionClient);
+                console.log(`│    ✨ ${enriched.length} chunks enriched`);
+
+                // ── Step 3b: Embed and upload in batches ────────
                 for (let b = 0; b < chunks.length; b += BATCH_EMBED_SIZE) {
                     const batch = chunks.slice(b, b + BATCH_EMBED_SIZE);
                     const batchTexts: string[] = [];
@@ -468,14 +559,24 @@ Options:
                         const chunk = batch[j];
                         const chunkIdx = b + j;
                         const id = `${idPrefix}_${String(chunkIdx).padStart(4, '0')}`;
-                        const question = `[${chunk.section}] ${sourceName} — part ${chunkIdx + 1}`;
-                        const answer = chunk.content.substring(0, 500);
-                        const keywords = chunk.section.toLowerCase().split(/\s+/).filter(w => w.length > 3);
-                        const category = 'General Knowledge';
 
-                        const embText = buildEmbeddingText(question, answer, chunk.section, category, keywords, sourceName);
+                        // Use AI-enriched metadata
+                        const meta = enriched[chunkIdx] || {
+                            question: `What information is in ${sourceName}, section ${chunk.section}?`,
+                            category: 'General Knowledge',
+                            keywords: [],
+                        };
+
+                        // Full answer with document context (no truncation!)
+                        const answer = [
+                            `[Document: ${sourceName}]`,
+                            `[Section: ${chunk.section}]`,
+                            chunk.content,
+                        ].join('\n');
+
+                        const embText = buildEmbeddingText(meta.question, answer, chunk.section, meta.category, meta.keywords, sourceName);
                         batchTexts.push(embText);
-                        batchMeta.push({ id, question, answer, section: chunk.section, category, keywords });
+                        batchMeta.push({ id, question: meta.question, answer, section: chunk.section, category: meta.category, keywords: meta.keywords });
                     }
 
                     // Batch embed with OpenAI
