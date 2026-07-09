@@ -8,6 +8,7 @@
  *   npx tsx scripts/ingest-all.ts
  */
 
+import './mock-server-only';
 import { loadEnvConfig } from '@next/env';
 import { execSync } from 'child_process';
 import { getLLM } from '../src/lib/llm';
