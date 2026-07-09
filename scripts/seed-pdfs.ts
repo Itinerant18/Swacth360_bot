@@ -176,6 +176,18 @@ async function extractWithGPTVision(
     openaiClient: OpenAI,
 ): Promise<{ question: string; answer: string; category: string; keywords: string[] }[]> {
 
+    // OpenAI Files API has a 50MB limit
+    const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50 MB
+    if (pdfBuffer.length > MAX_FILE_SIZE) {
+        console.warn(`      ⚠️  PDF too large for GPT-4o Vision (${(pdfBuffer.length / 1024 / 1024).toFixed(1)}MB > 50MB limit). Using filename-based fallback.`);
+        return [{
+            question: `What technical content is shown in ${fileName}?`,
+            answer: `Large technical document: ${fileName} (${(pdfBuffer.length / 1024 / 1024).toFixed(1)}MB). Contains diagrams or schematics too large for automated vision analysis. Manual review recommended.`,
+            keywords: [fileName.replace('.pdf', '').toLowerCase().replace(/[^a-z0-9]/g, ' ').trim()],
+            category: 'General Knowledge',
+        }];
+    }
+
     const prompt = `You are a technical documentation analyst for HMS industrial control panels and security systems (by Seple/SWATCH 360).
 
 Analyze this PDF document "${fileName}" which contains technical diagrams, schematics, or product images.
@@ -364,6 +376,7 @@ Options:
         apiKey: openaiKey,
         maxRetries: 2,
         timeout: 60_000,
+        fetch: customFetch as unknown as typeof globalThis.fetch,
     });
 
     // eslint-disable-next-line @typescript-eslint/no-require-imports

@@ -11,6 +11,8 @@
  */
 
 import OpenAI from 'openai';
+import dns from 'node:dns';
+import { Agent, fetch as undiciFetch } from 'undici';
 
 export const EMBEDDING_MODEL = 'text-embedding-3-large';
 export const EMBEDDING_DIMENSIONS = 1536;
@@ -21,6 +23,15 @@ const EMBEDDING_MAX_RETRIES = 4;
 
 let openAIClient: OpenAI | null = null;
 const embeddingCache = new Map<string, number[]>();
+
+// ── IPv4-only fetch (Windows IPv6 workaround) ────────────────
+dns.setDefaultResultOrder('ipv4first');
+const ipv4Agent = new Agent({ connect: { family: 4 } });
+const ipv4Fetch = (input: unknown, init?: unknown) =>
+    undiciFetch(
+        input as Parameters<typeof undiciFetch>[0],
+        { ...(init as Parameters<typeof undiciFetch>[1]), dispatcher: ipv4Agent } as Parameters<typeof undiciFetch>[1],
+    ) as unknown as Promise<Response>;
 
 function getOpenAIClient(): OpenAI {
     if (!openAIClient) {
@@ -33,6 +44,7 @@ function getOpenAIClient(): OpenAI {
             apiKey,
             maxRetries: 0,
             timeout: 30_000,
+            fetch: ipv4Fetch as unknown as typeof globalThis.fetch,
         });
     }
 
