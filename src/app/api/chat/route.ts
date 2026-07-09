@@ -8,13 +8,14 @@ import { storeCache } from '@/lib/cache';
 import { getLLM } from '@/lib/llm';
 import { type ConversationMessage } from '@/lib/conversation-retrieval';
 import type { UserIntent } from '@/lib/intentClassifier';
-import { checkRateLimit, getClientIdentifier, rateLimitHeaders, RATE_LIMITS } from '@/lib/rate-limiter';
+import { checkRateLimit, checkAndIncrementGuestQuota, getClientIdentifier, rateLimitHeaders, RATE_LIMITS } from '@/lib/rate-limiter';
 import { formatResponse } from '@/lib/responseFormatter';
 import { recordMetric, type PipelineMetric, type StageTimings } from '@/lib/pipelineMetrics';
 import { storeSemanticCache } from '@/lib/semanticCache';
 import { recordChatLog, recordFailure, type CacheSource } from '@/lib/logger';
 import { createSseHeaders, createSseResponse } from '@/lib/sse';
 import { raceWithTimeout, runPipeline, type PipelineResult } from '@/lib/pipeline';
+import { sanitizeInput, hasKBDisclosureAttempt } from '@/lib/sanitize';
 
 dns.setDefaultResultOrder('ipv4first');
 
@@ -258,13 +259,50 @@ export async function POST(req: Request) {
         const searchMode = body.searchMode ?? 'default';
         const reqConversationId = body.conversationId ?? null;
         const latestMessageRecord = messages[messages.length - 1];
-        const latestMessage = typeof latestMessageRecord?.content === 'string'
+        const rawContent = typeof latestMessageRecord?.content === 'string'
             ? latestMessageRecord.content.trim()
             : '';
+
+        // Strip null bytes to prevent smuggling
+        const strippedContent = rawContent.replace(/\0/g, '');
+
+        // Sanitize input: strip XSS payloads and injection patterns
+        const latestMessage = sanitizeInput(strippedContent);
+
+        // Block knowledge base metadata disclosure attempts server-side
+        if (hasKBDisclosureAttempt(strippedContent)) {
+            return new Response(
+                JSON.stringify({
+                    answer: 'I can only help with HMS panel technical support questions — troubleshooting, configuration, and installation. How can I assist you?',
+                }),
+                {
+                    status: 200,
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'x-request-id': requestId,
+                    },
+                },
+            );
+        }
 
         if (!latestMessage) {
             return new Response(
                 JSON.stringify({ error: 'Invalid messages format' }),
+                {
+                    status: 400,
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'x-request-id': requestId,
+                    },
+                },
+            );
+        }
+
+        // Enforce maximum message length to prevent resource exhaustion
+        const MAX_MESSAGE_LENGTH = 2000;
+        if (latestMessage.length > MAX_MESSAGE_LENGTH) {
+            return new Response(
+                JSON.stringify({ error: `Message exceeds maximum allowed length of ${MAX_MESSAGE_LENGTH} characters.` }),
                 {
                     status: 400,
                     headers: {
@@ -389,6 +427,26 @@ export async function POST(req: Request) {
                     },
                 },
             );
+        }
+
+        // Server-side guest quota enforcement — prevents localStorage bypass
+        if (!authUserId) {
+            const guestQuota = await checkAndIncrementGuestQuota(clientIp);
+            if (!guestQuota.allowed) {
+                return new Response(
+                    JSON.stringify({
+                        error: 'Guest quota exceeded. Please sign in to continue.',
+                        guestQuotaExceeded: true,
+                    }),
+                    {
+                        status: 403,
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'x-request-id': requestId,
+                        },
+                    },
+                );
+            }
         }
 
         if (authUserId && activeConversationId) {

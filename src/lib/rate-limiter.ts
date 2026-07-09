@@ -264,3 +264,106 @@ export function rateLimitHeaders(result: RateLimitResult): Record<string, string
 
     return headers;
 }
+
+// ─── Server-Side Guest Quota ────────────────────────────────────────
+//
+// Tracks total guest questions per IP, enforced on the server so that
+// localStorage tampering cannot bypass the limit.
+
+const GUEST_QUOTA_MAX = 3;
+const GUEST_QUOTA_PREFIX = 'gq:';
+// TTL for the quota key: 24 hours (allows natural reset)
+const GUEST_QUOTA_TTL_SECONDS = 86_400;
+
+// In-memory fallback store for environments without Redis
+const guestQuotaMemory = new Map<string, number>();
+
+export interface GuestQuotaResult {
+    allowed: boolean;
+    used: number;
+    max: number;
+}
+
+/**
+ * Check whether a guest IP has remaining quota and, if allowed,
+ * atomically increment the counter.
+ */
+export async function checkAndIncrementGuestQuota(
+    identifier: string,
+): Promise<GuestQuotaResult> {
+    const redis = getRedis();
+
+    if (redis) {
+        try {
+            return await checkRedisGuestQuota(identifier, redis);
+        } catch (err) {
+            console.warn('[guest-quota] Redis error, falling back to memory:', (err as Error).message);
+        }
+    }
+
+    return checkMemoryGuestQuota(identifier);
+}
+
+/**
+ * Read the current guest quota count without incrementing.
+ */
+export async function getGuestQuotaCount(
+    identifier: string,
+): Promise<number> {
+    const redis = getRedis();
+
+    if (redis) {
+        try {
+            const val = await redis.get<number>(GUEST_QUOTA_PREFIX + identifier);
+            return val ?? 0;
+        } catch {
+            // fall through to memory
+        }
+    }
+
+    return guestQuotaMemory.get(identifier) ?? 0;
+}
+
+async function checkRedisGuestQuota(
+    identifier: string,
+    redis: Redis,
+): Promise<GuestQuotaResult> {
+    const key = GUEST_QUOTA_PREFIX + identifier;
+
+    // Read current count first — only increment if under limit
+    const current = (await redis.get<number>(key)) ?? 0;
+
+    if (current >= GUEST_QUOTA_MAX) {
+        return { allowed: false, used: current, max: GUEST_QUOTA_MAX };
+    }
+
+    const newCount = await redis.incr(key);
+
+    // Set TTL on the first increment so keys expire automatically
+    if (newCount === 1) {
+        await redis.expire(key, GUEST_QUOTA_TTL_SECONDS);
+    }
+
+    return {
+        allowed: newCount <= GUEST_QUOTA_MAX,
+        used: newCount,
+        max: GUEST_QUOTA_MAX,
+    };
+}
+
+function checkMemoryGuestQuota(identifier: string): GuestQuotaResult {
+    const current = guestQuotaMemory.get(identifier) ?? 0;
+
+    if (current >= GUEST_QUOTA_MAX) {
+        return { allowed: false, used: current, max: GUEST_QUOTA_MAX };
+    }
+
+    const newCount = current + 1;
+    guestQuotaMemory.set(identifier, newCount);
+
+    return {
+        allowed: newCount <= GUEST_QUOTA_MAX,
+        used: newCount,
+        max: GUEST_QUOTA_MAX,
+    };
+}

@@ -94,9 +94,17 @@ function isRetryableEmbeddingError(error: unknown): boolean {
         || (status !== null && status >= 500)
         || code === 'rate_limit_exceeded'
         || code === 'timeout'
+        || code === 'ECONNRESET'
+        || code === 'ECONNREFUSED'
+        || code === 'ENOTFOUND'
         || message.includes('rate limit')
         || message.includes('timeout')
-        || message.includes('temporarily unavailable');
+        || message.includes('temporarily unavailable')
+        || message.includes('connection error')
+        || message.includes('econnreset')
+        || message.includes('econnrefused')
+        || message.includes('fetch failed')
+        || message.includes('socket hang up');
 }
 
 function getRetryDelayMs(attempt: number): number {

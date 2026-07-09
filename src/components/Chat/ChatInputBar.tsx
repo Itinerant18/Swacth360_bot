@@ -10,9 +10,9 @@ type ChatInputBarProps = {
     showGuestGate: boolean;
     onSignIn: () => void;
     input: string;
-    inputRef: RefObject<HTMLInputElement | null>;
-    onInputChange: (event: ChangeEvent<HTMLInputElement>) => void;
-    onKeyDown: (event: KeyboardEvent<HTMLInputElement>) => void;
+    inputRef: RefObject<HTMLTextAreaElement | HTMLInputElement | null>;
+    onInputChange: (event: ChangeEvent<HTMLTextAreaElement | HTMLInputElement>) => void;
+    onKeyDown: (event: KeyboardEvent<HTMLTextAreaElement | HTMLInputElement>) => void;
     onSubmit: (event?: FormEvent<HTMLFormElement>) => void;
     placeholder: string;
     footerText: string;
@@ -160,10 +160,11 @@ export default function ChatInputBar({
                 className="relative flex items-center"
             >
                 <label htmlFor="chat-input" className="sr-only">Ask a question</label>
-                <input
-                    ref={inputRef}
+                <textarea
+                    ref={inputRef as RefObject<HTMLTextAreaElement | null>}
                     id="chat-input"
-                    className="skeuo-input w-full p-3 sm:p-4 pl-4 sm:pl-5 pr-24 sm:pr-28 text-sm sm:text-[15px]"
+                    className="skeuo-input w-full p-3 sm:p-4 pl-4 sm:pl-5 pr-24 sm:pr-28 text-sm sm:text-[15px] resize-none overflow-hidden min-h-[44px] max-h-[120px]"
+                    rows={1}
                     value={input}
                     placeholder={placeholder}
                     onChange={onInputChange}
@@ -199,7 +200,7 @@ export default function ChatInputBar({
             </form>
             <div className="flex items-center justify-between mt-2">
                 <p className="text-[10px] sm:text-[11px] text-[#A8A29E]">
-                    {footerText} <span className="hidden sm:inline">· Ctrl+Enter to send</span>
+                    {footerText} <span className="hidden sm:inline">· Enter to send · Shift+Enter for new line</span>
                 </p>
                 {!isAuthenticated && (
                     <span className="text-[10px] text-[#A8A29E]">

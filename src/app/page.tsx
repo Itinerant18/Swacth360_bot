@@ -114,7 +114,7 @@ export default function Chat() {
     const [userName, setUserName] = useState('');
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const chatContainerRef = useRef<HTMLDivElement>(null);
-    const inputRef = useRef<HTMLInputElement>(null);
+    const inputRef = useRef<HTMLTextAreaElement | HTMLInputElement>(null);
     const historyAbortControllerRef = useRef<AbortController | null>(null);
     const historyRequestIdRef = useRef(0);
     const scrollBehaviorRef = useRef<ScrollBehavior>('smooth');
@@ -275,7 +275,21 @@ export default function Chat() {
     useEffect(() => {
         if (!isAuthenticated) {
             const stored = localStorage.getItem('guest_question_count');
-            const count = stored ? parseInt(stored, 10) : 0;
+            const storedHash = localStorage.getItem('guest_question_count_hash');
+            const parsed = stored ? Number(stored) : 0;
+            // Treat NaN, Infinity, negative, non-integer, or tampered hash as quota-exceeded
+            // This prevents console manipulation (setting to negative or non-numeric values)
+            const expectedHash = stored !== null ? btoa(`sai_gq_${Math.floor(parsed)}_${new Date().toDateString()}`) : null;
+            const isTampered = stored !== null && (isNaN(parsed) || !Number.isFinite(parsed) || parsed < 0 || parsed !== Math.floor(parsed) || storedHash !== expectedHash);
+            if (isTampered) {
+                // Tampered value detected — lock out as if quota exceeded
+                localStorage.setItem('guest_question_count', '3');
+                localStorage.setItem('guest_question_count_hash', btoa(`sai_gq_3_${new Date().toDateString()}`));
+                setGuestQuestionCount(3);
+                setShowGuestGate(true);
+                return;
+            }
+            const count = Number.isFinite(parsed) && parsed >= 0 ? Math.floor(parsed) : 0;
             setGuestQuestionCount(count);
             if (count >= 3) {
                 setShowGuestGate(true);
@@ -344,6 +358,9 @@ export default function Chat() {
     }, [isLoading, isLoadingHistory, isSessionLoading, activeConversationId]);
 
     const handleSignOut = async () => {
+        const confirmed = window.confirm('Are you sure you want to sign out? Any unsaved session will be lost.');
+        if (!confirmed) return;
+
         await signOut();
         window.location.href = '/login';
     };
@@ -351,13 +368,19 @@ export default function Chat() {
     const incrementGuestCount = useCallback(() => {
         const newCount = guestQuestionCount + 1;
         setGuestQuestionCount(newCount);
-        localStorage.setItem('guest_question_count', String(newCount));
+        try {
+            localStorage.setItem('guest_question_count', String(newCount));
+            // Store a verification hash to detect manual edits
+            localStorage.setItem('guest_question_count_hash', btoa(`sai_gq_${newCount}_${new Date().toDateString()}`));
+        } catch {
+            // Storage full or blocked — server-side enforcement still protects us
+        }
         if (newCount >= 3) {
             setShowGuestGate(true);
         }
     }, [guestQuestionCount]);
 
-    const handleInputChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    const handleInputChange = useCallback((event: React.ChangeEvent<HTMLTextAreaElement | HTMLInputElement>) => {
         setInput(event.target.value);
     }, []);
 
@@ -558,10 +581,16 @@ export default function Chat() {
         const index = messages.findIndex((message) => message.id === editingMessageId);
         if (index === -1) return;
 
+        const editedContent = editInput.trim();
         setEditingMessageId(null);
         setEditInput('');
-        setMessages(messages.slice(0, index));
-        void sendMessage(editInput.trim());
+        // Keep the same message (with updated content) and remove all subsequent messages
+        // This replaces-in-place rather than creating a duplicate new message
+        const updatedMessages = messages.slice(0, index + 1);
+        updatedMessages[index] = { ...updatedMessages[index], content: editedContent };
+        setMessages(updatedMessages);
+        // Re-send with the edited content to get a new AI response
+        void sendMessage(editedContent);
     }, [editingMessageId, editInput, messages, sendMessage, setMessages]);
 
     const handleFeedback = useCallback(async (messageId: string, rating: number, isRelevant: boolean) => {
@@ -621,8 +650,9 @@ export default function Chat() {
         }
     }, []);
 
-    const handleKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
-        if (event.key === 'Enter' && event.ctrlKey && input.trim() && !isLoading && !isLoadingHistory) {
+    const handleKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement | HTMLInputElement>) => {
+        if (event.key === 'Enter' && !event.shiftKey && input.trim() && !isLoading && !isLoadingHistory) {
+            // Enter sends the message, Shift+Enter adds a new line
             event.preventDefault();
             handleSubmit();
         }

@@ -5,7 +5,7 @@
  *
  * Two pipelines:
  *   1. Text PDFs   → pdf-parse → chunking → OpenAI text-embedding-3-large → source='pdf'
- *   2. Image PDFs  → Gemini 2.0 Flash Vision → describe diagrams → OpenAI embedding → source='pdf_image'
+ *   2. Image PDFs  → GPT-4o Vision → describe diagrams → OpenAI embedding → source='pdf_image'
  *
  * Usage:
  *   npx tsx scripts/seed-pdfs.ts                   # process all PDFs
@@ -19,7 +19,7 @@ import { loadEnvConfig } from '@next/env';
 import dns from 'node:dns';
 import { Agent, fetch as undiciFetch } from 'undici';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import OpenAI from 'openai';
 import * as fs from 'fs';
 import * as path from 'path';
 import {
@@ -57,7 +57,7 @@ const CHUNK_OVERLAP = 150;
 const IMAGE_TEXT_THRESHOLD = 100; // PDFs with less text than this → image pipeline
 const BATCH_EMBED_SIZE = EMBEDDING_BATCH_SIZE;
 const DELAY_BETWEEN_PDFS = 500;  // ms
-const GEMINI_MODEL = 'gemini-2.0-flash';
+const GPT_VISION_MODEL = 'gpt-4o';
 
 const VALID_CATEGORIES = [
     'General Knowledge', 'Installation & Commissioning',
@@ -164,16 +164,17 @@ function buildEmbeddingText(
 }
 
 // ═══════════════════════════════════════════════════════════════
-// Gemini Vision — extract content from image-heavy PDFs
+// GPT-4o Vision — extract content from image-heavy PDFs
+//
+// Uses OpenAI's File Upload API to send the PDF directly to GPT-4o.
+// GPT-4o natively understands PDF content including diagrams, tables,
+// and schematics — no client-side rendering required.
 // ═══════════════════════════════════════════════════════════════
-async function extractWithGeminiVision(
+async function extractWithGPTVision(
     pdfBuffer: Buffer,
     fileName: string,
-    genAI: GoogleGenerativeAI,
+    openaiClient: OpenAI,
 ): Promise<{ question: string; answer: string; category: string; keywords: string[] }[]> {
-    const model = genAI.getGenerativeModel({ model: GEMINI_MODEL });
-
-    const base64Data = pdfBuffer.toString('base64');
 
     const prompt = `You are a technical documentation analyst for HMS industrial control panels and security systems (by Seple/SWATCH 360).
 
@@ -192,17 +193,34 @@ Respond with ONLY a valid JSON array, no markdown:
 If you find multiple diagrams, create one entry per diagram. If the PDF has a single main diagram, return an array with one entry. Minimum 1, maximum 10 entries.`;
 
     try {
-        const result = await model.generateContent([
-            {
-                inlineData: {
-                    mimeType: 'application/pdf',
-                    data: base64Data,
-                },
-            },
-            { text: prompt },
-        ]);
+        // Upload the PDF file to OpenAI's Files API
+        const file = await openaiClient.files.create({
+            file: new File([new Uint8Array(pdfBuffer)], fileName, { type: 'application/pdf' }),
+            purpose: 'assistants',
+        });
 
-        const responseText = result.response.text();
+        const response = await openaiClient.chat.completions.create({
+            model: GPT_VISION_MODEL,
+            messages: [
+                {
+                    role: 'user',
+                    content: [
+                        {
+                            type: 'file',
+                            file: { file_id: file.id },
+                        } as unknown as OpenAI.Chat.Completions.ChatCompletionContentPart,
+                        { type: 'text', text: prompt },
+                    ],
+                },
+            ],
+            max_tokens: 4096,
+            temperature: 0.2,
+        });
+
+        // Clean up the uploaded file
+        try { await openaiClient.files.delete(file.id); } catch { /* best-effort cleanup */ }
+
+        const responseText = response.choices[0]?.message?.content ?? '[]';
         const cleaned = responseText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
         const parsed = JSON.parse(cleaned);
 
@@ -214,7 +232,7 @@ If you find multiple diagrams, create one entry per diagram. If the PDF has a si
             category: VALID_CATEGORIES.includes(entry.category as string) ? (entry.category as string) : 'General Knowledge',
         }));
     } catch (err: unknown) {
-        console.error(`      ⚠️  Gemini Vision failed: ${(err as Error).message}`);
+        console.error(`      ⚠️  GPT-4o Vision failed: ${(err as Error).message}`);
         return [{
             question: `What technical content is shown in ${fileName}?`,
             answer: `Technical diagram/schematic from ${fileName}. Visual content could not be fully analyzed.`,
@@ -313,7 +331,6 @@ Options:
 
     if (!supabaseUrl || !supabaseKey) throw new Error('❌ Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY');
     if (!openaiKey) throw new Error('❌ Missing OPENAI_API_KEY');
-    if (!geminiKey) throw new Error('❌ Missing GEMINI_API_KEY');
 
     // ── Scan PDF directory ─────────────────────────────────────
     const allFiles = fs.readdirSync(PDF_DIR)
@@ -325,7 +342,7 @@ Options:
     console.log('\n' + '═'.repeat(65));
     console.log('📄 SAI — Batch PDF Seeder');
     console.log(`   Embedding:  ${EMBEDDING_MODEL} (${EMBEDDING_DIMENSIONS} dims)`);
-    console.log('   Vision:     Gemini 2.0 Flash (for image-heavy PDFs)');
+    console.log('   Vision:     GPT-4o (for image-heavy PDFs)');
     console.log('   Target:     Supabase hms_knowledge');
     console.log('═'.repeat(65));
     console.log(`📁 PDF Dir:    ${PDF_DIR}`);
@@ -343,7 +360,11 @@ Options:
     });
     await warnOrClearExistingEmbeddings(supabase);
 
-    const genAI = new GoogleGenerativeAI(geminiKey);
+    const openaiVisionClient = new OpenAI({
+        apiKey: openaiKey,
+        maxRetries: 2,
+        timeout: 60_000,
+    });
 
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { PDFParse, VerbosityLevel } = require('pdf-parse');
@@ -397,7 +418,7 @@ Options:
 
             // ── Step 2: Classify pipeline ──────────────────────
             const isImagePdf = textLength < IMAGE_TEXT_THRESHOLD;
-            console.log(`│    Pipeline: ${isImagePdf ? '🖼️  IMAGE (Gemini Vision)' : '📝 TEXT (pdf-parse + OpenAI)'}`);
+            console.log(`│    Pipeline: ${isImagePdf ? '🖼️  IMAGE (GPT-4o Vision)' : '📝 TEXT (pdf-parse + OpenAI)'}`);
 
             if (dryRun) {
                 if (isImagePdf) imagePdfCount++;
@@ -495,10 +516,10 @@ Options:
             // ════════════════════════════════════════════════════
             else {
                 imagePdfCount++;
-                console.log(`│    🤖 Sending to Gemini Vision…`);
+                console.log(`│    🤖 Sending to GPT-4o Vision…`);
 
-                const qaEntries = await extractWithGeminiVision(pdfBuffer, fileName, genAI);
-                console.log(`│    📊 Gemini returned ${qaEntries.length} Q&A entries`);
+                const qaEntries = await extractWithGPTVision(pdfBuffer, fileName, openaiVisionClient);
+                console.log(`│    📊 GPT-4o returned ${qaEntries.length} Q&A entries`);
 
                 let pdfSuccess = 0;
                 let pdfErrors = 0;

@@ -50,6 +50,7 @@
   },
   "devDependencies": {
     "@netlify/plugin-nextjs": "^5.15.8",
+    "@playwright/test": "^1.61.1",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/pdf-parse": "^1.1.5",
@@ -60,5 +61,22 @@
     "tailwindcss": "^4",
     "tsx": "^4.7.1",
     "typescript": "^5"
-  }
+  },
+  "description": "<div align=\"center\">",
+  "main": "index.js",
+  "directories": {
+    "test": "tests"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Itinerant18/Swacth360_bot.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/Itinerant18/Swacth360_bot/issues"
+  },
+  "homepage": "https://github.com/Itinerant18/Swacth360_bot#readme"
 }
