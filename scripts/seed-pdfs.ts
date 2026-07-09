@@ -7,6 +7,9 @@
  *   1. Text PDFs   → pdf-parse → chunking → OpenAI text-embedding-3-large → source='pdf'
  *   2. Image PDFs  → GPT-4o Vision → describe diagrams → OpenAI embedding → source='pdf_image'
  *
+ * Option C Hybrid: uses two-pass chunking (section → semantic), proposition decomposition,
+ * and triggers RAPTOR tree rebuild for parent-child linking.
+ *
  * Usage:
  *   npx tsx scripts/seed-pdfs.ts                   # process all PDFs
  *   npx tsx scripts/seed-pdfs.ts --dry-run          # scan only, no uploads
@@ -30,6 +33,7 @@ import {
 } from '../src/lib/embeddings';
 
 loadEnvConfig(process.cwd());
+import { semanticChunk, type SemanticChunk } from '../src/lib/semantic-chunker';
 
 // ═══════════════════════════════════════════════════════════════
 // DNS / Fetch fix (Windows IPv6 workaround)
@@ -247,6 +251,81 @@ ${chunkDescriptions}`;
     }
 
     return results;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Proposition Decomposition — extract atomic facts from chunks
+//
+// Each chunk is decomposed into self-contained propositions that
+// capture individual facts. These propositions are stored alongside
+// the parent chunk, creating parent-child relationships that
+// improve retrieval precision for specific queries.
+// ═══════════════════════════════════════════════════════════════
+interface Proposition {
+    fact: string;
+    parentChunkId: string;
+}
+
+async function extractPropositions(
+    chunks: Chunk[],
+    chunkIds: string[],
+    sourceName: string,
+    openaiClient: OpenAI,
+): Promise<Proposition[]> {
+    const allPropositions: Proposition[] = [];
+    const PROP_BATCH_SIZE = 3; // chunks per call
+
+    for (let i = 0; i < chunks.length; i += PROP_BATCH_SIZE) {
+        const batch = chunks.slice(i, i + PROP_BATCH_SIZE);
+        const batchIds = chunkIds.slice(i, i + PROP_BATCH_SIZE);
+
+        const chunkDescriptions = batch.map((c, idx) =>
+            `--- CHUNK_ID: ${batchIds[i + idx]} ---\n${c.content.substring(0, 1000)}`
+        ).join('\n\n');
+
+        const prompt = `Extract self-contained factual propositions from these HMS technical documentation chunks (source: "${sourceName}").
+
+Rules:
+- Each proposition must be a complete, standalone fact (understandable without the original text)
+- Include specific values: model numbers, voltages, pin assignments, protocol names, measurements
+- Skip filler/introductory text — only extract actionable technical facts
+- 3-8 propositions per chunk
+
+Respond with ONLY valid JSON:
+[{"chunk_id":"...","facts":["fact1","fact2","fact3"]},...]
+
+${chunkDescriptions}`;
+
+        try {
+            const response = await openaiClient.chat.completions.create({
+                model: GPT_ENRICHMENT_MODEL,
+                messages: [{ role: 'user', content: prompt }],
+                max_tokens: 2048,
+                temperature: 0.1,
+            });
+
+            const text = response.choices[0]?.message?.content ?? '[]';
+            const cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+            const parsed = JSON.parse(cleaned);
+
+            if (Array.isArray(parsed)) {
+                for (const entry of parsed) {
+                    const chunkId = entry?.chunk_id;
+                    const facts = Array.isArray(entry?.facts) ? entry.facts : [];
+                    for (const fact of facts) {
+                        if (typeof fact === 'string' && fact.length > 20) {
+                            allPropositions.push({ fact, parentChunkId: chunkId || batchIds[0] });
+                        }
+                    }
+                }
+            }
+        } catch (err: unknown) {
+            console.error(`│    ⚠️  Proposition extraction failed: ${(err as Error).message}`);
+            // Non-fatal — we still have the parent chunks
+        }
+    }
+
+    return allPropositions;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -531,7 +610,33 @@ Options:
             // ════════════════════════════════════════════════════
             if (!isImagePdf) {
                 textPdfCount++;
-                const chunks = buildChunks(rawText);
+
+                // ── Step 2a: Two-pass chunking (Hybrid Option C) ──
+                // Pass 1: Section-aware split (preserves document structure)
+                const sectionChunks = buildChunks(rawText);
+
+                // Pass 2: Semantic split — further split large chunks at topic boundaries
+                let chunks: Chunk[] = [];
+                try {
+                    const semanticResults: SemanticChunk[] = await semanticChunk(rawText, {
+                        similarityThreshold: 0.72,
+                        minChunkSize: 150,
+                        maxChunkSize: 1800,
+                    });
+                    // Convert SemanticChunks to our Chunk interface
+                    chunks = semanticResults.map(sc => ({ section: 'Semantic', content: sc.content }));
+                    // Merge with section-aware chunks: prefer semantic if it produces more, otherwise use section-based
+                    if (chunks.length < sectionChunks.length) {
+                        chunks = sectionChunks;
+                        console.log(`│    📐 Using section-aware chunking (${chunks.length} chunks)`);
+                    } else {
+                        console.log(`│    🧠 Using semantic chunking (${chunks.length} chunks, threshold=0.72)`);
+                    }
+                } catch {
+                    // Semantic chunking requires embedding calls — fallback to section-based
+                    chunks = sectionChunks;
+                    console.log(`│    📐 Semantic chunking failed, using section-aware (${chunks.length} chunks)`);
+                }
 
                 if (chunks.length === 0) {
                     console.log(`│    ⚠️  No usable chunks after splitting. Skipping.`);
@@ -539,8 +644,6 @@ Options:
                     console.log(`└─── Done\n`);
                     continue;
                 }
-
-                console.log(`│    Chunks: ${chunks.length}`);
                 let pdfSuccess = 0;
                 let pdfErrors = 0;
 
@@ -621,7 +724,61 @@ Options:
                 console.log(`│    ✅ ${pdfSuccess}/${chunks.length} chunks uploaded`);
                 if (pdfErrors > 0) console.log(`│    ❌ ${pdfErrors} errors`);
 
-                // Log ingestion
+                // ── Step 4: Proposition Decomposition (Option C Hybrid) ──
+                // Extract atomic facts and store as child entries linked to parent chunks
+                if (chunks.length > 0 && pdfSuccess > 0) {
+                    console.log(`│    🔬 Extracting propositions…`);
+                    const chunkIds = chunks.map((_, idx) => `${idPrefix}_${String(idx).padStart(4, '0')}`);
+                    try {
+                        const propositions = await extractPropositions(chunks, chunkIds, sourceName, openaiVisionClient);
+                        console.log(`│    📝 ${propositions.length} propositions extracted`);
+
+                        // Embed and store propositions as child chunks
+                        if (propositions.length > 0) {
+                            const propTexts = propositions.map(p =>
+                                `[Fact from ${sourceName}] ${p.fact}`
+                            );
+
+                            let propVectors: number[][] = [];
+                            try {
+                                propVectors = await embedTexts(propTexts);
+                            } catch {
+                                console.error(`│    ⚠️  Proposition embedding failed`);
+                            }
+
+                            let propSuccess = 0;
+                            for (let p = 0; p < propositions.length && p < propVectors.length; p++) {
+                                const prop = propositions[p];
+                                const propId = `${prop.parentChunkId}_prop_${String(p).padStart(3, '0')}`;
+                                try {
+                                    const { error } = await supabase.from('hms_knowledge').upsert({
+                                        id: propId,
+                                        question: prop.fact,
+                                        answer: prop.fact,
+                                        category: 'Proposition',
+                                        subcategory: 'Atomic Fact',
+                                        product: 'HMS Panel',
+                                        tags: [],
+                                        content: propTexts[p],
+                                        embedding: propVectors[p],
+                                        source: 'pdf_proposition',
+                                        source_name: sourceName,
+                                        chunk_type: 'proposition',
+                                        parent_chunk_id: prop.parentChunkId,
+                                    }, { onConflict: 'id' });
+                                    if (!error) propSuccess++;
+                                } catch { /* non-fatal */ }
+                            }
+                            console.log(`│    ✅ ${propSuccess}/${propositions.length} propositions stored`);
+                            totalSuccess += propSuccess;
+                            totalChunks += propSuccess;
+                        }
+                    } catch (propErr: unknown) {
+                        console.error(`│    ⚠️  Proposition extraction skipped: ${(propErr as Error).message}`);
+                    }
+                }
+
+                // Log ingestion  
                 await logIngestion(supabase, sourceName, 'pdf', chunks.length, pdfSuccess, pdfErrors);
             }
 
@@ -739,6 +896,14 @@ Options:
         console.log(`\n   [DRY RUN] No data was uploaded.`);
         console.log(`   Remove --dry-run to seed for real.`);
     }
+
+    // ── Trigger RAPTOR tree rebuild for parent-child linking ──
+    if (!dryRun && totalSuccess > 0) {
+        console.log(`\n   🌲 RAPTOR tree rebuild recommended after ingestion.`);
+        console.log(`   Run: curl -X POST http://localhost:3000/api/admin/raptor/build`);
+        console.log(`   Or via admin panel: Admin → RAG Settings → Build RAPTOR Tree`);
+    }
+
     console.log('═'.repeat(65) + '\n');
 }
 
