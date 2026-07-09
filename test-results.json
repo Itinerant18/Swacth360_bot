@@ -1,0 +1,478 @@
+{
+  "config": {
+    "argv": [
+      "C:\\Program Files\\nodejs\\node.exe",
+      "C:\\workspace\\tech-support-ai\\node_modules\\@playwright\\test\\cli.js",
+      "test",
+      "-g",
+      "Guest"
+    ],
+    "configFile": "C:\\workspace\\tech-support-ai\\playwright.config.js",
+    "rootDir": "C:/workspace/tech-support-ai/tests",
+    "failOnFlakyTests": false,
+    "forbidOnly": false,
+    "fullyParallel": false,
+    "globalSetup": null,
+    "globalTeardown": null,
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {
+      "actualWorkers": 1
+    },
+    "preserveOutput": "always",
+    "projects": [
+      {
+        "outputDir": "C:/workspace/tech-support-ai/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "security-tests",
+        "name": "security-tests",
+        "testDir": "C:/workspace/tech-support-ai/tests",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 60000
+      }
+    ],
+    "quiet": false,
+    "reporter": [
+      [
+        "html",
+        {
+          "open": "never"
+        }
+      ],
+      [
+        "list",
+        null
+      ],
+      [
+        "json",
+        {
+          "outputFile": "test-results.json"
+        }
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "shard": null,
+    "tags": [],
+    "updateSnapshots": "missing",
+    "updateSourceMethod": "patch",
+    "version": "1.61.1",
+    "workers": 1,
+    "webServer": null
+  },
+  "suites": [
+    {
+      "title": "sai-security-tests.spec.js",
+      "file": "sai-security-tests.spec.js",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "1. Guest Quota Bypass — Aggressive",
+          "file": "sai-security-tests.spec.js",
+          "line": 63,
+          "column": 6,
+          "specs": [
+            {
+              "title": "1a. Set guest_question_count to negative value",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "security-tests",
+                  "projectName": "security-tests",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 29014,
+                      "errors": [],
+                      "stdout": [
+                        {
+                          "text": "[1a] Initial guest_question_count: \u001b[1mnull\u001b[22m\n"
+                        },
+                        {
+                          "text": "[1a] After tamper: -9999\n"
+                        },
+                        {
+                          "text": "[1a] Messages sent after negative count: 5\n"
+                        }
+                      ],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-07-09T06:10:33.599Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "c2d9b2f94716c7cad8d8-486f1e5e98a711881c00",
+              "file": "sai-security-tests.spec.js",
+              "line": 64,
+              "column": 3
+            },
+            {
+              "title": "1b. Set guest_question_count to NaN",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "security-tests",
+                  "projectName": "security-tests",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 33435,
+                      "errors": [],
+                      "stdout": [
+                        {
+                          "text": "[1b] After NaN set: NaN\n"
+                        },
+                        {
+                          "text": "[1b] Messages sent with NaN count: 5\n"
+                        }
+                      ],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-07-09T06:11:02.876Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "c2d9b2f94716c7cad8d8-b4d02fca48a7c3abe9c2",
+              "file": "sai-security-tests.spec.js",
+              "line": 94,
+              "column": 3
+            },
+            {
+              "title": "1c. Set guest_question_count to Infinity string",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "security-tests",
+                  "projectName": "security-tests",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 37685,
+                      "errors": [],
+                      "stdout": [
+                        {
+                          "text": "[1c] Messages sent with Infinity: 5\n"
+                        }
+                      ],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-07-09T06:11:36.325Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "c2d9b2f94716c7cad8d8-46c1f9cc38933c30c617",
+              "file": "sai-security-tests.spec.js",
+              "line": 112,
+              "column": 3
+            },
+            {
+              "title": "1d. Set guest_question_count to very large number",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "security-tests",
+                  "projectName": "security-tests",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 12995,
+                      "errors": [],
+                      "stdout": [
+                        {
+                          "text": "[1d] Messages sent with large count: 0\n"
+                        }
+                      ],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-07-09T06:12:14.020Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "c2d9b2f94716c7cad8d8-f02281810383edba0b5b",
+              "file": "sai-security-tests.spec.js",
+              "line": 127,
+              "column": 3
+            },
+            {
+              "title": "1e. Set guest_question_count to string value",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "security-tests",
+                  "projectName": "security-tests",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 30761,
+                      "errors": [],
+                      "stdout": [
+                        {
+                          "text": "[1e] After string set: malicious_string\n"
+                        },
+                        {
+                          "text": "[1e] Messages sent with string count: 5\n"
+                        }
+                      ],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-07-09T06:12:27.026Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "c2d9b2f94716c7cad8d8-082187f6a2a01e8e06a8",
+              "file": "sai-security-tests.spec.js",
+              "line": 142,
+              "column": 3
+            },
+            {
+              "title": "1f. Delete guest_question_count entirely",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "security-tests",
+                  "projectName": "security-tests",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 26484,
+                      "errors": [],
+                      "stdout": [
+                        {
+                          "text": "[1f] After deletion: \u001b[1mnull\u001b[22m\n"
+                        },
+                        {
+                          "text": "[1f] Messages sent after key deletion: 3\n"
+                        }
+                      ],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-07-09T06:12:57.798Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "c2d9b2f94716c7cad8d8-10d78ec06380e71bcf34",
+              "file": "sai-security-tests.spec.js",
+              "line": 160,
+              "column": 3
+            },
+            {
+              "title": "1g. Rapid quota reset — delete + resend loop",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "security-tests",
+                  "projectName": "security-tests",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 40276,
+                      "errors": [],
+                      "stdout": [
+                        {
+                          "text": "[1g] Total messages sent across 5 reset cycles: 6\n"
+                        }
+                      ],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-07-09T06:13:24.291Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "c2d9b2f94716c7cad8d8-e36b0faae26f12aff752",
+              "file": "sai-security-tests.spec.js",
+              "line": 178,
+              "column": 3
+            }
+          ]
+        },
+        {
+          "title": "8. Session & Storage Enumeration",
+          "file": "sai-security-tests.spec.js",
+          "line": 512,
+          "column": 6,
+          "specs": [
+            {
+              "title": "8a. Dump all localStorage keys (guest)",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "security-tests",
+                  "projectName": "security-tests",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1962,
+                      "errors": [],
+                      "stdout": [
+                        {
+                          "text": "[8a] Guest localStorage: {}\n"
+                        }
+                      ],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-07-09T06:14:04.577Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "c2d9b2f94716c7cad8d8-e30f9e0cf60a3068b798",
+              "file": "sai-security-tests.spec.js",
+              "line": 513,
+              "column": 3
+            }
+          ]
+        },
+        {
+          "title": "10. API Endpoint Discovery",
+          "file": "sai-security-tests.spec.js",
+          "line": 614,
+          "column": 6,
+          "specs": [
+            {
+              "title": "10a. Capture all network requests during guest session",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "security-tests",
+                  "projectName": "security-tests",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 7466,
+                      "errors": [],
+                      "stdout": [
+                        {
+                          "text": "[10a] API calls captured: 1\n"
+                        },
+                        {
+                          "text": "[10a] POST https://sai.seple.in/api/chat\n"
+                        }
+                      ],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-07-09T06:14:06.549Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "c2d9b2f94716c7cad8d8-eacf93a193e1a5d45d63",
+              "file": "sai-security-tests.spec.js",
+              "line": 615,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2026-07-09T06:10:32.901Z",
+    "duration": 221457.60199999998,
+    "expected": 9,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  }
+}
