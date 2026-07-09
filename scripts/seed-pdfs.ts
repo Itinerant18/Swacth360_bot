@@ -750,6 +750,10 @@ Options:
                             for (let p = 0; p < propositions.length && p < propVectors.length; p++) {
                                 const prop = propositions[p];
                                 const propId = `${prop.parentChunkId}_prop_${String(p).padStart(3, '0')}`;
+                                
+                                const parentIdx = chunkIds.indexOf(prop.parentChunkId);
+                                const parentContent = parentIdx !== -1 ? chunks[parentIdx].content : '';
+
                                 try {
                                     const { error } = await supabase.from('hms_knowledge').upsert({
                                         id: propId,
@@ -764,10 +768,17 @@ Options:
                                         source: 'pdf_proposition',
                                         source_name: sourceName,
                                         chunk_type: 'proposition',
-                                        parent_chunk_id: prop.parentChunkId,
+                                        parent_content: parentContent,
                                     }, { onConflict: 'id' });
-                                    if (!error) propSuccess++;
-                                } catch { /* non-fatal */ }
+
+                                    if (error) {
+                                        console.error(`│        ❌ Failed to save proposition ${propId}:`, error.message);
+                                    } else {
+                                        propSuccess++;
+                                    }
+                                } catch (err: unknown) {
+                                    console.error(`│        ⚠️  Unexpected error saving proposition ${propId}:`, (err as Error).message);
+                                }
                             }
                             console.log(`│    ✅ ${propSuccess}/${propositions.length} propositions stored`);
                             totalSuccess += propSuccess;
