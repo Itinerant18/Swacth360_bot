@@ -302,10 +302,13 @@ ${chunkDescriptions}`;
                 messages: [{ role: 'user', content: prompt }],
                 max_tokens: 2048,
                 temperature: 0.1,
+                response_format: { type: 'json_object' },
             });
 
             const text = response.choices[0]?.message?.content ?? '[]';
-            const cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+            let cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+            // Escape any unescaped backslashes to prevent JSON.parse syntax errors (e.g. from file paths or register maps)
+            cleaned = cleaned.replace(/\\(?!["\\\/bfnrtu])/g, '\\\\');
             const parsed = JSON.parse(cleaned);
 
             if (Array.isArray(parsed)) {
@@ -741,16 +744,34 @@ Options:
 
                             let propVectors: number[][] = [];
                             try {
-                                propVectors = await embedTexts(propTexts);
-                            } catch {
-                                console.error(`│    ⚠️  Proposition embedding failed`);
+                                const EMBED_BATCH_SIZE = 128;
+                                for (let b = 0; b < propTexts.length; b += EMBED_BATCH_SIZE) {
+                                    const slice = propTexts.slice(b, b + EMBED_BATCH_SIZE);
+                                    try {
+                                        const sliceVectors = await embedTexts(slice);
+                                        propVectors.push(...sliceVectors);
+                                    } catch (err) {
+                                        console.error(`│    ⚠️  Failed to embed proposition sub-batch starting at index ${b}: ${(err as Error).message}`);
+                                        const empty = Array(slice.length).fill([]);
+                                        propVectors.push(...empty);
+                                    }
+                                    if (b + EMBED_BATCH_SIZE < propTexts.length) {
+                                        await new Promise(r => setTimeout(r, 200));
+                                    }
+                                }
+                            } catch (err) {
+                                console.error(`│    ⚠️  Proposition embedding process failed: ${(err as Error).message}`);
                             }
 
                             let propSuccess = 0;
                             for (let p = 0; p < propositions.length && p < propVectors.length; p++) {
                                 const prop = propositions[p];
-                                const propId = `${prop.parentChunkId}_prop_${String(p).padStart(3, '0')}`;
+                                const propVector = propVectors[p];
+                                if (!propVector || propVector.length === 0) {
+                                    continue; // Skip failed embedding items
+                                }
                                 
+                                const propId = `${prop.parentChunkId}_prop_${String(p).padStart(3, '0')}`;
                                 const parentIdx = chunkIds.indexOf(prop.parentChunkId);
                                 const parentContent = parentIdx !== -1 ? chunks[parentIdx].content : '';
 
@@ -764,7 +785,7 @@ Options:
                                         product: 'HMS Panel',
                                         tags: [],
                                         content: propTexts[p],
-                                        embedding: propVectors[p],
+                                        embedding: propVector,
                                         source: 'pdf_proposition',
                                         source_name: sourceName,
                                         chunk_type: 'proposition',
