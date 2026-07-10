@@ -343,21 +343,26 @@ async function embedAll(): Promise<void> {
             continue;
         }
 
-        // Upsert batch to Supabase in a single request for 50x performance
-        const rows = batch.map((entry, j) => ({
-            id: entry.id,
-            question: entry.question,
-            answer: entry.answer,
-            category: entry.category,
-            subcategory: entry.subcategory,
-            product: entry.product,
-            tags: entry.tags,
-            content: entry.content,
-            embedding: vectors[j],
-            source: entry.source,
-            source_name: entry.source_name,
-            chunk_type: entry.chunk_type,
-        }));
+        // Upsert batch to Supabase in a single request for 50x performance.
+        // Deduplicate rows by ID inside the batch because Postgres rejects duplicate rows in a single upsert batch.
+        const uniqueRowsMap = new Map<string, any>();
+        batch.forEach((entry, j) => {
+            uniqueRowsMap.set(entry.id, {
+                id: entry.id,
+                question: entry.question,
+                answer: entry.answer,
+                category: entry.category,
+                subcategory: entry.subcategory,
+                product: entry.product,
+                tags: entry.tags,
+                content: entry.content,
+                embedding: vectors[j],
+                source: entry.source,
+                source_name: entry.source_name,
+                chunk_type: entry.chunk_type,
+            });
+        });
+        const rows = Array.from(uniqueRowsMap.values());
 
         let batchSuccess = 0;
         let batchErrors = 0;
