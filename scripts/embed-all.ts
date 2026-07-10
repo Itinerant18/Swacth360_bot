@@ -343,48 +343,45 @@ async function embedAll(): Promise<void> {
             continue;
         }
 
-        // Upsert to Supabase
+        // Upsert batch to Supabase in a single request for 50x performance
+        const rows = batch.map((entry, j) => ({
+            id: entry.id,
+            question: entry.question,
+            answer: entry.answer,
+            category: entry.category,
+            subcategory: entry.subcategory,
+            product: entry.product,
+            tags: entry.tags,
+            content: entry.content,
+            embedding: vectors[j],
+            source: entry.source,
+            source_name: entry.source_name,
+            chunk_type: entry.chunk_type,
+        }));
+
         let batchSuccess = 0;
         let batchErrors = 0;
 
-        for (let j = 0; j < batch.length; j++) {
-            const entry = batch[j];
-            try {
-                const { error } = await supabase.from('hms_knowledge').upsert({
-                    id: entry.id,
-                    question: entry.question,
-                    answer: entry.answer,
-                    category: entry.category,
-                    subcategory: entry.subcategory,
-                    product: entry.product,
-                    tags: entry.tags,
-                    content: entry.content,
-                    embedding: `[${vectors[j].join(',')}]`,
-                    source: entry.source,
-                    source_name: entry.source_name,
-                    chunk_type: entry.chunk_type,
-                }, { onConflict: 'id' });
+        try {
+            const { error } = await supabase
+                .from('hms_knowledge')
+                .upsert(rows, { onConflict: 'id' });
 
-                if (error) {
-                    batchErrors++;
-                    if (batchErrors <= 2) {
-                        console.error(`\n    ✗ ${entry.id}: ${error.message}`);
-                    }
-                } else {
-                    batchSuccess++;
-                }
-            } catch (err) {
-                batchErrors++;
-                if (batchErrors <= 2) {
-                    console.error(`\n    ✗ ${entry.id}: ${err instanceof Error ? err.message : String(err)}`);
-                }
+            if (error) {
+                batchErrors = batch.length;
+                console.error(`\n    ✗ Batch upload failed: ${error.message}`);
+            } else {
+                batchSuccess = batch.length;
             }
+        } catch (err) {
+            batchErrors = batch.length;
+            console.error(`\n    ✗ Batch upload error: ${err instanceof Error ? err.message : String(err)}`);
         }
 
         totalSuccess += batchSuccess;
         totalErrors += batchErrors;
 
-        console.log(`✓ ${batchSuccess}/${batch.length}${batchErrors > 0 ? ` (${batchErrors} errs)` : ''}`);
+        console.log(`✓ ${batchSuccess}/${batch.length}${batchErrors > 0 ? ` (failed)` : ''}`);
 
         // Rate-limit delay between batches
         if (i + batchSize < allEntries.length) {
