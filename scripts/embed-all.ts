@@ -367,20 +367,24 @@ async function embedAll(): Promise<void> {
         let batchSuccess = 0;
         let batchErrors = 0;
 
-        try {
-            const { error } = await supabase
-                .from('hms_knowledge')
-                .upsert(rows, { onConflict: 'id' });
+        const DB_SUB_BATCH_SIZE = 16;
+        for (let k = 0; k < rows.length; k += DB_SUB_BATCH_SIZE) {
+            const subBatch = rows.slice(k, k + DB_SUB_BATCH_SIZE);
+            try {
+                const { error } = await supabase
+                    .from('hms_knowledge')
+                    .upsert(subBatch, { onConflict: 'id' });
 
-            if (error) {
-                batchErrors = batch.length;
-                console.error(`\n    ✗ Batch upload failed: ${error.message}`);
-            } else {
-                batchSuccess = batch.length;
+                if (error) {
+                    batchErrors += subBatch.length;
+                    console.error(`\n    ✗ Sub-batch upload failed: ${error.message}`);
+                } else {
+                    batchSuccess += subBatch.length;
+                }
+            } catch (err) {
+                batchErrors += subBatch.length;
+                console.error(`\n    ✗ Sub-batch upload error: ${err instanceof Error ? err.message : String(err)}`);
             }
-        } catch (err) {
-            batchErrors = batch.length;
-            console.error(`\n    ✗ Batch upload error: ${err instanceof Error ? err.message : String(err)}`);
         }
 
         totalSuccess += batchSuccess;
