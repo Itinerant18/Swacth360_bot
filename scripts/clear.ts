@@ -37,17 +37,35 @@ async function clearDatabase() {
         global: { fetch: customFetch },
     });
 
-    console.log('🗑️  Deleting all vectors from "hms_knowledge"...');
+    console.log('🗑️  Deleting all vectors from "hms_knowledge" in batches...');
 
     try {
-        const { error } = await supabase
-            .from('hms_knowledge')
-            .delete()
-            .not('id', 'is', null);
+        let deletedCount = 0;
+        while (true) {
+            // Fetch any 150 IDs directly using primary key index (no filters)
+            const { data: rows, error: fetchError } = await supabase
+                .from('hms_knowledge')
+                .select('id')
+                .limit(150);
 
-        if (error) throw error;
+            if (fetchError) throw fetchError;
+            if (!rows || rows.length === 0) break;
 
-        console.log('✅ Database cleared successfully!');
+            const ids = rows.map(r => r.id);
+            const { error: deleteError } = await supabase
+                .from('hms_knowledge')
+                .delete()
+                .in('id', ids);
+
+            if (deleteError) throw deleteError;
+
+            deletedCount += ids.length;
+            if (deletedCount % 1500 === 0) {
+                console.log(`      Deleted ${deletedCount} rows so far...`);
+            }
+        }
+
+        console.log(`✅ Database cleared successfully! Total rows deleted: ${deletedCount}`);
     } catch (err) {
         console.error('❌ Error clearing database:', err);
     }
