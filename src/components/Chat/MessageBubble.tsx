@@ -5,7 +5,7 @@ import dynamic from 'next/dynamic';
 import remarkGfm from 'remark-gfm';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
-    faRotateRight, faRobot, faCopy, faCheck, faDiagramProject,
+    faRobot, faCopy, faCheck, faDiagramProject,
     faThumbsUp, faThumbsDown, faBolt, faPaperPlane,
     faLightbulb, faChevronDown,
 } from '@fortawesome/free-solid-svg-icons';
@@ -251,11 +251,7 @@ const MessageBubble = React.memo(function MessageBubble({
                         />
                         <div className="mt-2 flex items-center justify-end">
                             <div className="flex items-center gap-1">
-                                {isLastAssistant && onRegenerate && (
-                                    <button onClick={onRegenerate} className="p-1.5 rounded hover:bg-[#E8E0D4] text-[#A8A29E] hover:text-[#CA8A04] transition-colors" title="Regenerate">
-                                        <FontAwesomeIcon icon={faRotateRight} className="w-3 h-3" />
-                                    </button>
-                                )}
+
                                 {canSubmitFeedback && (
                                     <>
                                         <button
@@ -461,11 +457,7 @@ const MessageBubble = React.memo(function MessageBubble({
                                 )}
                                 {getMessageTimeLabel(message) && <span>{getMessageTimeLabel(message)}</span>}
                                 <div className="flex items-center gap-1 ml-auto">
-                                    {isLastAssistant && onRegenerate && (
-                                        <button onClick={onRegenerate} className="p-1.5 rounded hover:bg-[#E8E0D4] hover:text-[#CA8A04] transition-colors" title="Regenerate">
-                                            <FontAwesomeIcon icon={faRotateRight} className="w-3 h-3" />
-                                        </button>
-                                    )}
+
                                     {canSubmitFeedback && (
                                         <>
                                             <button
