@@ -46,10 +46,20 @@ export interface CacheMiss {
 
 export type CacheResult = (CacheHit & { hit: true }) | CacheMiss;
 
-function tryParseTier1(cached: string): { answer: string; knowledgeId?: string | null } {
+function tryParseTier1(cached: any): { answer: string; knowledgeId?: string | null } {
+    if (!cached) {
+        return { answer: '', knowledgeId: null };
+    }
+    if (typeof cached === 'object') {
+        if ('answer' in cached && typeof cached.answer === 'string') {
+            return { answer: cached.answer, knowledgeId: cached.knowledgeId ?? null };
+        }
+        return { answer: String(cached), knowledgeId: null };
+    }
     try {
-        if (cached.startsWith('{')) {
-            const parsed = JSON.parse(cached);
+        const str = String(cached);
+        if (str.startsWith('{')) {
+            const parsed = JSON.parse(str);
             if (parsed && typeof parsed === 'object' && 'answer' in parsed) {
                 return { answer: parsed.answer, knowledgeId: parsed.knowledgeId ?? null };
             }
@@ -57,7 +67,7 @@ function tryParseTier1(cached: string): { answer: string; knowledgeId?: string |
     } catch {
         // ignore and fallback
     }
-    return { answer: cached, knowledgeId: null };
+    return { answer: String(cached), knowledgeId: null };
 }
 
 // Redis Client (Tier 1)
@@ -153,7 +163,7 @@ function deleteLocalTier1(query: string, language: SupportedLanguage): void {
     localTier1Cache.delete(cacheKey);
 }
 
-async function tier1Get(query: string, language: SupportedLanguage): Promise<string | null> {
+async function tier1Get(query: string, language: SupportedLanguage): Promise<any | null> {
     const localHit = getLocalTier1(query, language);
     if (localHit) {
         console.log(`[cache] Local Tier 1 HIT (${language}) - "${query.slice(0, 60)}"`);
