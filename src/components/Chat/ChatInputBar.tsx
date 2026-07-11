@@ -189,6 +189,7 @@ export default function ChatInputBar({
                     <button
                         type="submit"
                         disabled={isDisabled || !input.trim()}
+                        aria-label="Send message"
                         className="p-2 sm:p-2.5 skeuo-brass rounded-lg sm:rounded-xl disabled:opacity-30"
                     >
                         {isLoading || isLoadingHistory
