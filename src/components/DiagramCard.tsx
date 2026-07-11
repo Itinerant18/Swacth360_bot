@@ -359,37 +359,6 @@ export default function DiagramCard({
                         </span>
                     </div>
 
-                    <div className="flex items-center gap-1.5 sm:gap-2 ml-auto">
-                        <button
-                            onClick={handleDownload}
-                            className="p-1.5 sm:px-2.5 sm:py-1.5 rounded-md bg-[#E8E0D4] text-[#78716C] hover:text-[#1C1917] hover:bg-[#D6CFC4] border border-[#D6CFC4] text-[11px] font-medium transition-all flex items-center gap-1.5"
-                            title={lbl.download}
-                        >
-                            <FontAwesomeIcon icon={faDownload} className="text-[10px]" />
-                            <span className="hidden sm:inline">{lbl.download}</span>
-                        </button>
-
-                        <button
-                            onClick={() => setIsExpanded(true)}
-                            className="p-1.5 sm:px-2.5 sm:py-1.5 rounded-md bg-[#E8E0D4] text-[#78716C] hover:text-[#1C1917] hover:bg-[#D6CFC4] border border-[#D6CFC4] text-[11px] font-medium transition-all flex items-center gap-1.5"
-                            title={lbl.expand}
-                        >
-                            <FontAwesomeIcon icon={faExpand} className="text-[10px]" />
-                            <span className="hidden sm:inline">{lbl.expand}</span>
-                        </button>
-                        
-                        <button
-                            onClick={handleCopy}
-                            className={`p-1.5 sm:px-2.5 sm:py-1.5 rounded-md border text-[11px] font-medium transition-all flex items-center gap-1.5 ${
-                                copied 
-                                    ? 'bg-emerald-600/20 text-emerald-400 border-emerald-500/30' 
-                                    : 'bg-[#E8E0D4] text-[#78716C] border-[#D6CFC4] hover:text-[#1C1917] hover:bg-[#D6CFC4]'
-                            }`}
-                        >
-                            <FontAwesomeIcon icon={copied ? faCheck : faCopy} className="text-[10px]" />
-                            <span className="hidden sm:inline">{copied ? lbl.copied : lbl.copy}</span>
-                        </button>
-                    </div>
                 </div>
 
                 {/* ── Body ────────────────────────────────────────── */}

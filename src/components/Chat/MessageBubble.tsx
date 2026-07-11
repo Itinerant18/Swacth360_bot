@@ -5,7 +5,7 @@ import dynamic from 'next/dynamic';
 import remarkGfm from 'remark-gfm';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
-    faSignal, faRobot, faCopy, faCheck, faDiagramProject,
+    faRotateRight, faRobot, faCopy, faCheck, faDiagramProject,
     faThumbsUp, faThumbsDown, faBolt, faPaperPlane,
     faLightbulb, faChevronDown,
 } from '@fortawesome/free-solid-svg-icons';
@@ -253,7 +253,7 @@ const MessageBubble = React.memo(function MessageBubble({
                             <div className="flex items-center gap-1">
                                 {isLastAssistant && onRegenerate && (
                                     <button onClick={onRegenerate} className="p-1.5 rounded hover:bg-[#E8E0D4] text-[#A8A29E] hover:text-[#CA8A04] transition-colors" title="Regenerate">
-                                        <FontAwesomeIcon icon={faSignal} className="w-3 h-3" />
+                                        <FontAwesomeIcon icon={faRotateRight} className="w-3 h-3" />
                                     </button>
                                 )}
                                 {canSubmitFeedback && (
@@ -463,7 +463,7 @@ const MessageBubble = React.memo(function MessageBubble({
                                 <div className="flex items-center gap-1 ml-auto">
                                     {isLastAssistant && onRegenerate && (
                                         <button onClick={onRegenerate} className="p-1.5 rounded hover:bg-[#E8E0D4] hover:text-[#CA8A04] transition-colors" title="Regenerate">
-                                            <FontAwesomeIcon icon={faSignal} className="w-3 h-3" />
+                                            <FontAwesomeIcon icon={faRotateRight} className="w-3 h-3" />
                                         </button>
                                     )}
                                     {canSubmitFeedback && (
@@ -519,15 +519,7 @@ const MessageBubble = React.memo(function MessageBubble({
                                     }}>
                                         {message.content}
                                     </ReactMarkdown>
-                                    {!streamingMessageId && onEdit && (
-                                        <button
-                                            onClick={() => onEdit(message.id, message.content)}
-                                            className="absolute -left-8 top-0 opacity-0 group-hover:opacity-100 p-1 rounded text-white/40 hover:text-white transition-all"
-                                            title="Edit message"
-                                        >
-                                            <FontAwesomeIcon icon={faPaperPlane} className="w-2.5 h-2.5 rotate-180" />
-                                        </button>
-                                    )}
+
                                 </div>
                             )}
                         </div>
