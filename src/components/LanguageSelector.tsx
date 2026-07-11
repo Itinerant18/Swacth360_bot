@@ -216,6 +216,7 @@ export default function LanguageSelector({ language, setLanguage }: LanguageSele
         <button
           className={`lang-trigger ${open ? "open" : ""}`}
           onClick={() => setOpen((v) => !v)}
+          aria-label="Select language"
           aria-haspopup="listbox"
           aria-expanded={open}
         >
