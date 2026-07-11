@@ -5,6 +5,7 @@ export interface SemanticCacheHit {
     confidence: number;
     answerMode: string;
     hitCount: number;
+    knowledgeId?: string | null;
 }
 
 export interface SemanticCacheMiss {
@@ -24,6 +25,7 @@ interface SemanticCacheEntry {
     hitCount: number;
     createdAt: number;
     expiresAt: number;
+    knowledgeId?: string | null;
 }
 
 const CACHE_TTL_MS = parseInt(process.env.SEMANTIC_RESPONSE_CACHE_TTL_MS || '900000', 10);
@@ -124,6 +126,7 @@ export function checkSemanticCache(params: {
         confidence: best.confidence,
         answerMode: best.answerMode,
         hitCount: best.hitCount,
+        knowledgeId: best.knowledgeId,
     };
 }
 
@@ -136,6 +139,7 @@ export function storeSemanticCache(params: {
     confidence: number;
     ttlMs?: number;
     requestId?: string;
+    knowledgeId?: string | null;
 }): void {
     if (!CACHE_ENABLED) {
         return;
@@ -150,6 +154,7 @@ export function storeSemanticCache(params: {
         confidence,
         ttlMs = CACHE_TTL_MS,
         requestId,
+        knowledgeId,
     } = params;
 
     if (answerMode === 'general') {
@@ -191,6 +196,7 @@ export function storeSemanticCache(params: {
         hitCount: existingIndex >= 0 ? entries[existingIndex].hitCount : 0,
         createdAt: existingIndex >= 0 ? entries[existingIndex].createdAt : now,
         expiresAt: now + ttlMs,
+        knowledgeId: knowledgeId || null,
     };
 
     if (existingIndex >= 0) {

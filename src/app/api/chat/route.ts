@@ -154,8 +154,9 @@ async function persistAssistantMessage(params: {
     content: string;
     answerMode: string;
     topSimilarity?: number;
+    knowledgeId?: string | null;
 }): Promise<void> {
-    const { enabled, conversationId, content, answerMode, topSimilarity } = params;
+    const { enabled, conversationId, content, answerMode, topSimilarity, knowledgeId } = params;
 
     if (!enabled || !conversationId) {
         return;
@@ -169,6 +170,7 @@ async function persistAssistantMessage(params: {
             content,
             answer_mode: answerMode,
             top_similarity: topSimilarity,
+            knowledge_id: knowledgeId ?? null,
         });
 
         if (error) {
@@ -587,13 +589,14 @@ export async function POST(req: Request) {
                     content: result.answer,
                     answerMode: 'casual',
                 });
-            } else if (result.answerMode === 'cache') {
+                        } else if (result.answerMode === 'cache') {
                 await persistAssistantMessage({
                     enabled: Boolean(authUserId),
                     conversationId: activeConversationId,
                     content: result.answer,
                     answerMode: 'cache',
                     topSimilarity: result.confidence,
+                    knowledgeId,
                 });
 
                 recordPipelineMetric({
@@ -610,6 +613,7 @@ export async function POST(req: Request) {
                     content: result.answer,
                     answerMode: 'not_found',
                     topSimilarity: result.confidence,
+                    knowledgeId,
                 });
 
                 void supabase.from('chat_sessions').insert({
@@ -721,6 +725,7 @@ export async function POST(req: Request) {
                     answerMode: result.answerMode,
                     language,
                     confidence: result.confidence,
+                    knowledgeId,
                 });
                 storeSemanticCache({
                     query: result.retrievalQuestion,
@@ -730,6 +735,7 @@ export async function POST(req: Request) {
                     language,
                     confidence: result.confidence,
                     requestId,
+                    knowledgeId,
                 });
             }
 
@@ -739,6 +745,7 @@ export async function POST(req: Request) {
                 content: answer,
                 answerMode: result.dbAnswerMode,
                 topSimilarity: result.matches[0]?.finalScore || result.confidence,
+                knowledgeId,
             });
 
             if (result.confidence < 0.5 || result.fallbackMessage) {

@@ -41,6 +41,7 @@ type HistoryMessageApiShape = {
     content?: string;
     createdAt?: string;
     created_at?: string;
+    knowledgeId?: string;
 };
 
 function normalizeConversation(conversation: ConversationApiShape): ConversationSidebarConversation {
@@ -71,6 +72,7 @@ function normalizeHistoryMessages(payload: HistoryMessagesPayload | HistoryMessa
             : message.created_at
                 ? new Date(message.created_at)
                 : undefined,
+        knowledgeId: message.knowledgeId,
     }));
 }
 

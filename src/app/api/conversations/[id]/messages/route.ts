@@ -13,6 +13,7 @@ type MessageRow = {
     role: 'user' | 'assistant';
     content: string;
     created_at: string;
+    knowledge_id?: string | null;
 };
 
 type ChatSessionRow = {
@@ -28,6 +29,7 @@ function normalizeStoredMessages(messages: MessageRow[]) {
         role: message.role,
         content: message.content,
         createdAt: message.created_at,
+        knowledgeId: message.knowledge_id ?? undefined,
     }));
 }
 
@@ -82,7 +84,7 @@ export async function GET(
 
         const { data: messages, error } = await supabase
             .from('messages')
-            .select('id, role, content, created_at')
+            .select('id, role, content, created_at, knowledge_id')
             .eq('conversation_id', id)
             .order('created_at', { ascending: true });
 

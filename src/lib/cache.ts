@@ -37,6 +37,7 @@ export interface CacheHit {
     similarity?: number;
     hitCount?: number;
     cacheId?: string;
+    knowledgeId?: string | null;
 }
 
 export interface CacheMiss {
@@ -44,6 +45,20 @@ export interface CacheMiss {
 }
 
 export type CacheResult = (CacheHit & { hit: true }) | CacheMiss;
+
+function tryParseTier1(cached: string): { answer: string; knowledgeId?: string | null } {
+    try {
+        if (cached.startsWith('{')) {
+            const parsed = JSON.parse(cached);
+            if (parsed && typeof parsed === 'object' && 'answer' in parsed) {
+                return { answer: parsed.answer, knowledgeId: parsed.knowledgeId ?? null };
+            }
+        }
+    } catch {
+        // ignore and fallback
+    }
+    return { answer: cached, knowledgeId: null };
+}
 
 // Redis Client (Tier 1)
 
@@ -160,13 +175,14 @@ async function tier1Get(query: string, language: SupportedLanguage): Promise<str
     }
 }
 
-async function tier1Set(query: string, answer: string, language: SupportedLanguage): Promise<void> {
-    setLocalTier1(query, answer, language);
+async function tier1Set(query: string, answer: string, language: SupportedLanguage, knowledgeId?: string | null): Promise<void> {
+    const val = JSON.stringify({ answer, knowledgeId: knowledgeId ?? null });
+    setLocalTier1(query, val, language);
     const redis = getRedis();
     if (!redis) return;
     try {
         const key = hashQuery(query, language);
-        await redis.set(key, answer, { ex: CACHE_CONFIG.TIER1_TTL_SECONDS });
+        await redis.set(key, val, { ex: CACHE_CONFIG.TIER1_TTL_SECONDS });
     } catch (err: unknown) {
         console.warn('[cache.tier1] Redis SET failed:', (err as Error).message);
     }
@@ -188,7 +204,7 @@ async function tier1Delete(query: string, language: SupportedLanguage): Promise<
 async function tier2Get(
     queryVector: number[],
     language: SupportedLanguage,
-): Promise<{ answer: string; similarity: number; id: string; hitCount: number } | null> {
+): Promise<{ answer: string; similarity: number; id: string; hitCount: number; knowledgeId?: string | null } | null> {
     const supabase = getSupabase();
     try {
         const { data, error } = await supabase.rpc('search_semantic_cache', {
@@ -205,6 +221,7 @@ async function tier2Get(
             similarity: hit.similarity,
             id: hit.id,
             hitCount: hit.hit_count,
+            knowledgeId: hit.knowledge_id,
         };
     } catch (err: unknown) {
         console.warn('[cache.tier2] Supabase search failed:', (err as Error).message);
@@ -218,9 +235,10 @@ async function tier2Set(params: {
     answer: string;
     answerMode: string;
     language: string;
+    knowledgeId?: string | null;
 }): Promise<void> {
     const supabase = getSupabase();
-    const { query, queryVector, answer, answerMode, language } = params;
+    const { query, queryVector, answer, answerMode, language, knowledgeId } = params;
     const normalizedLanguage = normalizeLanguage(language);
     try {
         const { error } = await supabase.from('semantic_cache').insert({
@@ -230,6 +248,7 @@ async function tier2Set(params: {
             answer,
             answer_mode: answerMode,
             language: normalizedLanguage,
+            knowledge_id: knowledgeId || null,
         });
         if (error) console.warn('[cache.tier2] Supabase INSERT failed:', error.message);
     } catch (err: unknown) {
@@ -256,7 +275,8 @@ export async function checkCache(
     const tier1Result = await tier1Get(query, normalizedLanguage);
     if (tier1Result) {
         console.log(`[cache] Tier 1 HIT (${(performance.now() - t1Start).toFixed(1)}ms, lang=${normalizedLanguage}) - "${query.slice(0, 60)}"`);
-        return { hit: true, answer: tier1Result, tier: 1 };
+        const { answer, knowledgeId } = tryParseTier1(tier1Result);
+        return { hit: true, answer, tier: 1, knowledgeId };
     }
 
     // Tier 2
@@ -267,7 +287,7 @@ export async function checkCache(
     if (tier2Result) {
         console.log(`[cache] Tier 2 HIT (${(performance.now() - t2Start).toFixed(1)}ms, sim=${tier2Result.similarity.toFixed(3)}, lang=${normalizedLanguage}) - "${query.slice(0, 60)}"`);
         // Backfill Tier 1 so next identical query is even faster
-        void tier1Set(query, tier2Result.answer, normalizedLanguage);
+        void tier1Set(query, tier2Result.answer, normalizedLanguage, tier2Result.knowledgeId);
         return {
             hit: true,
             answer: tier2Result.answer,
@@ -275,6 +295,7 @@ export async function checkCache(
             similarity: tier2Result.similarity,
             hitCount: tier2Result.hitCount,
             cacheId: tier2Result.id,
+            knowledgeId: tier2Result.knowledgeId,
         };
     }
 
@@ -295,8 +316,9 @@ export async function storeCache(params: {
     answerMode: string;
     language: string;
     confidence?: number;
+    knowledgeId?: string | null;
 }): Promise<void> {
-    const { answer, answerMode, confidence = 0 } = params;
+    const { answer, answerMode, confidence = 0, knowledgeId } = params;
 
     if (answerMode === 'general') return;
     if (answerMode === 'rag_partial' && confidence < 0.55) return;
@@ -309,7 +331,7 @@ export async function storeCache(params: {
     if (confidence < minConfidence) return;
 
     await Promise.allSettled([
-        tier1Set(params.query, answer, normalizeLanguage(params.language)),
+        tier1Set(params.query, answer, normalizeLanguage(params.language), knowledgeId),
         tier2Set({
             ...params,
             language: normalizeLanguage(params.language),
