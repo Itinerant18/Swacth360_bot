@@ -1,0 +1,3 @@
+## 2025-01-20 - Keyboard accessibility for hover-revealed actions
+**Learning:** Hover-revealed UI actions (like delete buttons appearing on row hover) completely hide functionality from keyboard-only users if they don't have focus states. In lists with nested interactive elements, keyboard users tab through everything, so interactive children must become visible when they receive focus.
+**Action:** Paired `opacity-0 group-hover:opacity-100` with `focus-visible:opacity-100 focus-visible:ring-2 focus-visible:outline-none` on the delete button in ConversationSidebar, and added explicit `aria-label`s to all icon-only buttons to ensure they are discoverable by screen readers and keyboard users.
